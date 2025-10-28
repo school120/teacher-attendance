@@ -4,48 +4,48 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Teacher Attendance — Guard Console</title>
-  <meta name="description" content="Choose IN/OUT, lookup by name, or auto-submit Quick Pin with toast confirmation. Appends a new row each time." />
+  <meta name="description" content="Choose IN/OUT, lookup by name, or auto-submit Quick Pin with toast confirmation. OUT pairs with latest open IN if present; else appends." />
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     body { display:flex; min-height:100svh; margin:0; background:#f6f7fb; }
-    .wrap { margin:auto; width:min(960px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
+    .wrap { margin:auto; width:min(1000px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
     h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
     .sub { color:#475467; margin-bottom:18px; font-size:16px; }
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
     .card { border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff; }
-    .card h2 { margin:0 0 10px; font-size:18px; }
-    input[type="password"], input[type="search"] { padding:16px 18px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%; }
-    input[type="search"] { font-size:20px; }
+    .card h2 { margin:0 0 10px; font-size:20px; }
+    input[type="password"], input[type="search"] { padding:18px 20px; font-size:26px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%; }
+    input[type="search"] { font-size:22px; }
     .muted { color:#667085; }
-    .list { display:grid; gap:10px; max-height:420px; overflow:auto; margin-top:12px; }
-    .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
-    .name { font-weight:700; font-size:18px; }
-    .btn { padding:12px 14px; border:0; border-radius:12px; font-size:16px; cursor:pointer; }
+    .list { display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
+    .name { font-weight:800; font-size:20px; }
+    .btn { padding:16px 20px; border:0; border-radius:14px; font-size:20px; cursor:pointer; }
     .primary { background:#111827; color:#fff; }
-    .status { margin-top:10px; min-height:28px; font-weight:700; }
+    .status { margin-top:12px; min-height:32px; font-weight:800; font-size:18px; }
     .good { color:#0f766e; }
     .bad { color:#b91c1c; }
 
-    /* Action segment control */
-    .segment { display:inline-flex; border:1px solid #d0d5dd; border-radius:12px; overflow:hidden; }
-    .segment button { padding:10px 14px; border:0; background:#f2f4f7; cursor:pointer; font-weight:700; }
+    /* Action segment control — bigger */
+    .segment { display:inline-flex; border:2px solid #d0d5dd; border-radius:14px; overflow:hidden; }
+    .segment button { padding:14px 22px; border:0; background:#f2f4f7; cursor:pointer; font-weight:900; font-size:20px; }
     .segment button.active { background:#111827; color:#fff; }
 
     /* Toast */
-    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12); border-radius: 14px; padding: 14px 18px; font-weight:700; transition: all .25s ease; pointer-events:none; }
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12); border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (Quick Pin) or look up by name. Each submit appends a new row.</p>
+    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (Quick Pin) or look up by name. OUT pairs with the latest open IN if present; otherwise it appends its own row.</p>
 
-    <div class="card" style="margin-bottom:14px;">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
         <div class="segment" role="tablist" aria-label="Action">
-          <button id="actIn"  class="active" role="tab" aria-selected="true">IN</button>
-          <button id="actOut" role="tab" aria-selected="false">OUT</button>
+          <button id="actIn"  class="active" role="tab" aria-selected="true"  type="button">IN</button>
+          <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
         </div>
         <div class="muted">Action applies to both card pins and name lookup.</div>
       </div>
@@ -77,11 +77,14 @@
   const pinEl = $('#pin'), qEl = $('#q'), msgEl = $('#msg'), pinStatusEl = $('#pinStatus'), resultsEl = $('#results'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
 
+  // Action selector — focus Quick Pin whenever changed
   function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
   function setAction(a){
     const inActive = (a === 'in');
     btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
     btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
+    // Bring cursor to Quick Pin automatically
+    setTimeout(() => pinEl.focus(), 0);
   }
   btnIn.addEventListener('click', ()=>setAction('in'));
   btnOut.addEventListener('click', ()=>setAction('out'));
@@ -89,9 +92,9 @@
   function setMsg(text, cls='muted'){ msgEl.className = 'status ' + cls; msgEl.textContent = text; }
   function setPinMsg(text, cls='muted'){ pinStatusEl.className = 'status ' + cls; pinStatusEl.textContent = text; }
   let toastTimer = null;
-  function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2200); }
+  function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
 
-  // Submit with explicit action; also handles 200-with-error JSON bodies
+  // Submit with explicit action; handle 200-with-error JSON
   async function submitPinOrId({ pin, personId }) {
     const act = currentAction();
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
@@ -104,12 +107,16 @@
         if (/not found/i.test(msg)) msg = 'Quick Pin / Person not found in Directory';
         setMsg(msg, 'bad'); showToast(msg); return;
       }
-      const { status, firstName, lastName, time } = data || {};
+      const { status, firstName, lastName, time, paired } = data || {};
+      let extra = (status === 'out' && typeof paired === 'boolean') ? (paired ? ' (paired)' : ' (no prior IN)') : '';
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : 'UPDATED';
-      const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
+      const line = `${firstName||''} ${lastName||''} signed ${verb}${extra} — ${time||''}`.trim();
       setMsg(line || 'Done.', 'good'); showToast(line || 'Done.');
     } catch (err) {
       setMsg(String(err), 'bad'); showToast('Network error');
+    } finally {
+      // After any submit, refocus Quick Pin for the next person
+      pinEl.focus();
     }
   }
 
@@ -135,13 +142,13 @@
     }
   });
 
-  // Name lookup (uses current IN/OUT selection)
+  // Name lookup (uses current IN/OUT selection) — bigger submit buttons
   let searchTimer = null;
   qEl.addEventListener('input', () => {
     clearTimeout(searchTimer);
     const q = qEl.value.trim(); resultsEl.innerHTML = '';
     if (!q) { setMsg('Ready.', 'muted'); return; }
-    searchTimer = setTimeout(() => doSearch(q), 180);
+    searchTimer = setTimeout(() => doSearch(q), 160);
   });
 
   async function doSearch(q) {
@@ -157,7 +164,11 @@
         const row = document.createElement('div'); row.className = 'row'; row.setAttribute('role','listitem');
         const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
         const btn = document.createElement('button'); btn.className = 'btn primary'; btn.textContent = 'Submit';
-        btn.addEventListener('click', () => submitPinOrId({ personId }));
+        btn.addEventListener('click', () => {
+          submitPinOrId({ personId });
+          // after choosing a person by name, keep focus at Quick Pin for the next swipe
+          pinEl.focus();
+        });
         row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
       });
       setMsg('Select a name then click Submit (uses selected IN/OUT).', 'muted');
@@ -166,7 +177,7 @@
     }
   }
 
-  // Focus pin field for immediate card taps
+  // Focus pin field on load
   pinEl.focus();
 </script>
 </body>
