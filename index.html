@@ -1,163 +1,49 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Teacher Attendance — Guard Console</title>
-  <meta name="description" content="Guard-facing attendance console. Look up by name or auto-submit Quick Pin. Shows a light popup with check-in/out status." />
-  <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    body { display:flex; min-height:100svh; margin:0; background:#f6f7fb; }
-    .wrap { margin:auto; width:min(900px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
-    h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
-    .sub { color:#475467; margin-bottom:18px; font-size:16px; }
-    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
-    .card { border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff; }
-    .card h2 { margin:0 0 10px; font-size:18px; }
-    input[type="password"], input[type="search"] { padding:16px 18px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%; }
-    input[type="search"] { font-size:20px; }
-    .muted { color:#667085; }
-    .list { display:grid; gap:10px; max-height:420px; overflow:auto; margin-top:12px; }
-    .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
-    .name { font-weight:700; font-size:18px; }
-    .btn { padding:12px 14px; border:0; border-radius:12px; font-size:16px; cursor:pointer; }
-    .primary { background:#111827; color:#fff; }
-    .secondary { background:#e6eefc; color:#1f2937; }
-    .status { margin-top:10px; min-height:28px; font-weight:700; }
-    .good { color:#0f766e; }
-    .bad { color:#b91c1c; }
+<meta charset="utf-8">
+<title>Attendance Debug</title>
+<body style="font-family: system-ui; max-width: 720px; margin: 2rem auto;">
+  <h1>Attendance Debug</h1>
+  <p>Endpoint: <code id="ep"></code></p>
 
-    /* Light popup (toast) */
-    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12); border-radius: 14px; padding: 14px 18px; font-weight:700; transition: all .25s ease; pointer-events:none; }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Teacher Attendance — Guard Console</h1>
-    <p class="sub">Look up by <b>name</b> to sign in/out, or swipe/tap a card that types the <b>Quick Pin</b>. Pins auto‑submit. A light popup confirms the action.</p>
+  <h2>Search by name</h2>
+  <input id="q" placeholder="type last name e.g. Fox" style="padding:8px;font-size:16px;width:60%">
+  <button id="btnSearch">Search</button>
+  <pre id="outSearch" style="background:#f7f7f7;padding:12px;"></pre>
 
-    <div class="grid">
-      <!-- Quick Pin panel (auto-submit) -->
-      <div class="card">
-        <h2>Quick Pin (auto)</h2>
-        <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="16" placeholder="Tap card or type…" type="password" aria-label="Quick Pin" />
-        <div id="pinStatus" class="status muted">Waiting for card tap or keypad input…</div>
-      </div>
-
-      <!-- Name lookup panel -->
-      <div class="card">
-        <h2>Lookup by Name</h2>
-        <input id="q" type="search" placeholder="Start typing first or last name" aria-label="Search teacher by name" />
-        <div id="results" class="list" role="list" aria-live="polite"></div>
-      </div>
-    </div>
-
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <div id="msg" class="status muted" style="margin-top:16px;">Ready.</div>
-    <p class="muted" style="margin:8px 0 0; font-size:12px;">© Yeshivat Frisch</p>
-  </div>
+  <h2>Submit Quick Pin</h2>
+  <input id="pin" placeholder="enter 10-digit pin" style="padding:8px;font-size:16px;width:60%">
+  <button id="btnPin">Submit Pin</button>
+  <pre id="outPin" style="background:#f7f7f7;padding:12px;"></pre>
 
 <script>
-  // Your deployed Apps Script Web App endpoint
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  document.getElementById('ep').textContent = ENDPOINT;
 
-  const $ = sel => document.querySelector(sel);
-  const pinEl = $('#pin');
-  const qEl = $('#q');
-  const msgEl = $('#msg');
-  const pinStatusEl = $('#pinStatus');
-  const resultsEl = $('#results');
-  const toastEl = $('#toast');
-
-  function setMsg(text, cls='muted') { msgEl.className = 'status ' + cls; msgEl.textContent = text; }
-  function setPinMsg(text, cls='muted') { pinStatusEl.className = 'status ' + cls; pinStatusEl.textContent = text; }
-
-  // Light popup
-  let toastTimer = null;
-  function showToast(text) {
-    toastEl.textContent = text;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  async function get(url) {
+    const r = await fetch(url);
+    const t = await r.text();
+    return { ok: r.ok, status: r.status, text: t, json: tryJSON(t) };
   }
-
-  // Submit action
-  async function submitPinOrId({ pin, personId }) {
-    const isPinFlow = !!pin;
-    const body = new URLSearchParams({ ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
-    try {
-      const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-      let data = null; try { data = await res.json(); } catch(_) {}
-
-      if (!res.ok) {
-        // Show a clear toast for not-found
-        const msg = (res.status === 404 && isPinFlow)
-          ? 'Quick Pin not found in Directory'
-          : (data && data.error) ? data.error : ('Error ' + res.status);
-        setMsg(msg, 'bad');
-        showToast(msg);
-        return;
-      }
-
-      const { status, firstName, lastName, time } = data || {};
-      const action = status === 'in' ? 'signed IN' : (status === 'out' ? 'signed OUT' : 'updated');
-      const line = `${firstName||''} ${lastName||''} ${action} — ${time||''}`.trim();
-      setMsg(line || 'Done.', 'good');
-      showToast(line || 'Done.');
-    } catch (err) {
-      const msg = String(err);
-      setMsg(msg, 'bad');
-      showToast('Network error');
-    }
+  async function post(url, data) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(data).toString()
+    });
+    const t = await r.text();
+    return { ok: r.ok, status: r.status, text: t, json: tryJSON(t) };
   }
+  function tryJSON(s){ try{ return JSON.parse(s); } catch{ return null; } }
 
-  // === Auto-submit for Quick Pin ===length >= PIN_MIN_LEN) {
-        submitPinOrId({ pin });
-        pinEl.value = '';
-        setPinMsg('Submitted.', 'good');
-      }
-    }
-  });
+  document.getElementById('btnSearch').onclick = async () => {
+    const q = document.getElementById('q').value.trim();
+    const res = await get(ENDPOINT + '?action=search&q=' + encodeURIComponent(q));
+    document.getElementById('outSearch').textContent = JSON.stringify(res, null, 2);
+  };
 
-  // === Name lookup ===
-  let searchTimer = null;
-  qEl.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    const q = qEl.value.trim();
-    resultsEl.innerHTML = '';
-    if (!q) { setMsg('Ready.', 'muted'); return; }
-    searchTimer = setTimeout(() => doSearch(q), 180);
-  });
-
-  async function doSearch(q) {
-    setMsg('Searching…', 'muted');
-    try {
-      const url = ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`;
-      const res = await fetch(url, { method: 'GET' });
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        resultsEl.innerHTML = '<div class="muted">No matches.</div>';
-        setMsg('No matches', 'muted');
-        return;
-      }
-      resultsEl.innerHTML = '';
-      data.forEach(({ firstName, lastName, personId }) => {
-        const row = document.createElement('div'); row.className = 'row'; row.setAttribute('role','listitem');
-        const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
-        const btnInOut = document.createElement('button'); btnInOut.className = 'btn primary'; btnInOut.textContent = 'Sign In/Out';
-        btnInOut.addEventListener('click', () => submitPinOrId({ personId }));
-        row.appendChild(name); row.appendChild(btnInOut); resultsEl.appendChild(row);
-      });
-      setMsg('Select a name to sign in/out.', 'muted');
-    } catch (e) {
-      resultsEl.innerHTML = '<div class="bad">Search failed.</div>';
-      setMsg(String(e), 'bad');
-    }
-  }
-
-  // Focus the pin field first for card taps
-  pinEl.focus();
+  document.getElementById('btnPin').onclick = async () => {
+    const pin = document.getElementById('pin').value.trim();
+    const res = await post(ENDPOINT, { pin });
+    document.getElementById('outPin').textContent = JSON.stringify(res, null, 2);
+  };
 </script>
-</body>
-</html>
