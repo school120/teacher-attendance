@@ -1,92 +1,167 @@
 <!doctype html>
-<div class="key">4</div><div class="key">5</div><div class="key">6</div>
-<div class="key">7</div><div class="key">8</div><div class="key">9</div>
-<div class="key">⌫</div><div class="key">0</div><div class="key">↵</div>
-</div>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teacher Attendance</title>
+  <meta name="description" content="Check in/out by Quick Pin or name lookup; writes to Google Sheets via Apps Script." />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { display:flex; min-height:100svh; margin:0; background:#f6f7fb; }
+    .wrap { margin:auto; width:min(700px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
+    h1 { margin:0 0 6px; font-weight:700; font-size:24px; }
+    .sub { color:#667085; margin-bottom:18px; }
+    .panel { display:grid; gap:12px; }
+    input[type="password"], input[type="search"] { padding:14px 16px; font-size:22px; border:1px solid #d0d5dd; border-radius:12px; width:100%; letter-spacing:4px; text-align:center; }
+    input[type="search"] { letter-spacing:normal; font-size:18px; text-align:left; }
+    button { padding:14px 16px; border:0; border-radius:12px; font-size:18px; cursor:pointer; box-shadow:0 2px 0 rgba(0,0,0,.05); }
+    .primary { background:#111827; color:#fff; }
+    .secondary { background:#f2f4f7; color:#111827; }
+    .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+    .key { padding:16px 0; font-size:20px; background:#f2f4f7; border-radius:12px; user-select:none; text-align:center; cursor:pointer; }
+    .key:active { transform: translateY(1px); }
+    .msg { margin-top:10px; min-height:28px; font-weight:600; }
+    .good { color:#0f766e; }
+    .bad { color:#b91c1c; }
+    .muted { color:#64748b; font-weight:500; }
+    .hr { height:1px; background:#e5e7eb; margin:8px 0 4px; }
+    .foot { font-size:12px; color:#98a2b3; text-align:center; margin-top:8px; }
+    .drawer { margin-top:6px; padding:14px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; display:none; gap:10px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; }
+    .name { font-weight:600; }
+    .list { display:grid; gap:8px; max-height:220px; overflow:auto; margin-top:8px; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Teacher Attendance</h1>
+    <p class="sub">Enter your Quick Pin to check in/out — or use name lookup if you forgot it.</p>
 
+    <div class="panel">
+      <label for="pin" class="sr-only">Quick Pin</label>
+      <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" placeholder="••••" type="password" aria-label="Quick Pin" />
+      <div class="actions">
+        <button id="submit" class="primary" type="button">Submit</button>
+        <button id="lookupBtn" class="secondary" type="button" aria-expanded="false" aria-controls="lookup">Find my name</button>
+      </div>
 
-<div class="hr"></div>
-<div id="msg" class="msg muted">Ready.</div>
-</div>
+      <div class="drawer" id="lookup" role="region" aria-label="Name lookup">
+        <input id="q" type="search" placeholder="Search by first or last name" aria-label="Search by first or last name" />
+        <div id="results" class="list" role="list"></div>
+      </div>
 
+      <div class="grid" aria-hidden="true">
+        <div class="key">1</div><div class="key">2</div><div class="key">3</div>
+        <div class="key">4</div><div class="key">5</div><div class="key">6</div>
+        <div class="key">7</div><div class="key">8</div><div class="key">9</div>
+        <div class="key">⌫</div><div class="key">0</div><div class="key">↵</div>
+      </div>
 
-<div class="foot">© Yeshivat Frisch</div>
-</div>
+      <div class="hr"></div>
+      <div id="msg" class="msg muted" role="status" aria-live="polite">Ready.</div>
+    </div>
 
+    <div class="foot">© Yeshivat Frisch</div>
+  </div>
 
 <script>
-// Paste your deployed Apps Script Web App URL here:
-const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  // Deployed Apps Script Web App endpoint (provided by you)
+  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
 
+  const $ = sel => document.querySelector(sel);
+  const pinEl = $('#pin');
+  const qEl = $('#q');
+  const msgEl = $('#msg');
+  const submitBtn = $('#submit');
+  const lookupBtn = $('#lookupBtn');
+  const drawer = $('#lookup');
+  const resultsEl = $('#results');
 
-const $ = sel => document.querySelector(sel);
-const pinEl = $('#pin');
-const qEl = $('#q');
-const msgEl = $('#msg');
-const submitBtn = $('#submit');
-const lookupBtn = $('#lookupBtn');
-const drawer = $('#lookup');
-const resultsEl = $('#results');
+  const tone = (freq=440, ms=120) => {
+    try { const a = new (window.AudioContext||window.webkitAudioContext)();
+      const o = a.createOscillator(); const g = a.createGain();
+      o.frequency.value=freq; o.connect(g); g.connect(a.destination); o.start();
+      g.gain.setValueAtTime(.06,a.currentTime); g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+ms/1000);
+      setTimeout(()=>{o.stop();a.close();}, ms+40);
+    } catch(_){}
+  };
 
+  function setMsg(text, cls='muted') { msgEl.className = 'msg ' + cls; msgEl.textContent = text; }
 
-const tone = (freq=440, ms=120) => { try { const a = new (window.AudioContext||window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.frequency.value=freq; o.connect(g); g.connect(a.destination); o.start(); g.gain.setValueAtTime(.06,a.currentTime); g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+ms/1000); setTimeout(()=>{o.stop();a.close();}, ms+40);} catch(_){} };
-function setMsg(text, cls='muted') { msgEl.className = 'msg ' + cls; msgEl.textContent = text; }
+  async function submitPinOrId({ pin, personId }) {
+    const body = new URLSearchParams({ ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
+    try {
+      const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      let data = null; try { data = await res.json(); } catch(_) {}
+      if (!res.ok) { setMsg((data&&data.error)||('Error '+res.status), 'bad'); tone(220); return; }
+      const { status, firstName, lastName, time } = data || {};
+      if (status === 'in') { setMsg(`${firstName} ${lastName} checked IN at ${time}`, 'good'); tone(880); }
+      else if (status === 'out') { setMsg(`${firstName} ${lastName} checked OUT at ${time}`, 'good'); tone(660); }
+      else { setMsg('Done.', 'good'); tone(660); }
+    } catch (err) { setMsg(String(err), 'bad'); tone(220); }
+    finally { pinEl.value=''; pinEl.focus(); }
+  }
 
+  // Submit by PIN
+  submitBtn.addEventListener('click', () => {
+    const pin = pinEl.value.trim();
+    if (!pin) { setMsg('Please enter your Quick Pin or use name lookup', 'bad'); tone(220); return; }
+    submitPinOrId({ pin });
+  });
+  pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitBtn.click(); });
 
-async function submitPinOrId({ pin, personId }) {
-const body = new URLSearchParams({ ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
-try {
-const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-let data = null; try { data = await res.json(); } catch(_) {}
-if (!res.ok) { setMsg((data&&data.error)||('Error '+res.status), 'bad'); tone(220); return; }
-const { status, firstName, lastName, time } = data || {};
-if (status === 'in') { setMsg(`${firstName} ${lastName} checked IN at ${time}`, 'good'); tone(880); }
-else if (status === 'out') { setMsg(`${firstName} ${lastName} checked OUT at ${time}`, 'good'); tone(660); }
-else { setMsg('Done.', 'good'); tone(660); }
-} catch (err) { setMsg(String(err), 'bad'); tone(220); }
-finally { pinEl.value=''; pinEl.focus(); }
-}
+  // Keypad
+  document.querySelectorAll('.key').forEach(k => {
+    k.addEventListener('click', () => {
+      const v = k.textContent.trim();
+      if (v === '⌫') { pinEl.value = pinEl.value.slice(0, -1); tone(260); return; }
+      if (v === '↵') { submitBtn.click(); return; }
+      if (/^[0-9]$/.test(v)) { pinEl.value += v; tone(520, 60); }
+      pinEl.focus();
+    });
+  });
 
+  // Toggle lookup drawer
+  lookupBtn.addEventListener('click', () => {
+    const open = drawer.style.display !== 'grid';
+    drawer.style.display = open ? 'grid' : 'none';
+    lookupBtn.setAttribute('aria-expanded', String(open));
+    if (open) { qEl.focus(); }
+  });
 
-submitBtn.addEventListener('click', () => {
-const pin = pinEl.value.trim();
-if (!pin) { setMsg('Please enter your Quick Pin or use name lookup', 'bad'); tone(220); return; }
-submitPinOrId({ pin });
-});
-pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitBtn.click(); });
+  // Debounced live search by name
+  let searchTimer = null;
+  qEl && qEl.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = qEl.value.trim();
+    if (!q) { resultsEl.innerHTML=''; setMsg('Ready.', 'muted'); return; }
+    searchTimer = setTimeout(() => doSearch(q), 200);
+  });
 
+  async function doSearch(q) {
+    setMsg('Searching…', 'muted');
+    try {
+      const url = ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, { method: 'GET' });
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) { resultsEl.innerHTML = '<div class="muted">No matches.</div>'; setMsg('Ready.', 'muted'); return; }
+      resultsEl.innerHTML = '';
+      data.forEach(({ firstName, lastName, personId }) => {
+        const row = document.createElement('div'); row.className = 'row'; row.setAttribute('role','listitem');
+        const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
+        const btn = document.createElement('button'); btn.className = 'primary'; btn.textContent = 'That\'s me';
+        btn.addEventListener('click', () => submitPinOrId({ personId }));
+        row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
+      });
+      setMsg('Select your name to check in/out.', 'muted');
+    } catch (e) {
+      resultsEl.innerHTML = '<div class="bad">Search failed.</div>';
+      setMsg(String(e), 'bad');
+    }
+  }
 
-document.querySelectorAll('.key').forEach(k => { k.addEventListener('click', () => { const v = k.textContent.trim(); if (v === '⌫') { pinEl.value = pinEl.value.slice(0, -1); tone(260); return; } if (v === '↵') { submitBtn.click(); return; } if (/^[0-9]$/.test(v)) { pinEl.value += v; tone(520, 60); } pinEl.focus(); }); });
-
-
-lookupBtn.addEventListener('click', () => { drawer.style.display = drawer.style.display === 'grid' ? 'none' : 'grid'; if (drawer.style.display !== 'none') { qEl.focus(); } });
-
-
-let searchTimer = null;
-qEl && qEl.addEventListener('input', () => { clearTimeout(searchTimer); const q = qEl.value.trim(); if (!q) { resultsEl.innerHTML=''; return; } searchTimer = setTimeout(() => doSearch(q), 200); });
-
-
-async function doSearch(q) {
-setMsg('Searching…', 'muted');
-try {
-const url = ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`;
-const res = await fetch(url, { method: 'GET' });
-const data = await res.json();
-if (!Array.isArray(data) || data.length === 0) { resultsEl.innerHTML = '<div class="muted">No matches.</div>'; setMsg('Ready.', 'muted'); return; }
-resultsEl.innerHTML = '';
-data.forEach(({ firstName, lastName, personId }) => {
-const row = document.createElement('div'); row.className = 'row';
-const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
-const btn = document.createElement('button'); btn.className = 'primary'; btn.textContent = 'That\'s me';
-btn.addEventListener('click', () => submitPinOrId({ personId }));
-row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
-});
-setMsg('Select your name to check in/out.', 'muted');
-} catch (e) { resultsEl.innerHTML = '<div class="bad">Search failed.</div>'; setMsg(String(e), 'bad'); }
-}
-
-
-pinEl.focus();
+  pinEl.focus();
 </script>
 </body>
 </html>
