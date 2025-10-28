@@ -58,7 +58,7 @@
   </div>
 
 <script>
-  // Your deployed Apps Script Web App endpoint:
+  // Your deployed Apps Script Web App endpoint (already your URL):
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
 
   const $ = sel => document.querySelector(sel);
@@ -81,17 +81,27 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
   }
 
+  // Submit action (handles Apps Script's 200-with-error JSON)
   async function submitPinOrId({ pin, personId }) {
     const isPinFlow = !!pin;
     const body = new URLSearchParams({ ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
     try {
-      const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-      let data = null; try { data = await res.json(); } catch(_) {}
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      });
 
-      if (!res.ok) {
-        const msg = (res.status === 404 && isPinFlow)
-          ? 'Quick Pin not found in Directory'
-          : (data && data.error) ? data.error : ('Error ' + res.status);
+      // Apps Script may return HTTP 200 even for errors, so check body
+      const text = await res.text();
+      let data = null; try { data = JSON.parse(text); } catch (_) {}
+
+      const gotError = (!!data && !!data.error) || !res.ok;
+      if (gotError) {
+        const msg =
+          (isPinFlow && data && /not found/i.test(data.error || ''))
+            ? 'Quick Pin not found in Directory'
+            : (data && data.error) ? data.error : ('Error ' + res.status);
         setMsg(msg, 'bad');
         showToast(msg);
         return;
@@ -103,17 +113,16 @@
       setMsg(line || 'Done.', 'good');
       showToast(line || 'Done.');
     } catch (err) {
-      const msg = String(err);
-      setMsg(msg, 'bad');
+      setMsg(String(err), 'bad');
       showToast('Network error');
     }
   }
 
   // === Auto-submit for Quick Pin ===
-  // Many card readers type digits quickly then stop. We submit after a short idle.
+  // Many card readers type digits quickly then stop. Submit after a short idle.
   let pinTimer = null;
-  const PIN_MIN_LEN = 4;   // submit only if at least this many digits present
-  const PIN_IDLE_MS = 250; // wait this long after last keypress
+  const PIN_MIN_LEN = 4;   // submit only if at least this many characters present
+  const PIN_IDLE_MS = 250; // ms after last keypress
 
   pinEl.addEventListener('input', () => {
     const v = (pinEl.value || '').trim();
