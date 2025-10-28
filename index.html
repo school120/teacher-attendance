@@ -6,53 +6,16 @@
   <title>Teacher Attendance — Guard Console</title>
   <meta name="description" content="Choose IN/OUT, lookup by name, or auto-submit Quick Pin with toast confirmation. OUT pairs with latest open IN if present; else appends." />
   <style>
-    :root {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      --pin-size: clamp(72px, 12vw, 120px);
-    }
-
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     body { display:flex; min-height:100svh; margin:0; background:#f6f7fb; }
     .wrap { margin:auto; width:min(1000px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
-
     h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
     .sub { color:#475467; margin-bottom:18px; font-size:16px; }
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
     .card { border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff; }
     .card h2 { margin:0 0 10px; font-size:20px; }
-
-    /* --- Circular Quick Pin field --- */
-    .pin-circle {
-      width: var(--pin-size);
-      height: var(--pin-size);
-      border-radius: 50%;
-      border: 2px solid #d0d5dd;
-      background: #fff;
-      display: grid;
-      place-items: center;
-      margin: 12px auto;
-      box-sizing: border-box;
-    }
-
-    .pin-input {
-      width: 90%;
-      height: 90%;
-      border-radius: 50%;
-      border: 0;
-      outline: none;
-      background: transparent;
-      text-align: center;
-      font-size: 26px;
-      letter-spacing: 2px;
-      appearance: none;
-      -webkit-appearance: none;
-    }
-
-    .pin-input:focus { box-shadow: none; }
-    .pin-circle:focus-within {
-      border-color: #111827;
-      box-shadow: 0 0 0 3px rgba(17,24,39,.08);
-    }
-
+    input[type="password"], input[type="search"] { padding:18px 20px; font-size:26px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%; }
+    input[type="search"] { font-size:22px; }
     .muted { color:#667085; }
     .list { display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
     .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
@@ -89,13 +52,9 @@
     </div>
 
     <div class="grid">
-      <div class="card" style="text-align:center;">
+      <div class="card">
         <h2>Quick Pin (auto)</h2>
-        <div class="pin-circle">
-          <input id="pin" class="pin-input" inputmode="numeric" autocomplete="one-time-code"
-                 pattern="[0-9]*" maxlength="32" placeholder="••••" type="password"
-                 aria-label="Quick Pin" />
-        </div>
+        <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="32" placeholder="Tap card or type…" type="password" aria-label="Quick Pin" />
         <div id="pinStatus" class="status muted">Waiting for card tap or keypad input…</div>
       </div>
 
@@ -115,8 +74,7 @@
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
 
   const $ = sel => document.querySelector(sel);
-  const pinEl = $('#pin'), qEl = $('#q'), msgEl = $('#msg'),
-        pinStatusEl = $('#pinStatus'), resultsEl = $('#results'), toastEl = $('#toast');
+  const pinEl = $('#pin'), qEl = $('#q'), msgEl = $('#msg'), pinStatusEl = $('#pinStatus'), resultsEl = $('#results'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
 
   // Action selector — focus Quick Pin whenever changed
@@ -125,6 +83,7 @@
     const inActive = (a === 'in');
     btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
     btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
+    // Bring cursor to Quick Pin automatically
     setTimeout(() => pinEl.focus(), 0);
   }
   btnIn.addEventListener('click', ()=>setAction('in'));
@@ -135,7 +94,7 @@
   let toastTimer = null;
   function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
 
-  // Submit
+  // Submit with explicit action; handle 200-with-error JSON
   async function submitPinOrId({ pin, personId }) {
     const act = currentAction();
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
@@ -156,11 +115,12 @@
     } catch (err) {
       setMsg(String(err), 'bad'); showToast('Network error');
     } finally {
+      // After any submit, refocus Quick Pin for the next person
       pinEl.focus();
     }
   }
 
-  // Auto-submit for Quick Pin
+  // Auto-submit for Quick Pin after short idle (card readers type quickly)
   let pinTimer = null; const PIN_MIN_LEN = 4; const PIN_IDLE_MS = 250;
   pinEl.addEventListener('input', () => {
     const v = (pinEl.value || '').trim();
@@ -182,7 +142,7 @@
     }
   });
 
-  // Name lookup
+  // Name lookup (uses current IN/OUT selection) — bigger submit buttons
   let searchTimer = null;
   qEl.addEventListener('input', () => {
     clearTimeout(searchTimer);
@@ -204,7 +164,11 @@
         const row = document.createElement('div'); row.className = 'row'; row.setAttribute('role','listitem');
         const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
         const btn = document.createElement('button'); btn.className = 'btn primary'; btn.textContent = 'Submit';
-        btn.addEventListener('click', () => { submitPinOrId({ personId }); pinEl.focus(); });
+        btn.addEventListener('click', () => {
+          submitPinOrId({ personId });
+          // after choosing a person by name, keep focus at Quick Pin for the next swipe
+          pinEl.focus();
+        });
         row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
       });
       setMsg('Select a name then click Submit (uses selected IN/OUT).', 'muted');
@@ -213,6 +177,7 @@
     }
   }
 
+  // Focus pin field on load
   pinEl.focus();
 </script>
 </body>
