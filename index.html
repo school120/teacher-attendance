@@ -84,48 +84,35 @@
 
   // Submit action
   async function submitPinOrId({ pin, personId }) {
+    const isPinFlow = !!pin;
     const body = new URLSearchParams({ ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
     try {
       const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
       let data = null; try { data = await res.json(); } catch(_) {}
-      if (!res.ok) { setMsg((data&&data.error)||('Error '+res.status), 'bad'); showToast('Error'); return; }
+
+      if (!res.ok) {
+        // Show a clear toast for not-found
+        const msg = (res.status === 404 && isPinFlow)
+          ? 'Quick Pin not found in Directory'
+          : (data && data.error) ? data.error : ('Error ' + res.status);
+        setMsg(msg, 'bad');
+        showToast(msg);
+        return;
+      }
+
       const { status, firstName, lastName, time } = data || {};
       const action = status === 'in' ? 'signed IN' : (status === 'out' ? 'signed OUT' : 'updated');
       const line = `${firstName||''} ${lastName||''} ${action} — ${time||''}`.trim();
       setMsg(line || 'Done.', 'good');
       showToast(line || 'Done.');
     } catch (err) {
-      setMsg(String(err), 'bad'); showToast('Network error');
+      const msg = String(err);
+      setMsg(msg, 'bad');
+      showToast('Network error');
     }
   }
 
-  // === Auto-submit for Quick Pin ===
-  // Auto-submit after brief pause; many card readers type digits quickly then stop.
-  let pinTimer = null;
-  const PIN_MIN_LEN = 4;   // submit only if at least 4 digits present
-  const PIN_IDLE_MS = 250; // wait this long after last keypress
-
-  pinEl.addEventListener('input', () => {
-    const v = (pinEl.value || '').trim();
-    if (!v) { setPinMsg('Waiting for card tap or keypad input…', 'muted'); return; }
-    setPinMsg('Reading…', 'muted');
-    clearTimeout(pinTimer);
-    if (v.length >= PIN_MIN_LEN) {
-      pinTimer = setTimeout(() => {
-        const pin = pinEl.value.trim();
-        if (!pin) return;
-        submitPinOrId({ pin });
-        pinEl.value = '';
-        setPinMsg('Submitted.', 'good');
-      }, PIN_IDLE_MS);
-    }
-  });
-
-  // Also handle Enter key for manual keyboards
-  pinEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const pin = pinEl.value.trim();
-      if (pin.length >= PIN_MIN_LEN) {
+  // === Auto-submit for Quick Pin ===length >= PIN_MIN_LEN) {
         submitPinOrId({ pin });
         pinEl.value = '';
         setPinMsg('Submitted.', 'good');
