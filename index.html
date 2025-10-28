@@ -1,82 +1,89 @@
 <!doctype html>
-try { const a = new (window.AudioContext||window.webkitAudioContext)();
-const o = a.createOscillator(); const g = a.createGain();
-o.frequency.value=freq; o.connect(g); g.connect(a.destination); o.start();
-g.gain.setValueAtTime(.06,a.currentTime); g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+ms/1000);
-setTimeout(()=>{o.stop();a.close();}, ms+40);
-} catch(_){}
-};
+<div class="key">4</div><div class="key">5</div><div class="key">6</div>
+<div class="key">7</div><div class="key">8</div><div class="key">9</div>
+<div class="key">⌫</div><div class="key">0</div><div class="key">↵</div>
+</div>
 
 
+<div class="hr"></div>
+<div id="msg" class="msg muted">Ready.</div>
+</div>
+
+
+<div class="foot">© Yeshivat Frisch</div>
+</div>
+
+
+<script>
+// Paste your deployed Apps Script Web App URL here:
+const ENDPOINT = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+
+const $ = sel => document.querySelector(sel);
+const pinEl = $('#pin');
+const qEl = $('#q');
+const msgEl = $('#msg');
+const submitBtn = $('#submit');
+const lookupBtn = $('#lookupBtn');
+const drawer = $('#lookup');
+const resultsEl = $('#results');
+
+
+const tone = (freq=440, ms=120) => { try { const a = new (window.AudioContext||window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.frequency.value=freq; o.connect(g); g.connect(a.destination); o.start(); g.gain.setValueAtTime(.06,a.currentTime); g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+ms/1000); setTimeout(()=>{o.stop();a.close();}, ms+40);} catch(_){} };
 function setMsg(text, cls='muted') { msgEl.className = 'msg ' + cls; msgEl.textContent = text; }
 
 
-async function submitPin(pin) {
-if (!pin) { setMsg('Please enter your Quick Pin', 'bad'); tone(220); return; }
-setMsg('Submitting…', 'muted');
-
-
-// Use URL-encoded form to avoid CORS preflight
-const body = new URLSearchParams({ pin }).toString();
-
-
+async function submitPinOrId({ pin, personId }) {
+const body = new URLSearchParams({ ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
 try {
-const res = await fetch(ENDPOINT, {
-method: 'POST',
-headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-body
-});
-
-
-// Attempt to parse JSON (Apps Script returns application/json)
-let data = null;
-try { data = await res.json(); } catch(_) { /* may be opaque if CORS policy changes */ }
-
-
-if (!res.ok) {
-const text = data && data.error ? data.error : ('Error ' + res.status);
-setMsg(text, 'bad'); tone(220);
-return;
+const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+let data = null; try { data = await res.json(); } catch(_) {}
+if (!res.ok) { setMsg((data&&data.error)||('Error '+res.status), 'bad'); tone(220); return; }
+const { status, firstName, lastName, time } = data || {};
+if (status === 'in') { setMsg(`${firstName} ${lastName} checked IN at ${time}`, 'good'); tone(880); }
+else if (status === 'out') { setMsg(`${firstName} ${lastName} checked OUT at ${time}`, 'good'); tone(660); }
+else { setMsg('Done.', 'good'); tone(660); }
+} catch (err) { setMsg(String(err), 'bad'); tone(220); }
+finally { pinEl.value=''; pinEl.focus(); }
 }
 
 
-if (!data) { setMsg('Submitted.', 'good'); tone(880); return; }
-
-
-const { status, firstName, lastName, time } = data;
-if (status === 'in') {
-setMsg(`${firstName} ${lastName} checked IN at ${time}`, 'good');
-tone(880);
-} else if (status === 'out') {
-setMsg(`${firstName} ${lastName} checked OUT at ${time}`, 'good');
-tone(660);
-} else {
-setMsg('Done.', 'good'); tone(660);
-}
-} catch (err) {
-setMsg(String(err), 'bad'); tone(220);
-} finally {
-pinEl.value = '';
-pinEl.focus();
-}
-}
-
-
-submitBtn.addEventListener('click', () => submitPin(pinEl.value.trim()));
-pinEl.addEventListener('keydown', (e) => {
-if (e.key === 'Enter') submitPin(pinEl.value.trim());
+submitBtn.addEventListener('click', () => {
+const pin = pinEl.value.trim();
+if (!pin) { setMsg('Please enter your Quick Pin or use name lookup', 'bad'); tone(220); return; }
+submitPinOrId({ pin });
 });
+pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitBtn.click(); });
 
 
-document.querySelectorAll('.key').forEach(k => {
-k.addEventListener('click', () => {
-const v = k.textContent.trim();
-if (v === '⌫') { pinEl.value = pinEl.value.slice(0, -1); tone(260); return; }
-if (v === '↵') { submitPin(pinEl.value.trim()); return; }
-if (/^[0-9]$/.test(v)) { pinEl.value += v; tone(520, 60); }
-pinEl.focus();
+document.querySelectorAll('.key').forEach(k => { k.addEventListener('click', () => { const v = k.textContent.trim(); if (v === '⌫') { pinEl.value = pinEl.value.slice(0, -1); tone(260); return; } if (v === '↵') { submitBtn.click(); return; } if (/^[0-9]$/.test(v)) { pinEl.value += v; tone(520, 60); } pinEl.focus(); }); });
+
+
+lookupBtn.addEventListener('click', () => { drawer.style.display = drawer.style.display === 'grid' ? 'none' : 'grid'; if (drawer.style.display !== 'none') { qEl.focus(); } });
+
+
+let searchTimer = null;
+qEl && qEl.addEventListener('input', () => { clearTimeout(searchTimer); const q = qEl.value.trim(); if (!q) { resultsEl.innerHTML=''; return; } searchTimer = setTimeout(() => doSearch(q), 200); });
+
+
+async function doSearch(q) {
+setMsg('Searching…', 'muted');
+try {
+const url = ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`;
+const res = await fetch(url, { method: 'GET' });
+const data = await res.json();
+if (!Array.isArray(data) || data.length === 0) { resultsEl.innerHTML = '<div class="muted">No matches.</div>'; setMsg('Ready.', 'muted'); return; }
+resultsEl.innerHTML = '';
+data.forEach(({ firstName, lastName, personId }) => {
+const row = document.createElement('div'); row.className = 'row';
+const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
+const btn = document.createElement('button'); btn.className = 'primary'; btn.textContent = 'That\'s me';
+btn.addEventListener('click', () => submitPinOrId({ personId }));
+row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
 });
-});
+setMsg('Select your name to check in/out.', 'muted');
+} catch (e) { resultsEl.innerHTML = '<div class="bad">Search failed.</div>'; setMsg(String(e), 'bad'); }
+}
 
 
 pinEl.focus();
