@@ -14,7 +14,9 @@
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
     .card { border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff; }
     .card h2 { margin:0 0 10px; font-size:20px; }
-    input[type="password"], input[type="search"] { padding:18px 20px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%; box-sizing:border-box; }
+    input[type="password"], input[type="search"] {
+      padding:18px 20px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%; box-sizing:border-box;
+    }
     .muted { color:#667085; }
     .list { display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
     .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
@@ -25,33 +27,41 @@
     .good { color:#0f766e; }
     .bad { color:#b91c1c; }
 
-    /* ====== HUGE IN/OUT buttons ====== */
+    /* ====== LARGE IN/OUT toggle buttons (neutral until selected) ====== */
     .segment { display:flex; gap:14px; width:100%; }
     .segment.segment-xl button {
       flex:1 1 0;
-      border:0;
+      border:2px solid #d1d5db;
       border-radius:16px;
       font-weight:900;
-      font-size:42px;             /* BIG text */
+      font-size:42px;
       line-height:1.1;
-      min-height:96px;            /* BIG touch target */
+      min-height:96px;
       padding:22px 24px;
       cursor:pointer;
-      color:#fff;
-      box-shadow:0 6px 14px rgba(0,0,0,.08);
-      transform: translateZ(0);   /* improve touch response */
+      color:#111;
+      background:#f3f4f6;         /* neutral */
+      transition: all .2s ease;
+      box-shadow:0 4px 10px rgba(0,0,0,.05);
       touch-action: manipulation;
     }
-    /* default (inactive) colors */
-    #actIn  { background:#16a34a; }  /* green */
-    #actOut { background:#dc2626; }  /* red   */
-    /* active gets a darker shade + outline for clarity */
-    .segment.segment-xl button.active#actIn  { background:#15803d; outline:4px solid rgba(21,128,61,.25); }
-    .segment.segment-xl button.active#actOut { background:#b91c1c; outline:4px solid rgba(185,28,28,.25); }
+    /* Active: only the selected one turns color */
+    .segment.segment-xl button.active#actIn {
+      background:#16a34a; color:#fff; border-color:#16a34a;
+      box-shadow:0 0 0 4px rgba(22,163,74,.25);
+    }
+    .segment.segment-xl button.active#actOut {
+      background:#dc2626; color:#fff; border-color:#dc2626;
+      box-shadow:0 0 0 4px rgba(220,38,38,.25);
+    }
     .segment.segment-xl button:active { filter:brightness(.95); }
 
     /* Toast */
-    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12); border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px; }
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+      opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12);
+      border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px;
+    }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* Responsive: stack grid on small screens */
@@ -68,7 +78,7 @@
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-        <!-- H U G E  buttons -->
+        <!-- Huge buttons (neutral until selected) -->
         <div class="segment segment-xl" role="tablist" aria-label="Action">
           <button id="actIn"  class="active" role="tab" aria-selected="true"  type="button">IN</button>
           <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
@@ -103,13 +113,13 @@
   const pinEl = $('#pin'), qEl = $('#q'), msgEl = $('#msg'), pinStatusEl = $('#pinStatus'), resultsEl = $('#results'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
 
-  // Action selector — focus Quick Pin whenever changed
+  // Action selector — neutral until selected; focus Quick Pin whenever changed
   function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
   function setAction(a){
     const inActive = (a === 'in');
     btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
     btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
-    setTimeout(() => pinEl.focus(), 0); // bring cursor to Quick Pin
+    setTimeout(() => pinEl.focus(), 0);
   }
   btnIn.addEventListener('click', ()=>setAction('in'));
   btnOut.addEventListener('click', ()=>setAction('out'));
@@ -119,6 +129,7 @@
   let toastTimer = null;
   function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
 
+  // Submit with explicit action; handle 200-with-error JSON
   async function submitPinOrId({ pin, personId }) {
     const act = currentAction();
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
@@ -139,6 +150,7 @@
     } catch (err) {
       setMsg(String(err), 'bad'); showToast('Network error');
     } finally {
+      // After any submit, refocus Quick Pin for the next person
       pinEl.focus();
     }
   }
