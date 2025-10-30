@@ -25,14 +25,40 @@
     .good { color:#0f766e; }
     .bad { color:#b91c1c; }
 
-    /* Action segment control — bigger */
-    .segment { display:inline-flex; border:2px solid #d0d5dd; border-radius:14px; overflow:hidden; }
-    .segment button { padding:14px 22px; border:0; background:#f2f4f7; cursor:pointer; font-weight:900; font-size:20px; }
-    .segment button.active { background:#111827; color:#fff; }
+    /* ====== HUGE IN/OUT buttons ====== */
+    .segment { display:flex; gap:14px; width:100%; }
+    .segment.segment-xl button {
+      flex:1 1 0;
+      border:0;
+      border-radius:16px;
+      font-weight:900;
+      font-size:42px;             /* BIG text */
+      line-height:1.1;
+      min-height:96px;            /* BIG touch target */
+      padding:22px 24px;
+      cursor:pointer;
+      color:#fff;
+      box-shadow:0 6px 14px rgba(0,0,0,.08);
+      transform: translateZ(0);   /* improve touch response */
+      touch-action: manipulation;
+    }
+    /* default (inactive) colors */
+    #actIn  { background:#16a34a; }  /* green */
+    #actOut { background:#dc2626; }  /* red   */
+    /* active gets a darker shade + outline for clarity */
+    .segment.segment-xl button.active#actIn  { background:#15803d; outline:4px solid rgba(21,128,61,.25); }
+    .segment.segment-xl button.active#actOut { background:#b91c1c; outline:4px solid rgba(185,28,28,.25); }
+    .segment.segment-xl button:active { filter:brightness(.95); }
 
     /* Toast */
     .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12); border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Responsive: stack grid on small screens */
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+      .segment.segment-xl button { font-size:36px; min-height:88px; }
+    }
   </style>
 </head>
 <body>
@@ -42,11 +68,12 @@
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-        <div class="segment" role="tablist" aria-label="Action">
+        <!-- H U G E  buttons -->
+        <div class="segment segment-xl" role="tablist" aria-label="Action">
           <button id="actIn"  class="active" role="tab" aria-selected="true"  type="button">IN</button>
           <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
         </div>
-        <div class="muted">Action applies to both card pins and name lookup.</div>
+        <div class="muted" style="flex:1 1 100%;">Action applies to both card pins and name lookup.</div>
       </div>
     </div>
 
@@ -82,8 +109,7 @@
     const inActive = (a === 'in');
     btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
     btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
-    // Bring cursor to Quick Pin automatically
-    setTimeout(() => pinEl.focus(), 0);
+    setTimeout(() => pinEl.focus(), 0); // bring cursor to Quick Pin
   }
   btnIn.addEventListener('click', ()=>setAction('in'));
   btnOut.addEventListener('click', ()=>setAction('out'));
@@ -93,7 +119,6 @@
   let toastTimer = null;
   function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
 
-  // Submit with explicit action; handle 200-with-error JSON
   async function submitPinOrId({ pin, personId }) {
     const act = currentAction();
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
@@ -114,7 +139,6 @@
     } catch (err) {
       setMsg(String(err), 'bad'); showToast('Network error');
     } finally {
-      // After any submit, refocus Quick Pin for the next person
       pinEl.focus();
     }
   }
@@ -141,7 +165,7 @@
     }
   });
 
-  // Name lookup (uses current IN/OUT selection) — bigger submit buttons
+  // Name lookup (uses current IN/OUT selection)
   let searchTimer = null;
   qEl.addEventListener('input', () => {
     clearTimeout(searchTimer);
@@ -165,7 +189,6 @@
         const btn = document.createElement('button'); btn.className = 'btn primary'; btn.textContent = 'Submit';
         btn.addEventListener('click', () => {
           submitPinOrId({ personId });
-          // after choosing a person by name, keep focus at Quick Pin for the next swipe
           pinEl.focus();
         });
         row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
