@@ -110,7 +110,7 @@
     <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name. Android Chrome supports Web NFC; iPhone uses a Bluetooth/USB keyboard-wedge reader or manual entry.</p>
 
     <div class="card" style="margin-bottom:16px;">
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
         <div class="segment segment-xl" role="tablist" aria-label="Action">
           <button id="actIn"  class="active" role="tab" aria-selected="true"  type="button" aria-label="Set action to IN">IN</button>
           <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
@@ -225,45 +225,46 @@
     } catch (err) {
       setMsg('Network error', 'bad'); showToast('Network error');
     } finally {
+      lastSubmitAt = Date.now();   // cooldown anchor
       pinEl.focus();
     }
   }
 
-  // ====== Quick Pin (10-digit, auto-submit) ======
+  // ====== Auto-submit only (ignore Enter) ======
   let pinTimer = null;
+  let lastSubmitAt = 0;
+  const COOLDOWN_MS = 400; // block ultra-fast duplicates
+
   pinEl.addEventListener('input', () => {
     clearTimeout(pinTimer);
     const norm = normalizeToTenDigits(pinEl.value || '');
     pinEl.classList.remove('invalid','valid');
+
     if (!norm) {
       if (pinEl.value) pinEl.classList.add('invalid');
       setPinMsg('Waiting for 10-digit code…', 'muted');
       return;
     }
+
     if (norm.length === PIN_REQUIRED_LEN) {
       pinEl.classList.add('valid');
       pinTimer = setTimeout(() => {
+        // cooldown guard
+        if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
         pinEl.value = norm;
         submitPinOrId({ pin: norm });
         pinEl.value = '';
         pinEl.classList.remove('valid');
         setPinMsg('Submitted.', 'good');
-      }, 180);
+      }, 180); // short idle to allow reader to finish typing
     }
   });
 
+  // Ignore Enter entirely (prevents second submit from wedges)
   pinEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-      const norm = normalizeToTenDigits(pinEl.value || '');
-      if (norm.length === PIN_REQUIRED_LEN) {
-        submitPinOrId({ pin: norm });
-        pinEl.value = '';
-        pinEl.classList.remove('valid','invalid');
-        setPinMsg('Submitted.', 'good');
-      } else {
-        pinEl.classList.add('invalid');
-        setPinMsg('Needs exactly 10 digits.', 'bad');
-      }
+      e.preventDefault();
+      e.stopPropagation();
     }
   });
 
@@ -314,7 +315,7 @@
     if (!supportsWebNFC() || nfcStarted) return;
     try {
       ndef = new NDEFReader();
-      await ndef.scan(); // user gesture required
+      await ndef.scan(); // needs a user gesture
       nfcStarted = true;
       setMsg('NFC scanning started', 'good'); showToast('NFC scanning started');
       nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
@@ -325,7 +326,7 @@
         const { message, serialNumber } = event;
         const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
 
-        // 1) Try NDEF text/URL → normalize to 10
+        // Try NDEF payload → normalize to 10
         let ten = '';
         for (const record of message.records) {
           const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
@@ -337,14 +338,16 @@
             if (maybe) { ten = maybe; break; }
           } catch(_) {}
         }
-
-        // 2) Else use UID (HEX_LE_PAD10)
+        // Else use UID via HEX_LE_PAD10
         if (!ten && uidHex) ten = uidHexToTen_HEX_LE_PAD10(uidHex);
 
         if (!ten) { setMsg('NFC must resolve to a 10-digit code.', 'bad'); showToast('NFC needs 10 digits'); return; }
 
-        submitPinOrId({ pin: ten });
-        setPinMsg('NFC submitted.', 'good');
+        // cooldown guard
+        if (Date.now() - lastSubmitAt >= 400) {
+          submitPinOrId({ pin: ten });
+          setPinMsg('NFC submitted.', 'good');
+        }
         pinEl.focus();
       };
     } catch (err) {
