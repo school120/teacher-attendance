@@ -29,8 +29,7 @@
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-
-  /* PAGE scroll (re-enabled), iOS safe-area & keyboard friendly */
+  html { overflow-x:hidden; }   /* prevent any horizontal bleed */
   body{
     min-height:100svh;                /* stable viewport height on iOS */
     overscroll-behavior-y:contain;    /* reduce rubber-banding */
@@ -46,7 +45,6 @@
     box-shadow:var(--shadow-1);
     position:relative;
 
-    /* Respect safe areas; no internal scroll (page scrolls) */
     min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
     padding:
       calc(28px + var(--safe-top))
@@ -54,6 +52,7 @@
       calc(28px + var(--safe-bottom))
       calc(28px + var(--safe-left));
     overflow:visible;
+    overflow-x:clip; /* no sideways bleed inside the app container */
   }
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
@@ -141,14 +140,19 @@
     transition:background-color 5000s ease-in-out 0s;
   }
 
-  /* Results pane: solid background, inner scroll, and STABLE SCROLLBAR to prevent layout shift */
+  /* Results pane: solid bg, inner scroll, stable scrollbar WITHOUT page shift */
   .list{
     display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
     background: var(--card);
+    background-clip: padding-box;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     flex:1 1 auto;
-    scrollbar-gutter: stable both-edges;   /* reserves space so nothing jumps */
+    scrollbar-gutter: stable both-edges;  /* modern browsers */
+    padding-right: 2px;                   /* small buffer prevents white edge on Safari */
+  }
+  @supports not (scrollbar-gutter: stable) {
+    .list{ padding-right: 12px; }         /* Safari fallback so content never bumps grid width */
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
@@ -284,7 +288,7 @@
     <section style="margin-top:12px;">
       <strong>Debug</strong>
       <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show UID → computed 10-digit in toast</label></div>
-      <div class="hint">Toggle also with <b>Shift + D</b>.</div>
+      <div class="hint">Toggle with <b>Ctrl/⌘ + Shift + D</b> (ignored while typing in fields).</div>
     </section>
 
     <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
@@ -412,11 +416,24 @@
   ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
   ckIgnoreEnter.addEventListener('change', () => lsSet(IGNENTER_KEY, ckIgnoreEnter.checked ? '1' : '0'));
   ckDebug.addEventListener('change', () => lsSet(DEBUG_KEY, ckDebug.checked ? '1' : '0'));
+
+  // ===== Debug hotkey — now Ctrl/⌘ + Shift + D and ignored inside inputs =====
+  function isTypingTarget(el){
+    return el && (
+      el.tagName === 'INPUT' ||
+      el.tagName === 'TEXTAREA' ||
+      el.isContentEditable
+    );
+  }
   window.addEventListener('keydown', (e) => {
-    if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
-      const nv = lsGet(DEBUG_KEY, '0') === '1' ? '0' : '1';
-      lsSet(DEBUG_KEY, nv); showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
-    }
+    const keyIsD = (e.key || '').toLowerCase() === 'd';
+    const combo = keyIsD && e.shiftKey && (e.ctrlKey || e.metaKey);
+    if (!combo) return;
+    if (isTypingTarget(document.activeElement)) return;  // don't toggle while typing
+    e.preventDefault();
+    const nv = lsGet(DEBUG_KEY, '0') === '1' ? '0' : '1';
+    lsSet(DEBUG_KEY, nv);
+    showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
   });
 
   // ===== Normalize to 10 digits (respects wedge trim option) =====
