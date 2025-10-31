@@ -28,7 +28,7 @@
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  html { overflow-x:hidden; }  /* prevent sideways bleed */
+  html { overflow-x:hidden; }
 
   body{
     min-height:100svh;
@@ -52,7 +52,7 @@
       calc(28px + var(--safe-bottom))
       calc(28px + var(--safe-left));
     overflow:visible;
-    overflow-x:clip; /* iOS bleed fix */
+    overflow-x:clip;
   }
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
@@ -120,19 +120,25 @@
     border:1px solid var(--border); border-radius:14px; background:var(--card);
     padding:16px; margin-bottom:0;
     display:flex; flex-direction:column; height:100%;
-    overflow:hidden;               /* iOS bleed fix for inner scroller */
-    background-clip: padding-box;  /* keep rounded edge tight */
+    overflow:hidden;
+    background-clip: padding-box;
   }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
-  /* Inputs */
-  input[type=text], input[type=password]{
+  /* Input groups */
+  .inputRow{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    gap:10px;
+    align-items:center;
+  }
+  input[type=text], input[type=password], input[type=search]{
     width:100%; padding:18px 20px; font-size:24px;
     border:1.5px solid var(--border); border-radius:12px;
     background:var(--card); color:var(--text);
     outline:none; transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
   }
-  input[type=text]:focus-visible, input[type=password]:focus-visible{
+  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{
     border-color:#3b82f6; box-shadow:var(--ring);
   }
   input:-webkit-autofill{
@@ -140,6 +146,17 @@
     -webkit-text-fill-color:var(--text) !important;
     transition:background-color 5000s ease-in-out 0s;
   }
+
+  /* Show Keyboard button (compact) */
+  .kbdBtn{
+    border:1.5px solid #3b82f6;
+    background:#3b82f6; color:#fff;
+    font-weight:800; font-size:16px;
+    padding:12px 14px; border-radius:12px; cursor:pointer;
+    transition:transform .06s ease, filter .15s ease;
+    white-space:nowrap;
+  }
+  .kbdBtn:active{ transform:scale(.985); }
 
   /* Results list */
   .list{
@@ -149,17 +166,16 @@
     overscroll-behavior: contain;
     flex:1 1 auto;
     scrollbar-gutter: stable both-edges;
-    padding-right:16px; /* ensure button never clips */
+    padding-right:16px;
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
   .list::-webkit-scrollbar-track { background:var(--card); }
   .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
 
-  /* Result row uses CSS Grid so name can shrink and button stays visible */
   .row{
     display:grid;
-    grid-template-columns:minmax(0,1fr) auto; /* name | button lane */
+    grid-template-columns:minmax(0,1fr) auto;
     align-items:center;
     gap:12px;
     padding:14px 16px; border:1px solid var(--border); border-radius:12px;
@@ -170,7 +186,6 @@
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
 
-  /* Blue Submit button */
   .actionBtn{
     --c: var(--blue);
     background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
@@ -183,11 +198,11 @@
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
-  /* NFC buttons */
+  /* NFC */
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
   .nfcBtn{
     padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
+    font-weight:800; cursor:pointer; font-size:18px;
   }
   .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
 
@@ -211,7 +226,6 @@
   .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
   .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
 
-  /* Mobile: stack badges above header */
   @media (max-width:620px){
     .badges{ position:static; margin:0 0 8px 0; justify-content:flex-end; gap:6px; }
     h1{ margin-top:2px; }
@@ -243,8 +257,11 @@
       <!-- LEFT: Cougar Card -->
       <div class="card">
         <h2>Cougar Card</h2>
-        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
+        <div class="inputRow">
+          <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
+                 placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
+          <button id="pinKbd" class="kbdBtn" type="button" title="Show keyboard">⌨️</button>
+        </div>
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
           <button id="nfcStop" class="nfcBtn secondary">Stop</button>
@@ -255,9 +272,12 @@
       <!-- RIGHT: Lookup by Name -->
       <div class="card">
         <h2>Lookup by Name</h2>
-        <input id="q" type="text" inputmode="search" enterkeyhint="search"
-               autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search faculty directory" aria-label="Search teacher by name" />
+        <div class="inputRow">
+          <input id="q" type="search" inputmode="search" enterkeyhint="search"
+                 autocapitalize="words" autocorrect="off" spellcheck="false"
+                 placeholder="Search faculty directory" aria-label="Search teacher by name" />
+          <button id="qKbd" class="kbdBtn" type="button" title="Show keyboard">⌨️</button>
+        </div>
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
@@ -324,6 +344,7 @@
   // ===== DOM =====
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
+  const pinKbd = $('#pinKbd'), qKbd = $('#qKbd');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
   const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
@@ -333,15 +354,7 @@
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
   const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
-  // SINGLE declaration (fix for the freeze)
   let lastSubmitAt = 0;
-
-  // ===== Focus helper =====
-  function focusPin(){
-    try { pinEl.focus(); pinEl.select?.(); } catch(_) {}
-  }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
-  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPin(); });
 
   // ===== Theme =====
   function setTheme(mode){
@@ -379,18 +392,59 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  // ===== Action toggle (refocus pin on change) =====
+  // ===== Focus helpers =====
+  function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
+  function focusPinSafely(){
+    // Don't steal from name search; allow OSK to stay up if user is typing
+    if (document.activeElement !== qEl) focusPin();
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
+
+  // ===== Virtual Keyboard helpers (Android Chrome and some Chromium) =====
+  const VK = (navigator.virtualKeyboard && typeof navigator.virtualKeyboard.show === 'function')
+             ? navigator.virtualKeyboard
+             : null;
+  if (VK && 'overlaysContent' in VK) {
+    try { VK.overlaysContent = true; } catch(_) {}
+  }
+
+  async function showKeyboardFor(el){
+    // Always perform in response to a user gesture (button tap)
+    try {
+      el.focus({ preventScroll:true });
+      el.setSelectionRange?.(el.value.length, el.value.length);
+
+      // Try Virtual Keyboard API first (Android Chrome)
+      if (VK) await VK.show();
+
+      // iOS fallback: toggle readonly trick to hint OSK
+      // (Doesn't beat hardware keyboard policy, but helps in some cases)
+      if (!VK && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        const prev = el.readOnly;
+        el.readOnly = true; el.blur();
+        el.readOnly = false; el.focus({ preventScroll:true });
+        el.setSelectionRange?.(el.value.length, el.value.length);
+      }
+    } catch(_) {}
+  }
+
+  // Expose keyboard buttons (visible on all devices; tiny and harmless on desktop)
+  pinKbd.addEventListener('click', () => showKeyboardFor(pinEl));
+  qKbd.addEventListener('click', () => showKeyboardFor(qEl));
+
+  // ===== Action toggle (refocus pin on change, but safely) =====
   function setAction(a){
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
     btnOut.classList.toggle('active', !inActive);
-    setTimeout(focusPin, 0);
+    setTimeout(focusPinSafely, 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  // ===== Local storage helpers (Admin) =====
+  // ===== Admin storage helpers =====
   const lsGet = (k, def) => { const v = localStorage.getItem(k); return v==null ? def : v; };
   const lsSet = (k, v) => localStorage.setItem(k, v);
   const getSelectedNfcRule = () => lsGet(RULE_KEY, DEFAULTS[RULE_KEY]);
@@ -407,9 +461,8 @@
     adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
   }
 
-  // Admin events
   adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); });
-  adminClose.addEventListener('click', () => { showAdmin(false); focusPin(); });
+  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
   adminReset.addEventListener('click', () => {
     Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
     mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
@@ -419,7 +472,7 @@
 
   document.querySelectorAll('input[name="rule"]').forEach(r => {
     r.addEventListener('change', () => {
-      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPin(); }
+      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPinSafely(); }
     });
   });
   ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
@@ -468,23 +521,23 @@
       showToast('Network error');
     }finally{
       lastSubmitAt = Date.now();
-      focusPin();
+      focusPinSafely();
     }
   }
 
   // ===== USB wedge — robust 10-digit capture =====
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 120; // wait for a brief silence to mark end of burst
+  const WEDGE_QUIET_MS = 120;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
       const nowDigits = digitsOnly(pinEl.value);
-      if (nowDigits.length < 10) return;       // not enough yet; do nothing
-      const ten = nowDigits.slice(-10);         // take last 10 from the burst
+      if (nowDigits.length < 10) return;
+      const ten = nowDigits.slice(-10);
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
       submitPinOrId({ pin: ten });
-      pinEl.value = '';                         // clear field for next swipe
-      focusPin();
+      pinEl.value = '';
+      focusPinSafely();
     }, WEDGE_QUIET_MS);
   });
   pinEl.addEventListener('keydown',(e)=>{
@@ -574,7 +627,7 @@
         nfcBadge.style.display = '';
         nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
         showToast('NFC scanning started');
-        focusPin();
+        focusPinSafely();
 
         ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
         ndef.onreading = (event) => {
@@ -597,11 +650,11 @@
           if (!ten || ten.length !== 10) { showToast('Cougar Card must resolve to a 10-digit code'); return; }
           if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten, uid: uidHex });
           pushLive(uidHex, ten);
-          focusPin();
+          focusPinSafely();
         };
       } catch {
         showToast('NFC not permitted or unavailable');
-        focusPin();
+        focusPinSafely();
       }
     });
 
@@ -610,7 +663,7 @@
       nfcStarted = false;
       nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
       showToast('NFC stopped');
-      focusPin();
+      focusPinSafely();
     });
   }
 
@@ -619,11 +672,11 @@
     initTheme();
     Object.entries(DEFAULTS).forEach(([k,v]) => { if (localStorage.getItem(k) == null) localStorage.setItem(k,v); });
     setAction('in');
-    focusPin(); // focus Cougar Card on load
+    focusPinSafely(); // focus on load unless user taps search
   });
 
   // Close drawer by clicking backdrop area
-  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPin(); } });
+  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
 </html>
