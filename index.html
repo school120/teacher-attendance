@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
 <meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup." />
 <meta name="color-scheme" content="light dark">
@@ -15,30 +16,78 @@
     --shadow-1:0 10px 30px rgba(0,0,0,.08);
     --shadow-2:0 14px 40px rgba(0,0,0,.18);
     --ring:0 0 0 6px rgba(59,130,246,.16);
+
+    /* Safe-area support (iOS notches & home indicator) */
+    --safe-top: env(safe-area-inset-top);
+    --safe-right: env(safe-area-inset-right);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
   }
   body.dark{
     --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151;
   }
-  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ height:100%; margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
 
-  .wrap{ margin:auto; width:min(1100px,96%); background:var(--card); padding:28px; border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+
+  /* iOS keyboard white-gap fix: dynamic viewport + internal scroll */
+  body{
+    min-height:100dvh;
+    overscroll-behavior-y:none;
+    overflow:hidden;                 /* page fixed; inner container scrolls */
+  }
+
+  .wrap{
+    margin:auto;
+    width:min(1100px,96%);
+    background:var(--card);
+    border-radius:var(--radius-xl);
+    box-shadow:var(--shadow-1);
+    position:relative;
+
+    /* Respect safe areas + provide internal scroll area */
+    min-height:calc(100dvh - var(--safe-top) - var(--safe-bottom));
+    padding:
+      calc(28px + var(--safe-top))
+      calc(28px + var(--safe-right))
+      calc(28px + var(--safe-bottom))
+      calc(28px + var(--safe-left));
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
 
   /* Header controls */
-  .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
-  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
-  .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; transition:background .2s ease; }
+  .badges{
+    position:absolute;
+    right:calc(18px + var(--safe-right));
+    top:calc(18px + var(--safe-top));
+    display:flex; gap:8px; align-items:center;
+  }
+  .badge{
+    font-size:12px; font-weight:800; padding:6px 10px;
+    border-radius:999px; border:1px solid var(--border);
+    background:var(--card); color:var(--text);
+  }
+  .gear{
+    border:1px solid var(--border); background:var(--card); color:var(--text);
+    border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800;
+    display:flex; align-items:center; gap:6px; transition:background .2s ease;
+  }
   .gear:hover{ background: color-mix(in oklab, var(--card) 90%, var(--text) 10%); }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
-  /* Single toast */
+  /* Single toast surface */
   .toast{
-    position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+    position:fixed; left:50%;
+    bottom:calc(24px + var(--safe-bottom));
+    transform:translateX(-50%) translateY(20px);
     opacity:0; background:var(--card); border:1px solid var(--border);
-    box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px;
-    font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px;
+    box-shadow:0 8px 30px rgba(0,0,0,.12);
+    border-radius:14px; padding:16px 20px; font-weight:800;
+    transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50;
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
@@ -85,13 +134,14 @@
   input[type=text]:focus-visible, input[type=password]:focus-visible{
     border-color:#3b82f6; box-shadow:var(--ring);
   }
+  /* Autofill consistency */
   input:-webkit-autofill{
     -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important;
     -webkit-text-fill-color:var(--text) !important;
     transition:background-color 5000s ease-in-out 0s;
   }
 
-  /* Results pane */
+  /* Results pane: solid background, inner scroll */
   .list{
     display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
     background: var(--card);
@@ -99,10 +149,10 @@
     overscroll-behavior: contain;
     flex:1 1 auto;
   }
-  .list::-webkit-scrollbar { width: 10px; height: 10px; }
-  .list::-webkit-scrollbar-thumb { border-radius: 999px; background: #b7c0d133; }
-  .list::-webkit-scrollbar-track { background: var(--card); }
-  .list { scrollbar-color: #98a2b33d var(--card); scrollbar-width: thin; }
+  .list::-webkit-scrollbar { width:10px; height:10px; }
+  .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
+  .list::-webkit-scrollbar-track { background:var(--card); }
+  .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
 
   .row{
     display:flex; justify-content:space-between; align-items:center; gap:16px;
@@ -131,11 +181,12 @@
   }
   .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
 
-  /* Admin drawer (restored & styled) */
+  /* Admin drawer */
   .drawer{
-    position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh;
+    position:fixed; right:calc(16px + var(--safe-right)); top:calc(64px + var(--safe-top));
+    width:min(560px,92%); max-height:80vh;
     border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
-    padding:16px; overflow:auto; display:none; z-index:20; color:var(--text);
+    padding:16px; overflow:auto; display:none; z-index:40; color:var(--text);
   }
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
   .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
@@ -150,6 +201,16 @@
   .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
   .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
 
+  /* Prevent header overlap on narrow screens: stack badges above header */
+  @media (max-width:620px){
+    .badges{
+      position:static;
+      margin:0 0 8px 0;
+      justify-content:flex-end;
+      gap:6px;
+    }
+    h1{ margin-top:2px; }
+  }
   @media (max-width:900px){
     .grid{ grid-template-columns:1fr; }
     .segment.segment-xl button{ font-size:36px; min-height:88px; }
@@ -199,7 +260,7 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <!-- ===== Admin Drawer (restored) ===== -->
+  <!-- ===== Admin Drawer ===== -->
   <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
     <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
 
@@ -262,7 +323,8 @@
   const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
   const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
   const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
-  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
+  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'),
+        adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
   const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
@@ -286,7 +348,12 @@
 
   // ===== Toast =====
   let toastTimer=null;
-  function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
+  function showToast(text){
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400);
+  }
 
   // ===== Network badge =====
   function updateNet(){
@@ -313,6 +380,7 @@
   const lsGet = (k, def) => { const v = localStorage.getItem(k); return v==null ? def : v; };
   const lsSet = (k, v) => localStorage.setItem(k, v);
   const getSelectedNfcRule = () => lsGet(RULE_KEY, DEFAULTS[RULE_KEY]);
+
   function mountAdmin(){
     (document.querySelector(`input[name="rule"][value="${getSelectedNfcRule()}"]`) || $('#r1')).checked = true;
     ckTrim.checked = lsGet(TRIM_KEY, DEFAULTS[TRIM_KEY]) === '1';
@@ -320,7 +388,10 @@
     ckDebug.checked = lsGet(DEBUG_KEY, DEFAULTS[DEBUG_KEY]) === '1';
     liveRuleEl.textContent = getSelectedNfcRule();
   }
-  function showAdmin(show=true){ adminDrawer.style.display = show ? 'block' : 'none'; adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false'); }
+  function showAdmin(show=true){
+    adminDrawer.style.display = show ? 'block' : 'none';
+    adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
+  }
 
   // Admin events
   adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); });
@@ -428,6 +499,7 @@
       e.preventDefault();
     }
   });
+
   async function doSearch(q){
     try{
       const res = await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`);
