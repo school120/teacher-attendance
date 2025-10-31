@@ -335,6 +335,19 @@
 
   let lastSubmitAt = 0;
 
+  // ===== Focus helper (your request) =====
+  function focusPin(){
+    try {
+      pinEl.focus();
+      // Select any accidental characters so the next swipe replaces them
+      pinEl.select?.();
+    } catch(_) {}
+  }
+
+  // Keep focus on pin when page becomes visible again (iOS task switch, etc.)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPin(); });
+
   // ===== Theme =====
   function setTheme(mode){
     const dark = mode === 'dark';
@@ -371,11 +384,13 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  // ===== Action toggle =====
+  // ===== Action toggle (refocus pin on change) =====
   function setAction(a){
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
     btnOut.classList.toggle('active', !inActive);
+    // Refocus Cougar Card input immediately after switching
+    setTimeout(focusPin, 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
@@ -400,7 +415,7 @@
 
   // Admin events
   adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); });
-  adminClose.addEventListener('click', () => showAdmin(false));
+  adminClose.addEventListener('click', () => { showAdmin(false); focusPin(); });
   adminReset.addEventListener('click', () => {
     Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
     mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
@@ -410,7 +425,7 @@
 
   document.querySelectorAll('input[name="rule"]').forEach(r => {
     r.addEventListener('change', () => {
-      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); pinEl.focus(); }
+      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPin(); }
     });
   });
   ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
@@ -459,10 +474,12 @@
       showToast('Network error');
     }finally{
       lastSubmitAt = Date.now();
+      focusPin(); // always return focus to Cougar Card after any submit
     }
   }
 
-  // ===== USB wedge — robust 10-digit capture (fixes “works on 4th swipe”) =====
+  // ===== USB wedge — robust 10-digit capture =====
+  let lastSubmitAt = 0;
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120; // wait for a brief silence to mark end of burst
   pinEl.addEventListener('input', ()=>{
@@ -475,6 +492,7 @@
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
       submitPinOrId({ pin: ten });
       pinEl.value = '';                         // clear field for next swipe
+      focusPin();
     }, WEDGE_QUIET_MS);
   });
   pinEl.addEventListener('keydown',(e)=>{
@@ -511,7 +529,7 @@
         const row = document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
         const name = document.createElement('div'); name.className='name'; name.textContent = `${firstName} ${lastName}`;
         const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-        btn.addEventListener('click', ()=> submitPinOrId({ personId }));
+        btn.addEventListener('click', ()=> { submitPinOrId({ personId }); });
         row.appendChild(name); row.appendChild(btn); box.appendChild(row);
       });
     }catch{
@@ -564,6 +582,7 @@
         nfcBadge.style.display = '';
         nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
         showToast('NFC scanning started');
+        focusPin();
 
         ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
         ndef.onreading = (event) => {
@@ -586,9 +605,11 @@
           if (!ten || ten.length !== 10) { showToast('Cougar Card must resolve to a 10-digit code'); return; }
           if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten, uid: uidHex });
           pushLive(uidHex, ten);
+          focusPin();
         };
       } catch {
         showToast('NFC not permitted or unavailable');
+        focusPin();
       }
     });
 
@@ -597,7 +618,7 @@
       nfcStarted = false;
       nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
       showToast('NFC stopped');
-      pinEl.focus();
+      focusPin();
     });
   }
 
@@ -606,10 +627,11 @@
     initTheme();
     Object.entries(DEFAULTS).forEach(([k,v]) => { if (localStorage.getItem(k) == null) localStorage.setItem(k,v); });
     setAction('in');
+    focusPin(); // focus Cougar Card on load
   });
 
   // Close drawer by clicking backdrop area
-  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) showAdmin(false); });
+  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPin(); } });
 </script>
 </body>
 </html>
