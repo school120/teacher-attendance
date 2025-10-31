@@ -333,18 +333,13 @@
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
   const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
+  // SINGLE declaration (fix for the freeze)
   let lastSubmitAt = 0;
 
-  // ===== Focus helper (your request) =====
+  // ===== Focus helper =====
   function focusPin(){
-    try {
-      pinEl.focus();
-      // Select any accidental characters so the next swipe replaces them
-      pinEl.select?.();
-    } catch(_) {}
+    try { pinEl.focus(); pinEl.select?.(); } catch(_) {}
   }
-
-  // Keep focus on pin when page becomes visible again (iOS task switch, etc.)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPin(); });
 
@@ -389,7 +384,6 @@
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
     btnOut.classList.toggle('active', !inActive);
-    // Refocus Cougar Card input immediately after switching
     setTimeout(focusPin, 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
@@ -474,16 +468,14 @@
       showToast('Network error');
     }finally{
       lastSubmitAt = Date.now();
-      focusPin(); // always return focus to Cougar Card after any submit
+      focusPin();
     }
   }
 
   // ===== USB wedge — robust 10-digit capture =====
-  let lastSubmitAt = 0;
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120; // wait for a brief silence to mark end of burst
   pinEl.addEventListener('input', ()=>{
-    const d = digitsOnly(pinEl.value); // collect only digits while typing
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
       const nowDigits = digitsOnly(pinEl.value);
