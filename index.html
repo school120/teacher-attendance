@@ -73,12 +73,23 @@
   input:-webkit-autofill{
     -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important;
     -webkit-text-fill-color:var(--text) !important;
-    transition:background-color 5000s ease-in-out 0s;
   }
 
-  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
-  .row{ display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid var(--border); border-radius:12px;
-        background: color-mix(in oklab, var(--card) 90%, var(--bg) 10%); }
+  /* Fixed scroll background */
+  .list{
+    display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
+    background: var(--card);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .list::-webkit-scrollbar { width: 10px; height: 10px; }
+  .list::-webkit-scrollbar-thumb { border-radius: 999px; background: #b7c0d133; }
+  .list::-webkit-scrollbar-track { background: var(--card); }
+  .list { scrollbar-color: #98a2b33d var(--card); scrollbar-width: thin; }
+
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:16px;
+        padding:14px 16px; border:1px solid var(--border); border-radius:12px;
+        background: var(--card); }
   .name{ font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .actionBtn{
@@ -93,10 +104,7 @@
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn{
-    padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
-  }
+  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
   .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
 
   .drawer{
@@ -117,9 +125,8 @@
     <div class="badges">
       <div id="netBadge" class="badge">Online</div>
       <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
-      <div id="actBadge" class="badge">IN</div>
-      <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
-      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
+      <button id="themeBtn" class="gear">🌙 Dark</button>
+      <button id="adminBtn" class="gear"><span>⚙️</span><span>Admin</span></button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
@@ -143,145 +150,61 @@
       <div class="card">
         <h2>Lookup by Name</h2>
         <input id="q" type="text" inputmode="search" enterkeyhint="search"
-               autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search faculty directory" aria-label="Search teacher by name" />
+               placeholder="Search faculty directory" />
         <div id="results" class="list"></div>
       </div>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="toast" class="toast"></div>
   </div>
 
-  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
-    <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
+  <div id="admin" class="drawer">
+    <h3><span>⚙️</span><span>Admin Settings</span></h3>
     <p class="muted">Manage reader configuration and debug live activity.</p>
   </div>
 
 <script>
-  // Endpoint
-  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+const ENDPOINT='https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+const $=s=>document.querySelector(s);
+const toastEl=$('#toast'),pinEl=$('#pin'),qEl=$('#q');
+const btnIn=$('#actIn'),btnOut=$('#actOut');
+const netBadge=$('#netBadge'),nfcBadge=$('#nfcBadge');
+const nfcBar=$('#nfcBar'),nfcStart=$('#nfcStart'),nfcStop=$('#nfcStop');
+const themeBtn=$('#themeBtn'),adminBtn=$('#adminBtn'),adminDrawer=$('#admin');
 
-  const $ = s => document.querySelector(s);
-  const toastEl = $('#toast'), pinEl = $('#pin'), qEl = $('#q');
-  const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), actBadge = $('#actBadge');
-  const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStart = $('#nfcStart'), nfcStop = $('#nfcStop');
-  const themeBtn = $('#themeBtn'), adminBtn = $('#adminBtn'), adminDrawer = $('#admin');
+let lastSubmitAt=0;
+const COOLDOWN=400;
 
-  let lastSubmitAt = 0;
-  const COOLDOWN = 400;
+function showToast(m){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(showToast.t);showToast.t=setTimeout(()=>toastEl.classList.remove('show'),2400);}
+function toggleTheme(){document.body.classList.toggle('dark');themeBtn.textContent=document.body.classList.contains('dark')?'☀️ Light':'🌙 Dark';}
+themeBtn.onclick=toggleTheme;
 
-  // Theme toggle
-  function toggleTheme(){
-    document.body.classList.toggle('dark');
-    themeBtn.textContent = document.body.classList.contains('dark') ? '☀️ Light' : '🌙 Dark';
-  }
-  themeBtn.addEventListener('click', toggleTheme);
+function updateNet(){const on=navigator.onLine;netBadge.textContent=on?'Online':'Offline';netBadge.style.background=on?'var(--card)':'#fee2e2';netBadge.style.color=on?'var(--text)':'#991b1b';}
+addEventListener('online',updateNet);addEventListener('offline',updateNet);updateNet();
 
-  // Toast
-  let toastTimer=null;
-  function showToast(msg){
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer=setTimeout(()=>toastEl.classList.remove('show'),2400);
-  }
+function setAction(a){const i=a==='in';btnIn.classList.toggle('active',i);btnOut.classList.toggle('active',!i);}
+btnIn.onclick=()=>setAction('in');btnOut.onclick=()=>setAction('out');
 
-  // Online/offline
-  function updateNet(){
-    const on = navigator.onLine;
-    netBadge.textContent = on ? 'Online' : 'Offline';
-    netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
-    netBadge.style.color = on ? 'var(--text)' : '#991b1b';
-  }
-  window.addEventListener('online',updateNet);
-  window.addEventListener('offline',updateNet);
-  updateNet();
+pinEl.oninput=()=>{const v=pinEl.value.replace(/\D+/g,'');if(v.length===10&&Date.now()-lastSubmitAt>COOLDOWN){submit({pin:v});pinEl.value='';lastSubmitAt=Date.now();}};
+async function submit({pin,personId}){try{const act=btnIn.classList.contains('active')?'in':'out';
+const body=new URLSearchParams({action:act,...(pin?{pin}:{personId})});
+const r=await fetch(ENDPOINT,{method:'POST',body});const d=await r.json();
+if(d.error)return showToast(d.error);showToast(`${d.firstName||''} ${d.lastName||''} signed ${d.status?.toUpperCase()} — ${d.time||''}`);}catch{showToast('Network error');}}
 
-  // Action toggle
-  function setAction(a){
-    const inActive=(a==='in');
-    btnIn.classList.toggle('active',inActive);
-    btnOut.classList.toggle('active',!inActive);
-    actBadge.textContent = inActive?'IN':'OUT';
-  }
-  btnIn.addEventListener('click',()=>setAction('in'));
-  btnOut.addEventListener('click',()=>setAction('out'));
+let searchTimer=null;
+qEl.oninput=()=>{clearTimeout(searchTimer);const q=qEl.value.trim();if(!q){$('#results').innerHTML='';return;}searchTimer=setTimeout(()=>search(q),200);};
+async function search(q){try{const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`);const d=await r.json();
+const box=$('#results');if(!Array.isArray(d)||!d.length)return box.innerHTML='<div class="muted">No matches found.</div>';
+box.innerHTML='';d.forEach(p=>{const row=document.createElement('div');row.className='row';
+row.innerHTML=`<div class="name">${p.firstName} ${p.lastName}</div>`;const b=document.createElement('button');
+b.className='actionBtn';b.textContent='Submit';b.onclick=()=>submit({personId:p.personId});
+row.appendChild(b);box.appendChild(row);});}catch{showToast('Search failed');}}
 
-  // Submit pin
-  pinEl.addEventListener('input',()=>{
-    const val = pinEl.value.replace(/\D+/g,'');
-    if(val.length===10){
-      if(Date.now()-lastSubmitAt<COOLDOWN)return;
-      submit({pin:val});
-      pinEl.value='';
-      lastSubmitAt=Date.now();
-    }
-  });
-
-  async function submit({pin,personId}){
-    try{
-      const act = btnIn.classList.contains('active')?'in':'out';
-      const body = new URLSearchParams({action:act,...(pin?{pin}:{personId})});
-      const res=await fetch(ENDPOINT,{method:'POST',body});
-      const data=await res.json();
-      if(data.error){ showToast(data.error); return; }
-      const msg=`${data.firstName||''} ${data.lastName||''} signed ${data.status?.toUpperCase()} — ${data.time||''}`;
-      showToast(msg);
-    }catch{ showToast('Network error'); }
-  }
-
-  // Search
-  let searchTimer=null;
-  qEl.addEventListener('input',()=>{
-    clearTimeout(searchTimer);
-    const q=qEl.value.trim();
-    if(!q){ $('#results').innerHTML=''; return; }
-    searchTimer=setTimeout(()=>doSearch(q),200);
-  });
-  async function doSearch(q){
-    try{
-      const res=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`);
-      const data=await res.json();
-      const box=$('#results');
-      if(!Array.isArray(data)||!data.length){ box.innerHTML='<div class="muted">No matches found.</div>'; return; }
-      box.innerHTML='';
-      data.forEach(p=>{
-        const row=document.createElement('div');
-        row.className='row';
-        row.innerHTML=`<div class="name">${p.firstName} ${p.lastName}</div>`;
-        const btn=document.createElement('button');
-        btn.className='actionBtn';
-        btn.textContent='Submit';
-        btn.onclick=()=>submit({personId:p.personId});
-        row.appendChild(btn);
-        box.appendChild(row);
-      });
-    }catch{ showToast('Search failed'); }
-  }
-
-  // NFC
-  if('NDEFReader' in window){
-    nfcBar.style.display='';
-    let ndef=new NDEFReader();
-    nfcStart.onclick=async()=>{
-      try{
-        await ndef.scan();
-        nfcBadge.style.display='';
-        showToast('NFC scanning started');
-        ndef.onreading=e=>{
-          const uid=e.serialNumber?.replace(/[^0-9A-F]/g,'')||'';
-          const pin=uid.slice(-10).padStart(10,'0');
-          if(pin)submit({pin});
-        };
-      }catch{ showToast('NFC not available'); }
-    };
-    nfcStop.onclick=()=>{ndef.onreading=null;showToast('NFC stopped');};
-  }
-
-  // Admin drawer
-  adminBtn.onclick=()=>adminDrawer.style.display='block';
-  adminDrawer.onclick=e=>{if(e.target===adminDrawer)adminDrawer.style.display='none';};
+if('NDEFReader'in window){nfcBar.style.display='';let ndef=new NDEFReader();
+nfcStart.onclick=async()=>{try{await ndef.scan();nfcBadge.style.display='';showToast('NFC scanning started');
+ndef.onreading=e=>{const uid=e.serialNumber?.replace(/[^0-9A-F]/g,'')||'';const pin=uid.slice(-10).padStart(10,'0');if(pin)submit({pin});};}catch{showToast('NFC not available');}};
+nfcStop.onclick=()=>{ndef.onreading=null;showToast('NFC stopped');};}
+adminBtn.onclick=()=>adminDrawer.style.display='block';adminDrawer.onclick=e=>{if(e.target===adminDrawer)adminDrawer.style.display='none';};
 </script>
 </body>
 </html>
