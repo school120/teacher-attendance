@@ -21,7 +21,6 @@
     --in:#16a34a;
     --out:#dc2626;
     --blue:#2563eb; /* static blue for search Submit */
-    --action: var(--in); /* used for IN/OUT visuals only */
 
     --ok-bg: #dcfce7; --ok-text:#166534; --ok-border:#bbf7d0;
     --warn-bg: #fee2e2; --warn-text:#991b1b; --warn-border:#fecaca;
@@ -159,10 +158,6 @@
   .nfcBtn.secondary { background:transparent; color:#4f46e5; }
   .nfcBtn:focus-visible { outline:none; box-shadow: 0 0 0 6px rgba(79,70,229,.2); }
 
-  .status { margin-top:12px; min-height:40px; font-weight:800; font-size:16px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background: color-mix(in oklab, var(--card) 92%, #fff 8%); transition: opacity .2s ease; }
-  .good { color:#065f46; border-color:#bbf7d0; background: color-mix(in oklab, #dcfce7 85%, var(--card) 15%); }
-  .bad  { color:#7f1d1d; border-color:#fecaca; background: color-mix(in oklab, #fee2e2 85%, var(--card) 15%); }
-
   .foot { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; margin-top:8px; gap:12px; flex-wrap:wrap; }
 
   @media (prefers-reduced-motion: reduce){ .segment.segment-xl button, .btn, .actionBtn, .toast { transition: none; } @keyframes pulse { from{box-shadow:none} to{box-shadow:none} } }
@@ -203,7 +198,6 @@
         <h2>Quick Pin (10 digits, auto)</h2>
         <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="\d{10}" maxlength="10"
                placeholder="Enter 10-digit code…" type="password" aria-label="Quick Pin" autofocus />
-        <div id="pinStatus" class="status muted" aria-live="polite">Waiting for 10-digit code…</div>
 
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
@@ -221,10 +215,8 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <div id="msg" class="status muted" style="margin-top:16px;" aria-live="polite">Ready.</div>
     <div class="foot">
       <span>© Yeshivat Frisch 5786</span>
-      <span class="muted">Built for kiosks • Dark mode • Reduced motion aware</span>
     </div>
   </div>
 
@@ -284,7 +276,7 @@
 
   // ====== DOM ======
   const $ = sel => document.querySelector(sel);
-  const pinEl = $('#pin'), qEl = $('#q'), msgEl = $('#msg'), pinStatusEl = $('#pinStatus'), resultsEl = $('#results'), toastEl = $('#toast');
+  const pinEl = $('#pin'), qEl = $('#q'), resultsEl = $('#results'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), actBadge = $('#actBadge');
   const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
@@ -366,19 +358,13 @@
   qEl.addEventListener('blur',  () => { setTimeout(()=>{ nameFocusHold = false; }, 200); });
   qEl.closest('.card').addEventListener('click', (e) => { if (e.target !== qEl) focusName(); });
 
-  // ====== Network badge & status ======
-  function setMsg(text, cls='muted'){
-    msgEl.className = 'status ' + cls;
-    msgEl.textContent = text;
-    // auto-fade for prominent states
-    if (cls === 'bad' || cls === 'good') {
-      clearTimeout(setMsg._t);
-      setMsg._t = setTimeout(()=>{ msgEl.className = 'status muted'; msgEl.textContent = 'Ready.'; }, 6000);
-    }
-  }
-  function setPinMsg(text, cls='muted'){ pinStatusEl.className = 'status ' + cls; pinStatusEl.textContent = text; }
+  // ====== Single status surface (toast only) ======
   let toastTimer = null;
   function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
+  function setMsg(text){ showToast(text); }
+  function setPinMsg(text){ showToast(text); }
+
+  // ====== Network badge ======
   function onlineChanged(){
     const on = navigator.onLine;
     netBadge.textContent = on ? 'Online' : 'Offline';
@@ -390,17 +376,11 @@
 
   // ====== Action toggle ======
   function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
-  function applyActionColor(){
-    const act = currentAction();
-    const color = act === 'in' ? getComputedStyle(document.documentElement).getPropertyValue('--in') : getComputedStyle(document.documentElement).getPropertyValue('--out');
-    document.documentElement.style.setProperty('--action', color.trim() || (act==='in'?'#16a34a':'#dc2626'));
-  }
   function setAction(a){
     const inActive = (a === 'in');
     btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
     btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
     actBadge.textContent = inActive ? 'IN' : 'OUT';
-    applyActionColor();
     setTimeout(() => focusPin(), 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
@@ -448,16 +428,16 @@
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) ? String(data.error) : ('Error ' + res.status);
         const nicer = /not found/i.test(msg) ? 'Quick Pin / Person not found in Directory' : msg;
-        setMsg(nicer, 'bad'); showToast(nicer); return;
+        setMsg(nicer); return;
       }
       const { status, firstName, lastName, time, paired } = data || {};
       const extra = (status === 'out' && typeof paired === 'boolean') ? (paired ? ' (paired)' : ' (no prior IN)') : '';
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : 'UPDATED';
       const line = `${firstName||''} ${lastName||''} signed ${verb}${extra} — ${time||''}`.trim();
-      setMsg(line || 'Done.', 'good'); showToast(line || 'Done.');
+      setMsg(line || 'Done.');
       try { navigator.vibrate?.(30); } catch {}
     } catch {
-      setMsg('Network error', 'bad'); showToast('Network error');
+      setMsg('Network error');
     } finally {
       lastSubmitAt = Date.now();
       focusPin();
@@ -469,19 +449,16 @@
   pinEl.addEventListener('input', () => {
     clearTimeout(pinTimer);
     const norm = normalizeToTenDigits(pinEl.value || '');
-    pinEl.classList.remove('invalid','valid');
 
-    if (!norm) { if (pinEl.value) pinEl.classList.add('invalid'); setPinMsg('Waiting for 10-digit code…', 'muted'); return; }
+    if (!norm) { return; }
 
     if (norm.length === 10) {
-      pinEl.classList.add('valid');
       pinTimer = setTimeout(() => {
         if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
         pinEl.value = norm;
         submitPinOrId({ pin: norm });
         pinEl.value = '';
-        pinEl.classList.remove('valid');
-        setPinMsg('Submitted.', 'good');
+        setMsg('Submitted.');
       }, 180);
     }
   });
@@ -497,7 +474,7 @@
   qEl.addEventListener('input', () => {
     clearTimeout(searchTimer);
     const q = qEl.value.trim(); resultsEl.innerHTML = '';
-    if (!q) { setMsg('Ready.', 'muted'); return; }
+    if (!q) { return; }
     searchTimer = setTimeout(() => doSearch(q), 160);
   });
 
@@ -514,12 +491,12 @@
   }
 
   async function doSearch(q) {
-    setMsg('Searching…', 'muted');
+    setMsg('Searching…');
     try {
       const res = await fetch(ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`, { method:'GET' });
       const data = await res.json();
       if (!Array.isArray(data) || data.length === 0) {
-        resultsEl.innerHTML = '<div class="muted">No matches.</div>'; setMsg('No matches', 'muted'); return;
+        resultsEl.innerHTML = '<div class="muted">No matches.</div>'; setMsg('No matches'); return;
       }
       resultsEl.innerHTML = '';
       data.forEach(({ firstName, lastName, personId }) => {
@@ -529,9 +506,9 @@
         btn.addEventListener('click', (e) => { makeRipple(e, btn); submitPinOrId({ personId }); focusPin(); });
         row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
       });
-      setMsg('Select a name then click Submit (uses selected IN/OUT).', 'muted');
+      setMsg('Select a name then click Submit.');
     } catch {
-      resultsEl.innerHTML = '<div class="bad">Search failed.</div>'; setMsg('Search failed', 'bad');
+      resultsEl.innerHTML = '<div class="muted">Search failed.</div>'; setMsg('Search failed');
     }
   }
 
@@ -562,10 +539,10 @@
     try {
       ndef = new NDEFReader();
       await ndef.scan(); nfcStarted = true;
-      setMsg('NFC scanning started', 'good'); showToast('NFC scanning started');
+      setMsg('NFC scanning started');
       nfcStartBtn.disabled = true; nfcStopBtn.disabled = false; nfcBadge.style.display = '';
 
-      ndef.onreadingerror = () => { setMsg('NFC read error — try again', 'bad'); showToast('NFC read error'); };
+      ndef.onreadingerror = () => { setMsg('NFC read error — try again'); };
       ndef.onreading = (event) => {
         const { message, serialNumber } = event;
         const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
@@ -585,23 +562,23 @@
         if (!ten && uidHex) ten = nfcUidToTen(uidHex);
 
         pushLive(uidHex, ten);
-        if (DEBUG_ON()) showToast(`UID:${hexToShort(uidHex)} → ${ten} [${getSelectedNfcRule()}]`);
-        if (!ten) { setMsg('NFC must resolve to a 10-digit code.', 'bad'); showToast('NFC needs 10 digits'); return; }
+        if (DEBUG_ON()) setMsg(`UID:${hexToShort(uidHex)} → ${ten} [${getSelectedNfcRule()}]`);
+        if (!ten) { setMsg('NFC must resolve to a 10-digit code.'); return; }
 
         if (Date.now() - lastSubmitAt >= COOLDOWN_MS) {
           submitPinOrId({ pin: ten });
-          setPinMsg('NFC submitted.', 'good');
+          setMsg('NFC submitted.');
         }
         focusPin();
       };
     } catch {
-      setMsg('NFC not permitted or unavailable', 'bad'); showToast('NFC not permitted');
+      setMsg('NFC not permitted or unavailable');
     }
   }
   function stopNFC() {
     if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
     nfcStarted = false;
-    nfcStartBtn.disabled = false; nfcStopBtn.disabled = true; setMsg('NFC stopped.', 'muted');
+    nfcStartBtn.disabled = false; nfcStopBtn.disabled = true; setMsg('NFC stopped.');
     focusPin();
   }
   if (supportsWebNFC()) {
@@ -624,7 +601,7 @@
   // ====== Init ======
   document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    setAction('in');   // sets initial action color for IN/OUT only
+    setAction('in');
     mountAdmin();
     focusPin();
   });
