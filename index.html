@@ -10,7 +10,6 @@
 <style>
   /* ================= Design Tokens ================= */
   :root {
-    /* Theme vars (light defaults; dark overrides on body.dark) */
     --bg: #f6f7fb;
     --card: #ffffff;
     --text: #0f172a;
@@ -21,7 +20,8 @@
     --primary:#111827;
     --in:#16a34a;
     --out:#dc2626;
-    --action: var(--in); /* will be set dynamically via JS on setAction */
+    --blue:#2563eb; /* static blue for search Submit */
+    --action: var(--in); /* used for IN/OUT visuals only */
 
     --ok-bg: #dcfce7; --ok-text:#166534; --ok-border:#bbf7d0;
     --warn-bg: #fee2e2; --warn-text:#991b1b; --warn-border:#fecaca;
@@ -51,7 +51,7 @@
   /* ================= Layout ================= */
   .wrap { margin:auto; width:min(1100px,96%); background:var(--card); padding:28px; border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; outline: none; }
   h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
-  .sub { color:var(--subtext); margin-bottom:18px; font-size:16px; }
+  .sub { color:var(--subtext); margin-bottom:12px; font-size:16px; }
   .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
 
   .card { border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; background:var(--card); }
@@ -104,9 +104,9 @@
     .segment.segment-xl button.active#actOut { background: var(--out); }
   }
 
-  /* ================= Search Submit (matches current action) ================= */
+  /* ================= Search Submit (static blue) ================= */
   .actionBtn {
-    --c: var(--action);
+    --c: var(--blue);
     background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
     color:#fff;
     font-size:20px;
@@ -122,11 +122,7 @@
   }
   .actionBtn:hover { filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active { transform:scale(.985); box-shadow: inset 0 3px 8px rgba(0,0,0,.25); }
-  /* Ripple (created via JS) */
-  .actionBtn .ripple {
-    position:absolute; border-radius:50%; transform:scale(0); opacity:.35; background:#fff; pointer-events:none;
-    animation:ripple .6s ease-out forwards;
-  }
+  .actionBtn .ripple { position:absolute; border-radius:50%; transform:scale(0); opacity:.35; background:#fff; pointer-events:none; animation:ripple .6s ease-out forwards; }
   @keyframes ripple { to { transform:scale(12); opacity:0; } }
 
   /* ================= Toast & Badges ================= */
@@ -154,15 +150,18 @@
   .log .item { padding:4px 0; border-bottom:1px dashed var(--border); }
   .log .item:last-child { border-bottom:0; }
 
-  /* NFC buttons */
+  /* NFC buttons (original purple) */
   .nfcBar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn { padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease; }
+  .nfcBtn {
+    padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
+    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
+  }
   .nfcBtn.secondary { background:transparent; color:#4f46e5; }
   .nfcBtn:focus-visible { outline:none; box-shadow: 0 0 0 6px rgba(79,70,229,.2); }
 
-  .status { margin-top:12px; min-height:32px; font-weight:800; font-size:18px; }
-  .good { color:#0f766e; }
-  .bad { color:#b91c1c; }
+  .status { margin-top:12px; min-height:40px; font-weight:800; font-size:16px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background: color-mix(in oklab, var(--card) 92%, #fff 8%); transition: opacity .2s ease; }
+  .good { color:#065f46; border-color:#bbf7d0; background: color-mix(in oklab, #dcfce7 85%, var(--card) 15%); }
+  .bad  { color:#7f1d1d; border-color:#fecaca; background: color-mix(in oklab, #fee2e2 85%, var(--card) 15%); }
 
   .foot { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; margin-top:8px; gap:12px; flex-wrap:wrap; }
 
@@ -293,7 +292,6 @@
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
   const themeBtn = $('#themeBtn');
   const metaTheme = document.querySelector('#meta-theme');
-  // live admin elements
   const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
   // ====== Theme ======
@@ -368,8 +366,16 @@
   qEl.addEventListener('blur',  () => { setTimeout(()=>{ nameFocusHold = false; }, 200); });
   qEl.closest('.card').addEventListener('click', (e) => { if (e.target !== qEl) focusName(); });
 
-  // ====== Network badge ======
-  function setMsg(text, cls='muted'){ msgEl.className = 'status ' + cls; msgEl.textContent = text; }
+  // ====== Network badge & status ======
+  function setMsg(text, cls='muted'){
+    msgEl.className = 'status ' + cls;
+    msgEl.textContent = text;
+    // auto-fade for prominent states
+    if (cls === 'bad' || cls === 'good') {
+      clearTimeout(setMsg._t);
+      setMsg._t = setTimeout(()=>{ msgEl.className = 'status muted'; msgEl.textContent = 'Ready.'; }, 6000);
+    }
+  }
   function setPinMsg(text, cls='muted'){ pinStatusEl.className = 'status ' + cls; pinStatusEl.textContent = text; }
   let toastTimer = null;
   function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
@@ -524,7 +530,6 @@
         row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
       });
       setMsg('Select a name then click Submit (uses selected IN/OUT).', 'muted');
-      applyActionColor(); // ensure buttons match current state
     } catch {
       resultsEl.innerHTML = '<div class="bad">Search failed.</div>'; setMsg('Search failed', 'bad');
     }
@@ -619,7 +624,7 @@
   // ====== Init ======
   document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    setAction('in');   // sets initial action + action color
+    setAction('in');   // sets initial action color for IN/OUT only
     mountAdmin();
     focusPin();
   });
