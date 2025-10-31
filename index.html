@@ -52,7 +52,7 @@
       calc(28px + var(--safe-bottom))
       calc(28px + var(--safe-left));
     overflow:visible;
-    overflow-x:clip;
+    overflow-x:clip; /* iOS bleed fix */
   }
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
@@ -120,18 +120,12 @@
     border:1px solid var(--border); border-radius:14px; background:var(--card);
     padding:16px; margin-bottom:0;
     display:flex; flex-direction:column; height:100%;
-    overflow:hidden;
-    background-clip: padding-box;
+    overflow:hidden;               /* iOS bleed fix for inner scroller */
+    background-clip: padding-box;  /* keep rounded edge tight */
   }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
-  /* Input groups */
-  .inputRow{
-    display:grid;
-    grid-template-columns: 1fr auto;
-    gap:10px;
-    align-items:center;
-  }
+  /* Inputs */
   input[type=text], input[type=password], input[type=search]{
     width:100%; padding:18px 20px; font-size:24px;
     border:1.5px solid var(--border); border-radius:12px;
@@ -147,17 +141,6 @@
     transition:background-color 5000s ease-in-out 0s;
   }
 
-  /* Show Keyboard button (compact) */
-  .kbdBtn{
-    border:1.5px solid #3b82f6;
-    background:#3b82f6; color:#fff;
-    font-weight:800; font-size:16px;
-    padding:12px 14px; border-radius:12px; cursor:pointer;
-    transition:transform .06s ease, filter .15s ease;
-    white-space:nowrap;
-  }
-  .kbdBtn:active{ transform:scale(.985); }
-
   /* Results list */
   .list{
     display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
@@ -166,16 +149,17 @@
     overscroll-behavior: contain;
     flex:1 1 auto;
     scrollbar-gutter: stable both-edges;
-    padding-right:16px;
+    padding-right:16px; /* ensure button never clips */
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
   .list::-webkit-scrollbar-track { background:var(--card); }
   .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
 
+  /* Result row uses CSS Grid so name can shrink and button stays visible */
   .row{
     display:grid;
-    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-columns:minmax(0,1fr) auto; /* name | button lane */
     align-items:center;
     gap:12px;
     padding:14px 16px; border:1px solid var(--border); border-radius:12px;
@@ -186,6 +170,7 @@
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
 
+  /* Blue Submit button */
   .actionBtn{
     --c: var(--blue);
     background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
@@ -198,11 +183,11 @@
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
-  /* NFC */
+  /* NFC buttons */
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
   .nfcBtn{
     padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px;
+    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
   }
   .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
 
@@ -226,6 +211,7 @@
   .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
   .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
 
+  /* Mobile: stack badges above header */
   @media (max-width:620px){
     .badges{ position:static; margin:0 0 8px 0; justify-content:flex-end; gap:6px; }
     h1{ margin-top:2px; }
@@ -257,11 +243,8 @@
       <!-- LEFT: Cougar Card -->
       <div class="card">
         <h2>Cougar Card</h2>
-        <div class="inputRow">
-          <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-                 placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
-          <button id="pinKbd" class="kbdBtn" type="button" title="Show keyboard">⌨️</button>
-        </div>
+        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
+               placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
           <button id="nfcStop" class="nfcBtn secondary">Stop</button>
@@ -272,12 +255,9 @@
       <!-- RIGHT: Lookup by Name -->
       <div class="card">
         <h2>Lookup by Name</h2>
-        <div class="inputRow">
-          <input id="q" type="search" inputmode="search" enterkeyhint="search"
-                 autocapitalize="words" autocorrect="off" spellcheck="false"
-                 placeholder="Search faculty directory" aria-label="Search teacher by name" />
-          <button id="qKbd" class="kbdBtn" type="button" title="Show keyboard">⌨️</button>
-        </div>
+        <input id="q" type="search" inputmode="search" enterkeyhint="search"
+               autocapitalize="words" autocorrect="off" spellcheck="false"
+               placeholder="Search faculty directory" aria-label="Search teacher by name" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
@@ -344,7 +324,6 @@
   // ===== DOM =====
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
-  const pinKbd = $('#pinKbd'), qKbd = $('#qKbd');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
   const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
@@ -400,38 +379,6 @@
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
-
-  // ===== Virtual Keyboard helpers (Android Chrome and some Chromium) =====
-  const VK = (navigator.virtualKeyboard && typeof navigator.virtualKeyboard.show === 'function')
-             ? navigator.virtualKeyboard
-             : null;
-  if (VK && 'overlaysContent' in VK) {
-    try { VK.overlaysContent = true; } catch(_) {}
-  }
-
-  async function showKeyboardFor(el){
-    // Always perform in response to a user gesture (button tap)
-    try {
-      el.focus({ preventScroll:true });
-      el.setSelectionRange?.(el.value.length, el.value.length);
-
-      // Try Virtual Keyboard API first (Android Chrome)
-      if (VK) await VK.show();
-
-      // iOS fallback: toggle readonly trick to hint OSK
-      // (Doesn't beat hardware keyboard policy, but helps in some cases)
-      if (!VK && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-        const prev = el.readOnly;
-        el.readOnly = true; el.blur();
-        el.readOnly = false; el.focus({ preventScroll:true });
-        el.setSelectionRange?.(el.value.length, el.value.length);
-      }
-    } catch(_) {}
-  }
-
-  // Expose keyboard buttons (visible on all devices; tiny and harmless on desktop)
-  pinKbd.addEventListener('click', () => showKeyboardFor(pinEl));
-  qKbd.addEventListener('click', () => showKeyboardFor(qEl));
 
   // ===== Action toggle (refocus pin on change, but safely) =====
   function setAction(a){
