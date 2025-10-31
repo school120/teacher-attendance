@@ -30,11 +30,12 @@
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
 
-  /* iOS keyboard white-gap fix: dynamic viewport + internal scroll */
+  /* PAGE scroll (re-enabled), iOS safe-area & keyboard friendly */
   body{
-    min-height:100dvh;
-    overscroll-behavior-y:none;
-    overflow:hidden;                 /* page fixed; inner container scrolls */
+    min-height:100svh;                /* stable viewport height on iOS */
+    overscroll-behavior-y:contain;    /* reduce rubber-banding */
+    overflow:auto;                    /* page handles scrolling */
+    -webkit-overflow-scrolling:touch;
   }
 
   .wrap{
@@ -45,15 +46,14 @@
     box-shadow:var(--shadow-1);
     position:relative;
 
-    /* Respect safe areas + provide internal scroll area */
-    min-height:calc(100dvh - var(--safe-top) - var(--safe-bottom));
+    /* Respect safe areas; no internal scroll (page scrolls) */
+    min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
     padding:
       calc(28px + var(--safe-top))
       calc(28px + var(--safe-right))
       calc(28px + var(--safe-bottom))
       calc(28px + var(--safe-left));
-    overflow:auto;
-    -webkit-overflow-scrolling:touch;
+    overflow:visible;
   }
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
@@ -141,13 +141,14 @@
     transition:background-color 5000s ease-in-out 0s;
   }
 
-  /* Results pane: solid background, inner scroll */
+  /* Results pane: solid background, inner scroll, and STABLE SCROLLBAR to prevent layout shift */
   .list{
     display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
     background: var(--card);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     flex:1 1 auto;
+    scrollbar-gutter: stable both-edges;   /* reserves space so nothing jumps */
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
