@@ -29,7 +29,9 @@
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  html { overflow-x:hidden; }   /* prevent any horizontal bleed */
+  html { overflow-x:hidden; }  /* iOS bleed fix */
+
+  /* PAGE scroll (enabled), iOS safe-area & keyboard friendly */
   body{
     min-height:100svh;                /* stable viewport height on iOS */
     overscroll-behavior-y:contain;    /* reduce rubber-banding */
@@ -52,7 +54,7 @@
       calc(28px + var(--safe-bottom))
       calc(28px + var(--safe-left));
     overflow:visible;
-    overflow-x:clip; /* no sideways bleed inside the app container */
+    overflow-x:clip; /* iOS bleed fix */
   }
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
@@ -120,6 +122,8 @@
     border:1px solid var(--border); border-radius:14px; background:var(--card);
     padding:16px; margin-bottom:0;
     display:flex; flex-direction:column; height:100%;
+    overflow:hidden;                /* iOS bleed fix */
+    background-clip: padding-box;   /* iOS bleed fix */
   }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
@@ -143,16 +147,12 @@
   /* Results pane: solid bg, inner scroll, stable scrollbar WITHOUT page shift */
   .list{
     display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
-    background: var(--card);
-    background-clip: padding-box;
+    background: var(--card); background-clip: padding-box;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     flex:1 1 auto;
     scrollbar-gutter: stable both-edges;  /* modern browsers */
-    padding-right: 2px;                   /* small buffer prevents white edge on Safari */
-  }
-  @supports not (scrollbar-gutter: stable) {
-    .list{ padding-right: 12px; }         /* Safari fallback so content never bumps grid width */
+    padding-right: 12px;                  /* Safari fallback to avoid white slice */
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
@@ -417,13 +417,9 @@
   ckIgnoreEnter.addEventListener('change', () => lsSet(IGNENTER_KEY, ckIgnoreEnter.checked ? '1' : '0'));
   ckDebug.addEventListener('change', () => lsSet(DEBUG_KEY, ckDebug.checked ? '1' : '0'));
 
-  // ===== Debug hotkey — now Ctrl/⌘ + Shift + D and ignored inside inputs =====
+  // ===== Debug hotkey — Ctrl/⌘ + Shift + D, ignored inside inputs =====
   function isTypingTarget(el){
-    return el && (
-      el.tagName === 'INPUT' ||
-      el.tagName === 'TEXTAREA' ||
-      el.isContentEditable
-    );
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
   }
   window.addEventListener('keydown', (e) => {
     const keyIsD = (e.key || '').toLowerCase() === 'd';
