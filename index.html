@@ -243,7 +243,7 @@
       <!-- LEFT: Cougar Card -->
       <div class="card">
         <h2>Cougar Card</h2>
-        <input id="pin" type="password" maxlength="10" inputmode="numeric" autocomplete="one-time-code"
+        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
                placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
@@ -291,27 +291,13 @@
       <div class="hint">Toggle with <b>Ctrl/⌘ + Shift + D</b> (ignored while typing).</div>
     </section>
 
-    <!-- MATCH HELPER: Align NFC rule with USB-203 typed number -->
-    <section style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
-      <h3 style="margin-bottom:8px;">Match Helper (NFC ↔ USB)</h3>
+    <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
+      <h3 style="margin-bottom:8px;">Live Reader</h3>
       <div class="kv">
-        <div class="k">Last NFC UID</div><div id="liveUid">—</div>
-        <div class="k">Last NFC 10-digit</div><div id="liveTen">—</div>
-        <div class="k">Last USB 10-digit</div><div id="liveWedgeTen">—</div>
-        <div class="k">Current Rule</div><div id="liveRule">—</div>
-        <div class="k">Status</div><div id="matchStatus">—</div>
+        <div class="k">Rule</div><div id="liveRule">—</div>
+        <div class="k">Last UID</div><div id="liveUid">—</div>
+        <div class="k">Last 10-digit</div><div id="liveTen">—</div>
       </div>
-      <div class="hint" style="margin-top:8px;">
-        Tap the card with NFC, then swipe the same card with the USB-203. If they don’t match, press “Try Next Rule” until they do, then “Use This Rule”.
-      </div>
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <button id="btnCycleRule" class="btn">Try Next Rule</button>
-        <button id="btnUseRule" class="btn primary">Use This Rule</button>
-      </div>
-    </section>
-
-    <section class="live" style="margin-top:14px;">
-      <h3 style="margin-bottom:8px;">Live Reader Log</h3>
       <div class="log" id="liveLog" aria-label="Reader log"></div>
     </section>
 
@@ -335,9 +321,6 @@
   const DEBUG_KEY = 'debugOn';
   const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
 
-  // For cycling rules quickly during calibration
-  const RULES_ORDER = ['HEX_LE_PAD10','HEX_BE_PAD10','LAST3_DEC_PAD10','FULL_UID_DEC_PAD10'];
-
   // ===== DOM =====
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
@@ -348,16 +331,9 @@
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'),
         adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
-
-  // Match helper elements
-  const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveWedgeTenEl = $('#liveWedgeTen'), matchStatusEl = $('#matchStatus');
-  const btnCycleRule = $('#btnCycleRule'), btnUseRule = $('#btnUseRule');
-  const liveLogEl = $('#liveLog');
+  const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
   let lastSubmitAt = 0;
-  let lastNfcUid = '';
-  let lastNfcTen = '';
-  let lastWedgeTen = '';
 
   // ===== Theme =====
   function setTheme(mode){
@@ -416,10 +392,6 @@
     ckIgnoreEnter.checked = lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1';
     ckDebug.checked = lsGet(DEBUG_KEY, DEFAULTS[DEBUG_KEY]) === '1';
     liveRuleEl.textContent = getSelectedNfcRule();
-    liveUidEl.textContent = lastNfcUid || '—';
-    liveTenEl.textContent = lastNfcTen || '—';
-    liveWedgeTenEl.textContent = lastWedgeTen || '—';
-    renderMatchStatus();
   }
   function showAdmin(show=true){
     adminDrawer.style.display = show ? 'block' : 'none';
@@ -431,14 +403,14 @@
   adminClose.addEventListener('click', () => showAdmin(false));
   adminReset.addEventListener('click', () => {
     Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
-    mountAdmin(); liveLogEl.innerHTML=''; lastNfcUid=''; lastNfcTen=''; lastWedgeTen='';
+    mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
     showToast('Admin reset to defaults');
   });
   adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; });
 
   document.querySelectorAll('input[name="rule"]').forEach(r => {
     r.addEventListener('change', () => {
-      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); pinEl.focus(); renderMatchStatus(); }
+      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); pinEl.focus(); }
     });
   });
   ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
@@ -460,39 +432,19 @@
     showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
   });
 
-  // ===== Normalize to 10 digits =====
+  // ===== Helpers =====
+  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   function normalizeToTenDigits(raw) {
-    const trimOn = lsGet(TRIM_KEY, DEFAULTS[TRIM_KEY]) === '1';
+    const trimOn = lsGet('wedgeTrim', '1') === '1';
     if (!trimOn) return String(raw || '');
-    if (raw == null) return '';
-    const digits = String(raw).replace(/\D+/g, '');
-    if (!digits) return '';
-    return digits.length <= 10 ? digits.padStart(10, '0') : digits.slice(-10);
+    const d = digitsOnly(raw);
+    if (!d) return '';
+    return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10);
   }
-
-  // ===== UID conversion helpers =====
-  const DEBUG_ON = () => lsGet(DEBUG_KEY,'0') === '1';
-  const hexToBytes = (hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
-  const bytesToNumberLE = (bytes)=> bytes.reduceRight((a,b)=>(a*256+b)>>>0,0);
-  const bytesToNumberBE = (bytes)=> bytes.reduce((a,b)=>(a*256+b)>>>0,0);
-  const pad10 = (n)=>{ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); };
-  function uidToTenByRule(uidHex, ruleId){
-    const bytes = hexToBytes(uidHex);
-    switch (ruleId) {
-      case 'HEX_LE_PAD10': return pad10(bytesToNumberLE(bytes.slice(-4)));
-      case 'HEX_BE_PAD10': return pad10(bytesToNumberBE(bytes.slice(-4)));
-      case 'LAST3_DEC_PAD10': return pad10(bytesToNumberBE(bytes.slice(-3)));
-      case 'FULL_UID_DEC_PAD10': return pad10(bytesToNumberBE(bytes));
-      case 'PASS_THROUGH_DIGITS_PAD10': return normalizeToTenDigits(uidHex);
-      default: return '';
-    }
-  }
-  const hexToShort = (uid)=> (uid||'').slice(-8);
 
   // ===== Submit API =====
   async function submitPinOrId({ pin, personId, uid }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    // We include uid (if present) for auditing consistency; backend can ignore safely.
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}), ...(uid?{uid}:{}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
@@ -510,19 +462,20 @@
     }
   }
 
-  // ===== Cougar Card: auto-submit on exact 10 digits (USB-wedge path) =====
+  // ===== USB wedge — robust 10-digit capture (fixes “works on 4th swipe”) =====
+  let wedgeTimer = null;
+  const WEDGE_QUIET_MS = 120; // wait for a brief silence to mark end of burst
   pinEl.addEventListener('input', ()=>{
-    let norm = normalizeToTenDigits(pinEl.value || '');
-    if (!norm) return;
-    lastWedgeTen = norm;           // capture for match helper
-    liveWedgeTenEl.textContent = lastWedgeTen;
-    renderMatchStatus();
-
-    if (norm.length === 10) {
+    const d = digitsOnly(pinEl.value); // collect only digits while typing
+    clearTimeout(wedgeTimer);
+    wedgeTimer = setTimeout(()=>{
+      const nowDigits = digitsOnly(pinEl.value);
+      if (nowDigits.length < 10) return;       // not enough yet; do nothing
+      const ten = nowDigits.slice(-10);         // take last 10 from the burst
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: norm });
-      pinEl.value = '';
-    }
+      submitPinOrId({ pin: ten });
+      pinEl.value = '';                         // clear field for next swipe
+    }, WEDGE_QUIET_MS);
   });
   pinEl.addEventListener('keydown',(e)=>{
     if (lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1' && e.key === 'Enter') {
@@ -569,24 +522,34 @@
   // ===== NFC (Android Chrome) =====
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
+  const hexToBytes = (hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
+  const bytesToNumberLE = (bytes)=> bytes.reduceRight((a,b)=>(a*256+b)>>>0,0);
+  const bytesToNumberBE = (bytes)=> bytes.reduce((a,b)=>(a*256+b)>>>0,0);
+  const pad10 = (n)=>{ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); };
+  function uidToTenByRule(uidHex, ruleId){
+    const bytes = hexToBytes(uidHex);
+    switch (ruleId) {
+      case 'HEX_LE_PAD10': return pad10(bytesToNumberLE(bytes.slice(-4)));
+      case 'HEX_BE_PAD10': return pad10(bytesToNumberBE(bytes.slice(-4)));
+      case 'LAST3_DEC_PAD10': return pad10(bytesToNumberBE(bytes.slice(-3)));
+      case 'FULL_UID_DEC_PAD10': return pad10(bytesToNumberBE(bytes));
+      case 'PASS_THROUGH_DIGITS_PAD10': return normalizeToTenDigits(uidHex);
+      default: return '';
+    }
+  }
+  const hexToShort = (uid)=> (uid||'').slice(-8);
 
   function pushLive(uidHex, ten) {
-    lastNfcUid = uidHex || '';
-    lastNfcTen = ten || '';
-    liveUidEl.textContent = lastNfcUid || '—';
-    liveTenEl.textContent = lastNfcTen || '—';
+    liveUidEl.textContent = uidHex || '—';
+    liveTenEl.textContent = ten || '—';
     liveRuleEl.textContent = getSelectedNfcRule();
-
     const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     const div = document.createElement('div');
     div.className = 'item';
-    div.textContent = `[${ts}] UID:${(uidHex||'').slice(-8)} → ${ten} (${getSelectedNfcRule()})`;
+    div.textContent = `[${ts}] UID:${hexToShort(uidHex)} → ${ten} (${getSelectedNfcRule()})`;
     liveLogEl.appendChild(div);
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
-
-    renderMatchStatus();
   }
-
   function nfcUidToTen(uidHex){ return uidToTenByRule(uidHex, getSelectedNfcRule()); }
 
   if (supportsWebNFC()) {
@@ -606,29 +569,22 @@
         ndef.onreading = (event) => {
           const { message, serialNumber } = event;
           const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
-
-          // Prefer 10-digit text record if present; else map UID by rule
           let ten = '';
-          for (const record of message.records) {
-            const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
-            if (!texty) continue;
-            try {
-              const td = new TextDecoder(record.encoding || 'utf-8');
-              const text = record.data ? td.decode(record.data) : '';
-              const maybe = normalizeToTenDigits(text);
-              if (maybe) { ten = maybe; break; }
-            } catch {}
+          if (uidHex) ten = nfcUidToTen(uidHex);
+          if ((!ten || ten.length !== 10) && message?.records?.length) {
+            for (const record of message.records) {
+              const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
+              if (!texty) continue;
+              try {
+                const td = new TextDecoder(record.encoding || 'utf-8');
+                const text = record.data ? td.decode(record.data) : '';
+                const maybe = normalizeToTenDigits(text);
+                if (maybe && maybe.length === 10) { ten = maybe; break; }
+              } catch {}
+            }
           }
-          if (!ten && uidHex) ten = nfcUidToTen(uidHex);
-
-          if (!ten) { showToast('Cougar Card must resolve to a 10-digit code'); return; }
-
-          // Submit with both pin + uid for auditing
-          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) {
-            submitPinOrId({ pin: ten, uid: uidHex });
-          }
-
-          if (DEBUG_ON()) showToast(`UID:${(uidHex||'').slice(-8)} → ${ten} [${getSelectedNfcRule()}]`);
+          if (!ten || ten.length !== 10) { showToast('Cougar Card must resolve to a 10-digit code'); return; }
+          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten, uid: uidHex });
           pushLive(uidHex, ten);
         };
       } catch {
@@ -644,37 +600,6 @@
       pinEl.focus();
     });
   }
-
-  // ===== Match Helper logic =====
-  function renderMatchStatus(){
-    if (!lastNfcTen && !lastWedgeTen) { matchStatusEl.textContent = '—'; return; }
-    if (!lastNfcTen || !lastWedgeTen) { matchStatusEl.textContent = 'Need NFC + USB samples'; return; }
-    if (lastNfcTen === lastWedgeTen) {
-      matchStatusEl.textContent = '✅ Matched';
-    } else {
-      matchStatusEl.textContent = '❌ Not matched';
-    }
-  }
-
-  function cycleRule(){
-    const cur = getSelectedNfcRule();
-    const idx = RULES_ORDER.indexOf(cur);
-    const next = RULES_ORDER[(idx + 1) % RULES_ORDER.length] || RULES_ORDER[0];
-    lsSet(RULE_KEY, next);
-    liveRuleEl.textContent = next;
-    // Recompute current NFC 10 (if we have UID) for immediate feedback
-    if (lastNfcUid) {
-      lastNfcTen = nfcUidToTen(lastNfcUid);
-      liveTenEl.textContent = lastNfcTen || '—';
-    }
-    renderMatchStatus();
-    showToast('Rule: ' + next);
-  }
-
-  btnCycleRule?.addEventListener('click', cycleRule);
-  btnUseRule?.addEventListener('click', ()=>{
-    showToast('Rule saved: ' + getSelectedNfcRule());
-  });
 
   // ===== Init =====
   document.addEventListener('DOMContentLoaded', ()=>{
