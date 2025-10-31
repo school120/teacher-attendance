@@ -5,103 +5,177 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Teacher Attendance — Guard Console</title>
 <meta name="description" content="Guard console for IN/OUT with 10-digit Quick Pin or name lookup. Web NFC on Android; keyboard-wedge readers everywhere." />
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <style>
-  :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { display:flex; min-height:100svh; margin:0; background:#f6f7fb; }
-  .wrap { margin:auto; width:min(1100px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); position:relative; }
-  h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
-  .sub { color:#475467; margin-bottom:18px; font-size:16px; }
-  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
-  .card { border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff; }
-  .card h2 { margin:0 0 10px; font-size:20px; }
-  input[type="password"], input[type="search"], input[type="text"] {
-    padding:18px 20px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%;
+  /* ===== Design Tokens ===== */
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #0f172a; /* slate-900 */
+    --subtext: #475467;
+    --muted: #667085;
+    --border: #e5e7eb;
+    --ring: 0 0 0 6px rgba(59,130,246,.12); /* blue-500 */
+
+    --ok-bg: #dcfce7; --ok-text:#166534; --ok-border:#bbf7d0;
+    --warn-bg: #fee2e2; --warn-text:#991b1b; --warn-border:#fecaca;
+    --nfc-bg:#e0e7ff; --nfc-text:#3730a3; --nfc-border:#c7d2fe;
+
+    --primary:#111827; /* zinc-900 */
+    --in:#16a34a; --out:#dc2626;
+
+    --radius-xl: 18px; --radius-lg:14px; --radius-md:12px; --radius-sm:10px; --radius-pill:999px;
+    --shadow-1: 0 10px 30px rgba(0,0,0,.08);
+    --shadow-2: 0 14px 40px rgba(0,0,0,.18);
+
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   }
-  .muted { color:#667085; }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b1020;            /* deep slate/navy */
+      --card:#0f172a;          /* slate-900 */
+      --text:#e5e7eb;          /* slate-200 */
+      --subtext:#cbd5e1;       /* slate-300 */
+      --muted:#94a3b8;         /* slate-400 */
+      --border:#1f2937;        /* slate-800 */
+      --primary:#e5e7eb;
+      --shadow-1: 0 10px 30px rgba(0,0,0,.5);
+      --shadow-2: 0 14px 40px rgba(0,0,0,.6);
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height:100%; }
+  body { display:flex; min-height:100svh; margin:0; background:var(--bg); color:var(--text); }
+
+  /* ===== Layout ===== */
+  .wrap { margin:auto; width:min(1100px,96%); background:var(--card); padding:28px; border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; outline: none; }
+  h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
+  .sub { color:var(--subtext); margin-bottom:18px; font-size:16px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
+
+  .card { border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; background:var(--card); }
+  .card h2 { margin:0 0 10px; font-size:20px; }
+
+  /* Inputs */
+  input[type="password"], input[type="search"], input[type="text"] {
+    padding:18px 20px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:var(--radius-md); width:100%; background:transparent; color:var(--text);
+    outline: none; transition: box-shadow .2s ease, border-color .2s ease, transform .06s ease;
+  }
+  @media (prefers-color-scheme: dark){
+    input[type="password"], input[type="search"], input[type="text"] { border-color:#334155; }
+  }
+  input:focus-visible { border-color:#3b82f6; box-shadow: var(--ring); }
+  input:active { transform: scale(.999); }
+
+  .muted { color:var(--muted); }
   .list { display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
-  .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid var(--border); border-radius:var(--radius-md); background: color-mix(in oklab, var(--card) 92%, #fff 8%); }
+  @supports not (background: color-mix(in oklab, #000 0%, #fff 0%)) { .row{ background: rgba(127,127,127,.06); } }
   .name { font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .btn { padding:16px 20px; border:0; border-radius:14px; font-size:20px; cursor:pointer; }
-  .primary { background:#111827; color:#fff; }
+
+  .btn { padding:14px 18px; border:0; border-radius:var(--radius-lg); font-size:18px; cursor:pointer; font-weight:800; line-height:1; transition: transform .06s ease, box-shadow .2s ease, opacity .2s ease;
+         background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  .btn:active { transform: scale(.992); }
+  .btn.primary { background:var(--primary); color:#fff; border-color: transparent; }
+  .btn.ghost { background:transparent; }
+
   .status { margin-top:12px; min-height:32px; font-weight:800; font-size:18px; }
   .good { color:#0f766e; }
   .bad { color:#b91c1c; }
 
-  /* BIG IN/OUT toggle */
+  /* ===== BIG IN/OUT toggle ===== */
   .segment { display:flex; gap:14px; width:100%; }
   .segment.segment-xl button {
     flex:1 1 0;
-    border:2px solid #d1d5db;
-    border-radius:16px;
-    font-weight:900;
-    font-size:42px;
-    line-height:1.1;
-    min-height:96px;
-    padding:22px 24px;
-    cursor:pointer;
-    color:#111; background:#f3f4f6;
+    border:2px solid #d1d5db; background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    border-radius:16px; font-weight:900; font-size:42px; line-height:1.1; min-height:96px; padding:22px 24px;
+    cursor:pointer; color:#111; box-shadow:0 4px 10px rgba(0,0,0,.05);
     transition: transform .06s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease;
-    box-shadow:0 4px 10px rgba(0,0,0,.05);
     touch-action: manipulation; user-select:none;
   }
-  .segment.segment-xl button:active { transform: scale(.99); }
+  @media (prefers-color-scheme: dark){
+    .segment.segment-xl button { border-color:#334155; background:linear-gradient(180deg, #111827 0%, #0b1220 100%); color:var(--text); }
+  }
+  .segment.segment-xl button:focus-visible { outline: none; box-shadow: var(--ring); border-color:#3b82f6; }
+  .segment.segment-xl button:active { transform: translateY(1px); }
+
   .segment.segment-xl button.active#actIn {
-    background:#16a34a; color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+    background:linear-gradient(180deg, color-mix(in oklab, var(--in) 94%, #fff 6%), color-mix(in oklab, var(--in) 88%, #000 12%));
+    color:#fff; border-color:var(--in); box-shadow:0 0 0 4px rgba(22,163,74,.25);
     animation: pulse 350ms ease-out;
   }
   .segment.segment-xl button.active#actOut {
-    background:#dc2626; color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+    background:linear-gradient(180deg, color-mix(in oklab, var(--out) 94%, #fff 6%), color-mix(in oklab, var(--out) 88%, #000 12%));
+    color:#fff; border-color:var(--out); box-shadow:0 0 0 4px rgba(220,38,38,.25);
     animation: pulse 350ms ease-out;
   }
+  @supports not (background: color-mix(in oklab, #000 0%, #fff 0%)){
+    .segment.segment-xl button.active#actIn { background: var(--in); }
+    .segment.segment-xl button.active#actOut { background: var(--out); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .segment.segment-xl button, .btn { transition: none; }
+    .toast { transition: none; }
+    @keyframes pulse { from{box-shadow:none} to{box-shadow:none} }
+  }
+
   @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(0,0,0,0);} 50%{box-shadow:0 0 0 6px rgba(0,0,0,.06);} 100%{box-shadow:0 0 0 4px rgba(0,0,0,0);} }
 
-  /* Toast */
+  /* ===== Toast ===== */
   .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
-    opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12);
-    border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px;
+    opacity: 0; background: var(--card); border:1px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,.12);
+    border-radius: var(--radius-lg); padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* Badges + admin button */
+  /* ===== Badges + admin button ===== */
   .badges { position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
-  .badge { font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#fff; }
-  .badge.offline { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
-  .badge.ok { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
-  .badge.nfc { background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; }
-  .gear { border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
+  .badge { font-size:12px; font-weight:800; padding:6px 10px; border-radius:var(--radius-pill); border:1px solid var(--border); background:var(--card); color:var(--text); }
+  .badge.offline { background:var(--warn-bg); color:var(--warn-text); border-color:var(--warn-border); }
+  .badge.ok { background:var(--ok-bg); color:var(--ok-text); border-color:var(--ok-border); }
+  .badge.nfc { background:var(--nfc-bg); color:var(--nfc-text); border-color:var(--nfc-border); }
+  .gear { border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:var(--radius-sm); padding:6px 10px; cursor:pointer; font-weight:800; }
+  .gear:focus-visible { outline:none; box-shadow: var(--ring); border-color:#3b82f6; }
 
-  /* Admin panel (drawer) */
+  /* ===== Admin panel (drawer) ===== */
   .drawer {
     position: fixed; right: 16px; top: 64px; width: min(520px, 92%); max-height: 80vh;
-    border:1px solid #e5e7eb; background:#fff; border-radius:16px; box-shadow:0 14px 40px rgba(0,0,0,.18);
-    padding:16px; overflow:auto; display:none; z-index:20;
+    border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
+    padding:16px; overflow:auto; display:none; z-index:20; color:var(--text);
   }
   .drawer h3 { margin:0 0 10px; font-size:18px; }
   .opt { display:flex; gap:10px; align-items:center; margin:8px 0; }
   .opt label { font-size:14px; }
-  .hint { color:#667085; font-size:12px; margin-top:6px; }
+  .hint { color:var(--muted); font-size:12px; margin-top:6px; }
 
-  .live { margin-top:14px; border-top:1px dashed #e5e7eb; padding-top:12px; }
+  .live { margin-top:14px; border-top:1px dashed var(--border); padding-top:12px; }
   .kv { display:grid; grid-template-columns: 140px 1fr; gap:8px 12px; font-size:14px; }
-  .kv .k { color:#6b7280; }
-  .log { margin-top:10px; max-height:200px; overflow:auto; background:#fafafa; border:1px solid #e5e7eb; border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
-  .log .item { padding:4px 0; border-bottom:1px dashed #e5e7eb; }
+  .kv .k { color:var(--muted); }
+  .log { margin-top:10px; max-height:200px; overflow:auto; background: color-mix(in oklab, var(--card) 92%, #fff 8%); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+  @supports not (background: color-mix(in oklab, #000 0%, #fff 0%)) { .log{ background: rgba(127,127,127,.06); } }
+  .log .item { padding:4px 0; border-bottom:1px dashed var(--border); }
   .log .item:last-child { border-bottom:0; }
 
   /* NFC buttons */
   .nfcBar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
   .nfcBtn {
-    padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px;
+    padding:14px 18px; border-radius:var(--radius-md); border:2px solid #4f46e5; color:#fff; background:#4f46e5;
+    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
   }
-  .nfcBtn.secondary { background:#fff; color:#4f46e5; }
+  .nfcBtn:focus-visible { outline:none; box-shadow: 0 0 0 6px rgba(79,70,229,.2); }
+  .nfcBtn.secondary { background:transparent; color:#4f46e5; }
 
   /* Validity styling */
   input#pin.invalid { border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); }
   input#pin.valid   { border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.15); }
+
+  /* Footer */
+  .foot { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; margin-top:8px; gap:12px; flex-wrap:wrap; }
 
   @media (max-width: 900px) {
     .grid { grid-template-columns: 1fr; }
@@ -111,16 +185,16 @@
 </style>
 </head>
 <body>
-  <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
+  <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console" tabindex="-1">
     <div class="badges" aria-live="polite" aria-atomic="true">
       <div id="netBadge" class="badge ok">Online</div>
       <div id="nfcBadge" class="badge nfc" style="display:none;">NFC Ready</div>
       <div id="actBadge" class="badge">IN</div>
-      <button id="adminBtn" class="gear" title="Admin">Admin</button>
+      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin">Admin</button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name. Android Chrome supports Web NFC; iPhone uses a Bluetooth/USB keyboard-wedge reader or manual entry.</p>
+    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name. Android Chrome supports Web NFC; iPhone uses a Bluetooth/USB keyboard‑wedge reader or manual entry.</p>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
@@ -128,7 +202,7 @@
           <button id="actIn"  class="active" role="tab" aria-selected="true"  type="button" aria-label="Set action to IN">IN</button>
           <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
         </div>
-        <div class="muted" style="flex:1 1 100%;">Action applies to both card pins and name lookup.</div>
+        <div class="muted" style="flex:1 1 100%">Action applies to both card pins and name lookup.</div>
       </div>
     </div>
 
@@ -156,7 +230,10 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div id="msg" class="status muted" style="margin-top:16px;" aria-live="polite">Ready.</div>
-    <p class="muted" style="margin:8px 0 0; font-size:12px;">© Yeshivat Frisch 5786</p>
+    <div class="foot">
+      <span>© Yeshivat Frisch 5786</span>
+      <span class="muted">Built for kiosks • Dark mode • Reduced motion aware</span>
+    </div>
   </div>
 
   <!-- Admin drawer with Live Reader -->
@@ -237,8 +314,8 @@
     liveRuleEl.textContent = getSelectedNfcRule();
   }
   function showAdmin(show=true){ admin.style.display = show ? 'block' : 'none'; }
-  adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); });
-  adminClose.addEventListener('click', () => showAdmin(false));
+  adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); admin.setAttribute('aria-modal','true'); admin.focus?.(); });
+  adminClose.addEventListener('click', () => { showAdmin(false); admin.setAttribute('aria-modal','false'); });
   adminReset.addEventListener('click', () => {
     Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
     mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
@@ -342,7 +419,7 @@
   // ====== Submit API ======
   async function submitPinOrId({ pin, personId }) {
     const act = currentAction();
-    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
+    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}) , ...(personId?{personId}:{}) }).toString();
     try {
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const text = await res.text(); let data=null; try { data = JSON.parse(text); } catch {}
@@ -356,6 +433,7 @@
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : 'UPDATED';
       const line = `${firstName||''} ${lastName||''} signed ${verb}${extra} — ${time||''}`.trim();
       setMsg(line || 'Done.', 'good'); showToast(line || 'Done.');
+      try { navigator.vibrate?.(30); } catch {}
     } catch {
       setMsg('Network error', 'bad'); showToast('Network error');
     } finally {
