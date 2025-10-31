@@ -4,9 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Teacher Attendance — Guard Console</title>
+<meta name="description" content="Guard console for IN/OUT with 10-digit Quick Pin or name lookup." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
+  /* ================= Design Tokens ================= */
   :root {
     --bg: #f6f7fb;
     --card: #ffffff;
@@ -17,6 +19,7 @@
     --out:#dc2626;
     --blue:#2563eb;
     --radius-lg:14px;
+    --radius-xl:18px;
     --shadow-1: 0 10px 30px rgba(0,0,0,.08);
     --ring: 0 0 0 6px rgba(59,130,246,.16);
   }
@@ -26,13 +29,87 @@
     --text:#e5e7eb;
     --border:#1f2937;
   }
-  body { background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; display:flex; min-height:100vh; }
-  .wrap { margin:auto; width:min(1100px,96%); background:var(--card); padding:28px; border-radius:18px; box-shadow:var(--shadow-1); position:relative; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height:100%; margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+
+  /* ================= Layout ================= */
+  .wrap { margin:auto; width:min(1100px,96%); background:var(--card); padding:28px; border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; }
+  h1 { margin:0 0 8px; font-weight:800; font-size:28px; }
+  .muted { color:var(--muted); }
+
+  /* Badges + Buttons */
   .badges { position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge { font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear { border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:4px; transition:background .2s ease; }
   .gear:hover { background: color-mix(in oklab, var(--card) 90%, var(--text) 10%); }
   .gear:focus-visible { outline:none; box-shadow: var(--ring); }
+
+  /* Toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    opacity: 0; background: var(--card); border:1px solid var(--border);
+    box-shadow: 0 8px 30px rgba(0,0,0,.12);
+    border-radius: 14px; padding: 16px 20px;
+    font-weight:800; transition: all .25s ease;
+    pointer-events:none; font-size:18px;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Segment Buttons (IN/OUT) */
+  .segment { display:flex; gap:14px; width:100%; margin:20px 0; }
+  .segment.segment-xl button {
+    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
+    font-weight:900; font-size:42px; line-height:1.1;
+    min-height:96px; padding:22px 24px; cursor:pointer;
+    color:#111; background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    transition: transform .06s ease, box-shadow .2s ease, background .2s ease;
+    box-shadow:0 4px 10px rgba(0,0,0,.05);
+  }
+  .segment.segment-xl button.active#actIn {
+    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%);
+    color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+  }
+  .segment.segment-xl button.active#actOut {
+    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+    color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+  }
+
+  /* Search Submit Button */
+  .actionBtn {
+    --c: var(--blue);
+    background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
+    color:#fff; font-size:20px;
+    padding:16px 20px; border:2px solid var(--c);
+    border-radius:14px; font-weight:900;
+    cursor:pointer; transition: transform .06s ease, filter .15s ease, box-shadow .2s ease;
+    box-shadow:0 6px 14px rgba(0,0,0,.12);
+  }
+  .actionBtn:hover { filter:brightness(.96); transform:translateY(-1px); }
+  .actionBtn:active { transform:scale(.985); box-shadow: inset 0 3px 8px rgba(0,0,0,.25); }
+
+  /* NFC buttons */
+  .nfcBar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
+  .nfcBtn {
+    padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
+    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
+  }
+  .nfcBtn.secondary { background:transparent; color:#4f46e5; }
+
+  /* Inputs */
+  input[type=text], input[type=password] {
+    width:100%; padding:18px 20px; font-size:24px;
+    border:1.5px solid var(--border); border-radius:12px;
+    background:transparent; color:var(--text);
+  }
+
+  .card { border:1px solid var(--border); border-radius:14px; padding:16px; background:var(--card); margin-bottom:16px; }
+  .list { display:grid; gap:12px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:#fafafa; }
+  .name { font-weight:800; font-size:20px; }
+
+  @media (max-width: 900px) {
+    .segment.segment-xl button { font-size:36px; min-height:88px; }
+  }
 </style>
 </head>
 <body>
@@ -42,10 +119,33 @@
       <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
       <div id="actBadge" class="badge">IN</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
-      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin" aria-label="Admin settings"><span>⚙️</span><span>Admin</span></button>
+      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
     </div>
+
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose IN or OUT, then swipe/tap a card (10-digit Quick Pin) or look up by name.</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name.</p>
+
+    <div class="segment segment-xl">
+      <button id="actIn" class="active" type="button">IN</button>
+      <button id="actOut" type="button">OUT</button>
+    </div>
+
+    <div class="card">
+      <h2>Quick Pin</h2>
+      <input id="pin" type="password" maxlength="10" placeholder="Enter 10-digit code…" />
+      <div id="nfcBar" class="nfcBar" style="display:none;">
+        <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
+        <button id="nfcStop" class="nfcBtn secondary">Stop</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Lookup by Name</h2>
+      <input id="q" type="text" placeholder="Start typing first or last name" />
+      <div id="results" class="list"></div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 </body>
 </html>
