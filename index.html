@@ -6,51 +6,49 @@
 <title>Teacher Attendance — Guard Console</title>
 <meta name="description" content="Guard console for IN/OUT with 10-digit Quick Pin or name lookup. Web NFC on Android; keyboard-wedge readers everywhere." />
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
-  /* ===== Design Tokens ===== */
+  /* ================= Design Tokens ================= */
   :root {
+    /* Theme vars (light defaults; dark overrides on body.dark) */
     --bg: #f6f7fb;
     --card: #ffffff;
-    --text: #0f172a; /* slate-900 */
+    --text: #0f172a;
     --subtext: #475467;
     --muted: #667085;
     --border: #e5e7eb;
-    --ring: 0 0 0 6px rgba(59,130,246,.12); /* blue-500 */
+
+    --primary:#111827;
+    --in:#16a34a;
+    --out:#dc2626;
+    --action: var(--in); /* will be set dynamically via JS on setAction */
 
     --ok-bg: #dcfce7; --ok-text:#166534; --ok-border:#bbf7d0;
     --warn-bg: #fee2e2; --warn-text:#991b1b; --warn-border:#fecaca;
     --nfc-bg:#e0e7ff; --nfc-text:#3730a3; --nfc-border:#c7d2fe;
 
-    --primary:#111827; /* zinc-900 */
-    --in:#16a34a; --out:#dc2626;
-
     --radius-xl: 18px; --radius-lg:14px; --radius-md:12px; --radius-sm:10px; --radius-pill:999px;
     --shadow-1: 0 10px 30px rgba(0,0,0,.08);
     --shadow-2: 0 14px 40px rgba(0,0,0,.18);
-
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    --ring: 0 0 0 6px rgba(59,130,246,.16);
   }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --bg:#0b1020;            /* deep slate/navy */
-      --card:#0f172a;          /* slate-900 */
-      --text:#e5e7eb;          /* slate-200 */
-      --subtext:#cbd5e1;       /* slate-300 */
-      --muted:#94a3b8;         /* slate-400 */
-      --border:#1f2937;        /* slate-800 */
-      --primary:#e5e7eb;
-      --shadow-1: 0 10px 30px rgba(0,0,0,.5);
-      --shadow-2: 0 14px 40px rgba(0,0,0,.6);
-    }
+  body.dark {
+    --bg:#0b1020;
+    --card:#0f172a;
+    --text:#e5e7eb;
+    --subtext:#cbd5e1;
+    --muted:#94a3b8;
+    --border:#1f2937;
+    --primary:#e5e7eb;
+    --shadow-1: 0 10px 30px rgba(0,0,0,.5);
+    --shadow-2: 0 14px 40px rgba(0,0,0,.6);
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height:100%; }
-  body { display:flex; min-height:100svh; margin:0; background:var(--bg); color:var(--text); }
+  body { display:flex; min-height:100svh; margin:0; background:var(--bg); color:var(--text); font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
 
-  /* ===== Layout ===== */
+  /* ================= Layout ================= */
   .wrap { margin:auto; width:min(1100px,96%); background:var(--card); padding:28px; border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; outline: none; }
   h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .sub { color:var(--subtext); margin-bottom:18px; font-size:16px; }
@@ -64,9 +62,7 @@
     padding:18px 20px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:var(--radius-md); width:100%; background:transparent; color:var(--text);
     outline: none; transition: box-shadow .2s ease, border-color .2s ease, transform .06s ease;
   }
-  @media (prefers-color-scheme: dark){
-    input[type="password"], input[type="search"], input[type="text"] { border-color:#334155; }
-  }
+  body.dark input[type="password"], body.dark input[type="search"], body.dark input[type="text"] { border-color:#334155; }
   input:focus-visible { border-color:#3b82f6; box-shadow: var(--ring); }
   input:active { transform: scale(.999); }
 
@@ -76,17 +72,11 @@
   @supports not (background: color-mix(in oklab, #000 0%, #fff 0%)) { .row{ background: rgba(127,127,127,.06); } }
   .name { font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-  .btn { padding:14px 18px; border:0; border-radius:var(--radius-lg); font-size:18px; cursor:pointer; font-weight:800; line-height:1; transition: transform .06s ease, box-shadow .2s ease, opacity .2s ease;
-         background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  .btn { padding:14px 18px; border:0; border-radius:var(--radius-lg); font-size:18px; cursor:pointer; font-weight:800; line-height:1; transition: transform .06s ease, box-shadow .2s ease, opacity .2s ease; background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
   .btn:active { transform: scale(.992); }
   .btn.primary { background:var(--primary); color:#fff; border-color: transparent; }
-  .btn.ghost { background:transparent; }
 
-  .status { margin-top:12px; min-height:32px; font-weight:800; font-size:18px; }
-  .good { color:#0f766e; }
-  .bad { color:#b91c1c; }
-
-  /* ===== BIG IN/OUT toggle ===== */
+  /* ================= Action Segment (IN/OUT) ================= */
   .segment { display:flex; gap:14px; width:100%; }
   .segment.segment-xl button {
     flex:1 1 0;
@@ -96,12 +86,9 @@
     transition: transform .06s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease;
     touch-action: manipulation; user-select:none;
   }
-  @media (prefers-color-scheme: dark){
-    .segment.segment-xl button { border-color:#334155; background:linear-gradient(180deg, #111827 0%, #0b1220 100%); color:var(--text); }
-  }
+  body.dark .segment.segment-xl button { border-color:#334155; background:linear-gradient(180deg, #111827 0%, #0b1220 100%); color:var(--text); }
   .segment.segment-xl button:focus-visible { outline: none; box-shadow: var(--ring); border-color:#3b82f6; }
   .segment.segment-xl button:active { transform: translateY(1px); }
-
   .segment.segment-xl button.active#actIn {
     background:linear-gradient(180deg, color-mix(in oklab, var(--in) 94%, #fff 6%), color-mix(in oklab, var(--in) 88%, #000 12%));
     color:#fff; border-color:var(--in); box-shadow:0 0 0 4px rgba(22,163,74,.25);
@@ -117,42 +104,48 @@
     .segment.segment-xl button.active#actOut { background: var(--out); }
   }
 
-  @media (prefers-reduced-motion: reduce){
-    .segment.segment-xl button, .btn { transition: none; }
-    .toast { transition: none; }
-    @keyframes pulse { from{box-shadow:none} to{box-shadow:none} }
+  /* ================= Search Submit (matches current action) ================= */
+  .actionBtn {
+    --c: var(--action);
+    background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
+    color:#fff;
+    font-size:20px;
+    padding:16px 20px;
+    border:2px solid var(--c);
+    border-radius:14px;
+    font-weight:900;
+    cursor:pointer;
+    transition: transform .06s ease, filter .15s ease, box-shadow .2s ease;
+    box-shadow:0 6px 14px rgba(0,0,0,.12);
+    position:relative;
+    overflow:hidden;
   }
-
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(0,0,0,0);} 50%{box-shadow:0 0 0 6px rgba(0,0,0,.06);} 100%{box-shadow:0 0 0 4px rgba(0,0,0,0);} }
-
-  /* ===== Toast ===== */
-  .toast {
-    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
-    opacity: 0; background: var(--card); border:1px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,.12);
-    border-radius: var(--radius-lg); padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px;
+  .actionBtn:hover { filter:brightness(.96); transform:translateY(-1px); }
+  .actionBtn:active { transform:scale(.985); box-shadow: inset 0 3px 8px rgba(0,0,0,.25); }
+  /* Ripple (created via JS) */
+  .actionBtn .ripple {
+    position:absolute; border-radius:50%; transform:scale(0); opacity:.35; background:#fff; pointer-events:none;
+    animation:ripple .6s ease-out forwards;
   }
+  @keyframes ripple { to { transform:scale(12); opacity:0; } }
+
+  /* ================= Toast & Badges ================= */
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--card); border:1px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,.12); border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  /* ===== Badges + admin button ===== */
   .badges { position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
-  .badge { font-size:12px; font-weight:800; padding:6px 10px; border-radius:var(--radius-pill); border:1px solid var(--border); background:var(--card); color:var(--text); }
+  .badge { font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .badge.offline { background:var(--warn-bg); color:var(--warn-text); border-color:var(--warn-border); }
   .badge.ok { background:var(--ok-bg); color:var(--ok-text); border-color:var(--ok-border); }
   .badge.nfc { background:var(--nfc-bg); color:var(--nfc-text); border-color:var(--nfc-border); }
-  .gear { border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:var(--radius-sm); padding:6px 10px; cursor:pointer; font-weight:800; }
-  .gear:focus-visible { outline:none; box-shadow: var(--ring); border-color:#3b82f6; }
+  .gear { border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
+  .gear:focus-visible { outline:none; box-shadow: var(--ring); }
 
-  /* ===== Admin panel (drawer) ===== */
-  .drawer {
-    position: fixed; right: 16px; top: 64px; width: min(520px, 92%); max-height: 80vh;
-    border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
-    padding:16px; overflow:auto; display:none; z-index:20; color:var(--text);
-  }
+  /* ================= Admin Drawer ================= */
+  .drawer { position: fixed; right: 16px; top: 64px; width: min(520px, 92%); max-height: 80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2); padding:16px; overflow:auto; display:none; z-index:20; color:var(--text); }
   .drawer h3 { margin:0 0 10px; font-size:18px; }
   .opt { display:flex; gap:10px; align-items:center; margin:8px 0; }
   .opt label { font-size:14px; }
   .hint { color:var(--muted); font-size:12px; margin-top:6px; }
-
   .live { margin-top:14px; border-top:1px dashed var(--border); padding-top:12px; }
   .kv { display:grid; grid-template-columns: 140px 1fr; gap:8px 12px; font-size:14px; }
   .kv .k { color:var(--muted); }
@@ -163,19 +156,18 @@
 
   /* NFC buttons */
   .nfcBar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn {
-    padding:14px 18px; border-radius:var(--radius-md); border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
-  }
-  .nfcBtn:focus-visible { outline:none; box-shadow: 0 0 0 6px rgba(79,70,229,.2); }
+  .nfcBtn { padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease; }
   .nfcBtn.secondary { background:transparent; color:#4f46e5; }
+  .nfcBtn:focus-visible { outline:none; box-shadow: 0 0 0 6px rgba(79,70,229,.2); }
 
-  /* Validity styling */
-  input#pin.invalid { border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); }
-  input#pin.valid   { border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.15); }
+  .status { margin-top:12px; min-height:32px; font-weight:800; font-size:18px; }
+  .good { color:#0f766e; }
+  .bad { color:#b91c1c; }
 
-  /* Footer */
   .foot { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; margin-top:8px; gap:12px; flex-wrap:wrap; }
+
+  @media (prefers-reduced-motion: reduce){ .segment.segment-xl button, .btn, .actionBtn, .toast { transition: none; } @keyframes pulse { from{box-shadow:none} to{box-shadow:none} } }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(0,0,0,0);} 50%{box-shadow:0 0 0 6px rgba(0,0,0,.06);} 100%{box-shadow:0 0 0 4px rgba(0,0,0,0);} }
 
   @media (max-width: 900px) {
     .grid { grid-template-columns: 1fr; }
@@ -190,11 +182,12 @@
       <div id="netBadge" class="badge ok">Online</div>
       <div id="nfcBadge" class="badge nfc" style="display:none;">NFC Ready</div>
       <div id="actBadge" class="badge">IN</div>
+      <button id="themeBtn" class="gear" title="Toggle theme" aria-pressed="false" aria-label="Toggle dark mode">🌙 Dark</button>
       <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin">Admin</button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name. Android Chrome supports Web NFC; iPhone uses a Bluetooth/USB keyboard‑wedge reader or manual entry.</p>
+    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name. Android Chrome supports Web NFC; iPhone uses a Bluetooth/USB keyboard-wedge reader or manual entry.</p>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
@@ -282,8 +275,13 @@
 <script>
   // ====== CONFIG ======
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-  const PIN_REQUIRED_LEN = 10;
   const COOLDOWN_MS = 400;
+  const THEME_KEY = 'theme'; // 'light' | 'dark'
+  const RULE_KEY = 'nfcRule';
+  const TRIM_KEY = 'wedgeTrim';
+  const IGNENTER_KEY = 'wedgeIgnoreEnter';
+  const DEBUG_KEY = 'debugOn';
+  const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
 
   // ====== DOM ======
   const $ = sel => document.querySelector(sel);
@@ -293,16 +291,29 @@
   const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
   const adminBtn = $('#adminBtn'), admin = $('#admin'), adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
+  const themeBtn = $('#themeBtn');
+  const metaTheme = document.querySelector('#meta-theme');
   // live admin elements
   const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
-  // ====== Admin state ======
-  const RULE_KEY = 'nfcRule';
-  const TRIM_KEY = 'wedgeTrim';
-  const IGNENTER_KEY = 'wedgeIgnoreEnter';
-  const DEBUG_KEY = 'debugOn';
-  const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
+  // ====== Theme ======
+  function setTheme(mode){
+    const dark = mode === 'dark';
+    document.body.classList.toggle('dark', dark);
+    themeBtn.setAttribute('aria-pressed', String(dark));
+    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
+    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
+    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  }
+  function initTheme(){
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved) { setTheme(saved); return; }
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setTheme(prefersDark ? 'dark' : 'light');
+  }
+  themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
+  // ====== Admin state helpers ======
   function lsGet(k, def){ const v = localStorage.getItem(k); return v==null ? def : v; }
   function lsSet(k, v){ localStorage.setItem(k, v); }
   function getSelectedNfcRule(){ return lsGet(RULE_KEY, DEFAULTS[RULE_KEY]); }
@@ -346,8 +357,6 @@
       setTimeout(()=>{ if (qEl.setSelectionRange) { const l=qEl.value.length; qEl.setSelectionRange(l,l); } },0);
     } catch(_) {}
   }
-
-  document.addEventListener('DOMContentLoaded', focusPin);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPin(); });
   const firstTap = () => { focusPin(); window.removeEventListener('pointerdown', firstTap); };
@@ -375,11 +384,17 @@
 
   // ====== Action toggle ======
   function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
+  function applyActionColor(){
+    const act = currentAction();
+    const color = act === 'in' ? getComputedStyle(document.documentElement).getPropertyValue('--in') : getComputedStyle(document.documentElement).getPropertyValue('--out');
+    document.documentElement.style.setProperty('--action', color.trim() || (act==='in'?'#16a34a':'#dc2626'));
+  }
   function setAction(a){
     const inActive = (a === 'in');
     btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
     btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
     actBadge.textContent = inActive ? 'IN' : 'OUT';
+    applyActionColor();
     setTimeout(() => focusPin(), 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
@@ -417,9 +432,10 @@
   }
 
   // ====== Submit API ======
+  let lastSubmitAt = 0;
   async function submitPinOrId({ pin, personId }) {
     const act = currentAction();
-    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}) , ...(personId?{personId}:{}) }).toString();
+    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
     try {
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const text = await res.text(); let data=null; try { data = JSON.parse(text); } catch {}
@@ -444,8 +460,6 @@
 
   // ====== Auto-submit only (ignore Enter) ======
   let pinTimer = null;
-  let lastSubmitAt = 0;
-
   pinEl.addEventListener('input', () => {
     clearTimeout(pinTimer);
     const norm = normalizeToTenDigits(pinEl.value || '');
@@ -467,7 +481,7 @@
   });
 
   pinEl.addEventListener('keydown', (e) => {
-    if (lsGet('wedgeIgnoreEnter', '1') === '1' && e.key === 'Enter') {
+    if (lsGet(IGNENTER_KEY, '1') === '1' && e.key === 'Enter') {
       e.preventDefault(); e.stopPropagation();
     }
   });
@@ -480,6 +494,19 @@
     if (!q) { setMsg('Ready.', 'muted'); return; }
     searchTimer = setTimeout(() => doSearch(q), 160);
   });
+
+  function makeRipple(e, btn){
+    const r = document.createElement('span');
+    r.className = 'ripple';
+    const rect = btn.getBoundingClientRect();
+    const d = Math.max(rect.width, rect.height);
+    r.style.width = r.style.height = d + 'px';
+    r.style.left = (e.clientX - rect.left - d/2) + 'px';
+    r.style.top  = (e.clientY - rect.top  - d/2) + 'px';
+    btn.appendChild(r);
+    r.addEventListener('animationend', () => r.remove());
+  }
+
   async function doSearch(q) {
     setMsg('Searching…', 'muted');
     try {
@@ -492,11 +519,12 @@
       data.forEach(({ firstName, lastName, personId }) => {
         const row = document.createElement('div'); row.className = 'row'; row.setAttribute('role','listitem');
         const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
-        const btn = document.createElement('button'); btn.className = 'btn primary'; btn.textContent = 'Submit';
-        btn.addEventListener('click', () => { submitPinOrId({ personId }); focusPin(); });
+        const btn = document.createElement('button'); btn.className = 'actionBtn'; btn.textContent = 'Submit';
+        btn.addEventListener('click', (e) => { makeRipple(e, btn); submitPinOrId({ personId }); focusPin(); });
         row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
       });
       setMsg('Select a name then click Submit (uses selected IN/OUT).', 'muted');
+      applyActionColor(); // ensure buttons match current state
     } catch {
       resultsEl.innerHTML = '<div class="bad">Search failed.</div>'; setMsg('Search failed', 'bad');
     }
@@ -504,7 +532,7 @@
 
   // ====== NFC (Android Chrome) ======
   function supportsWebNFC(){ return 'NDEFReader' in window; }
-  function DEBUG_ON(){ return lsGet('debugOn','0') === '1'; }
+  function DEBUG_ON(){ return lsGet(DEBUG_KEY,'0') === '1'; }
   function nfcUidToTen(uidHex){
     const rule = getSelectedNfcRule();
     return uidToTenByRule(uidHex, rule);
@@ -588,8 +616,13 @@
     }
   });
 
-  // Initialize defaults and UI
-  setAction('in'); focusPin(); mountAdmin();
+  // ====== Init ======
+  document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
+    setAction('in');   // sets initial action + action color
+    mountAdmin();
+    focusPin();
+  });
 </script>
 </body>
 </html>
