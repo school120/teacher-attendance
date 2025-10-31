@@ -63,10 +63,18 @@
 
   input[type=text], input[type=password]{
     width:100%; padding:18px 20px; font-size:24px;
-    border:1.5px solid var(--border); border-radius:12px; background:transparent; color:var(--text);
-    outline:none; transition:border-color .2s ease, box-shadow .2s ease;
+    border:1.5px solid var(--border); border-radius:12px;
+    background:var(--card); color:var(--text);
+    outline:none; transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
   }
-  input:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); }
+  input[type=text]:focus-visible, input[type=password]:focus-visible{
+    border-color:#3b82f6; box-shadow:var(--ring);
+  }
+  input:-webkit-autofill{
+    -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important;
+    -webkit-text-fill-color:var(--text) !important;
+    transition:background-color 5000s ease-in-out 0s;
+  }
 
   .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
   .row{ display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid var(--border); border-radius:12px;
@@ -97,14 +105,6 @@
     padding:16px; overflow:auto; display:none; z-index:20; color:var(--text);
   }
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
-  .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
-  .hint{ color:var(--muted); font-size:12px; margin-top:6px; }
-  .live{ margin-top:14px; border-top:1px dashed var(--border); padding-top:12px; }
-  .kv{ display:grid; grid-template-columns:140px 1fr; gap:8px 12px; font-size:14px; }
-  .kv .k{ color:var(--muted); }
-  .log{ margin-top:10px; max-height:200px; overflow:auto; background: color-mix(in oklab, var(--card) 85%, var(--bg) 15%); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--text); }
-  .log .item{ padding:4px 0; border-bottom:1px dashed var(--border); }
-  .log .item:last-child{ border-bottom:0; }
 
   @media (max-width:900px){
     .grid{ grid-template-columns:1fr; }
@@ -113,8 +113,8 @@
 </style>
 </head>
 <body>
-  <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
-    <div class="badges" aria-live="polite" aria-atomic="true">
+  <div class="wrap">
+    <div class="badges">
       <div id="netBadge" class="badge">Online</div>
       <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
       <div id="actBadge" class="badge">IN</div>
@@ -123,17 +123,17 @@
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name.</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or search the faculty directory.</p>
 
-    <div class="segment segment-xl" role="tablist" aria-label="Action">
-      <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
-      <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
+    <div class="segment segment-xl">
+      <button id="actIn" class="active">IN</button>
+      <button id="actOut">OUT</button>
     </div>
 
     <div class="grid">
       <div class="card">
         <h2>Quick Pin</h2>
-        <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="\d{10}" maxlength="10" placeholder="Enter 10-digit code…" type="password" aria-label="Quick Pin" />
+        <input id="pin" type="password" maxlength="10" placeholder="Enter 10-digit code…" />
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
           <button id="nfcStop" class="nfcBtn secondary">Stop</button>
@@ -142,381 +142,146 @@
 
       <div class="card">
         <h2>Lookup by Name</h2>
-        <input id="q" type="text" inputmode="search" enterkeyhint="search" autocomplete="name"
+        <input id="q" type="text" inputmode="search" enterkeyhint="search"
                autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Type first, last, or both (e.g., “Sara Cohen”)" aria-label="Search teacher by name" />
-        <div id="results" class="list" role="list" aria-live="polite"></div>
+               placeholder="Search faculty directory" aria-label="Search teacher by name" />
+        <div id="results" class="list"></div>
       </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <!-- Admin drawer with Live Reader -->
   <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
     <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
-
-    <div style="margin-top:8px;">
-      <strong>NFC mapping rule</strong>
-      <div class="hint">Use a different rule if some cards don’t match. Default is HEX_LE_PAD10.</div>
-      <div class="opt"><input type="radio" name="rule" value="HEX_LE_PAD10" id="r1"><label for="r1">HEX_LE_PAD10 (last 4 bytes, little-endian → dec → pad10)</label></div>
-      <div class="opt"><input type="radio" name="rule" value="HEX_BE_PAD10" id="r2"><label for="r2">HEX_BE_PAD10 (last 4 bytes, big-endian → dec → pad10)</label></div>
-      <div class="opt"><input type="radio" name="rule" value="LAST3_DEC_PAD10" id="r3"><label for="r3">LAST3_DEC_PAD10 (last 3 bytes, big-endian → dec → pad10)</label></div>
-      <div class="opt"><input type="radio" name="rule" value="FULL_UID_DEC_PAD10" id="r4"><label for="r4">FULL_UID_DEC_PAD10 (full UID big-endian → dec → last10)</label></div>
-      <div class="opt"><input type="radio" name="rule" value="PASS_THROUGH_DIGITS_PAD10" id="r5"><label for="r5">PASS_THROUGH_DIGITS_PAD10 (reader already types digits)</label></div>
-    </div>
-
-    <div style="margin-top:14px;">
-      <strong>Keyboard wedge</strong>
-      <div class="opt"><input type="checkbox" id="ckTrim" checked><label for="ckTrim">Trim to digits & pad to 10 (recommended)</label></div>
-      <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevents double submit)</label></div>
-    </div>
-
-    <div style="margin-top:14px;">
-      <strong>Debug</strong>
-      <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show UID → computed 10-digit in toast</label></div>
-      <div class="hint">Toggle also with Shift + D.</div>
-    </div>
-
-    <div class="live">
-      <h3 style="margin-bottom:8px;">Live Reader</h3>
-      <div class="kv">
-        <div class="k">Rule</div><div id="liveRule">HEX_LE_PAD10</div>
-        <div class="k">Last UID</div><div id="liveUid">—</div>
-        <div class="k">Last 10-digit</div><div id="liveTen">—</div>
-      </div>
-      <div class="log" id="liveLog" aria-label="Reader log"></div>
-    </div>
-
-    <div style="margin-top:14px; display:flex; gap:8px;">
-      <button id="adminClose" class="gear" style="gap:8px;"><span>✖️</span><span>Close</span></button>
-      <button id="adminReset" class="gear" style="gap:8px;"><span>↺</span><span>Reset to defaults</span></button>
-      <button id="adminClearLog" class="gear" style="gap:8px;"><span>🧹</span><span>Clear Log</span></button>
-    </div>
+    <p class="muted">Manage reader configuration and debug live activity.</p>
   </div>
 
 <script>
-  // ====== CONFIG ======
+  // Endpoint
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-  const COOLDOWN_MS = 400;
-  const THEME_KEY = 'theme';
-  const RULE_KEY = 'nfcRule';
-  const TRIM_KEY = 'wedgeTrim';
-  const IGNENTER_KEY = 'wedgeIgnoreEnter';
-  const DEBUG_KEY = 'debugOn';
-  const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
 
-  // ====== DOM ======
   const $ = s => document.querySelector(s);
-  const pinEl = $('#pin'), qEl = $('#q'), resultsEl = $('#results'), toastEl = $('#toast');
+  const toastEl = $('#toast'), pinEl = $('#pin'), qEl = $('#q');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), actBadge = $('#actBadge');
-  const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
-  const adminBtn = $('#adminBtn'), admin = $('#admin'), adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
-  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
-  const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
-  const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
+  const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStart = $('#nfcStart'), nfcStop = $('#nfcStop');
+  const themeBtn = $('#themeBtn'), adminBtn = $('#adminBtn'), adminDrawer = $('#admin');
 
-  // ====== Theme ======
-  function setTheme(mode){
-    const dark = mode === 'dark';
-    document.body.classList.toggle('dark', dark);
-    themeBtn.setAttribute('aria-pressed', String(dark));
-    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
-    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
-    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  let lastSubmitAt = 0;
+  const COOLDOWN = 400;
+
+  // Theme toggle
+  function toggleTheme(){
+    document.body.classList.toggle('dark');
+    themeBtn.textContent = document.body.classList.contains('dark') ? '☀️ Light' : '🌙 Dark';
   }
-  function initTheme(){
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved) { setTheme(saved); return; }
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    setTheme(prefersDark ? 'dark' : 'light');
+  themeBtn.addEventListener('click', toggleTheme);
+
+  // Toast
+  let toastTimer=null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>toastEl.classList.remove('show'),2400);
   }
-  themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ====== Admin state ======
-  function lsGet(k, def){ const v = localStorage.getItem(k); return v==null ? def : v; }
-  function lsSet(k, v){ localStorage.setItem(k, v); }
-  function getSelectedNfcRule(){ return lsGet(RULE_KEY, DEFAULTS[RULE_KEY]); }
-
-  function mountAdmin(){
-    (document.querySelector(`input[name="rule"][value="${getSelectedNfcRule()}"]`) || $('#r1')).checked = true;
-    ckTrim.checked = lsGet(TRIM_KEY, DEFAULTS[TRIM_KEY]) === '1';
-    ckIgnoreEnter.checked = lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1';
-    ckDebug.checked = lsGet(DEBUG_KEY, DEFAULTS[DEBUG_KEY]) === '1';
-    liveRuleEl.textContent = getSelectedNfcRule();
-  }
-  function showAdmin(show=true){ admin.style.display = show ? 'block' : 'none'; }
-  adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); admin.setAttribute('aria-modal','true'); });
-  adminClose.addEventListener('click', () => { showAdmin(false); admin.setAttribute('aria-modal','false'); });
-  adminReset.addEventListener('click', () => {
-    Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
-    mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
-    showToast('Admin reset to defaults');
-  });
-  adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; });
-
-  document.querySelectorAll('input[name="rule"]').forEach(r => {
-    r.addEventListener('change', () => {
-      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPin(); }
-    });
-  });
-  ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
-  ckIgnoreEnter.addEventListener('change', () => lsSet(IGNENTER_KEY, ckIgnoreEnter.checked ? '1' : '0'));
-  ckDebug.addEventListener('change', () => lsSet(DEBUG_KEY, ckDebug.checked ? '1' : '0'));
-  window.addEventListener('keydown', (e) => {
-    if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
-      const nv = lsGet(DEBUG_KEY, '0') === '1' ? '0' : '1';
-      lsSet(DEBUG_KEY, nv); showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
-    }
-  });
-
-  // ====== Toast (single surface) ======
-  let toastTimer = null;
-  function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2600); }
-
-  // ====== Focus mgmt ======
-  function focusPin(){ try{ pinEl.focus(); pinEl.select?.(); }catch{} }
-  function focusName(){ try{ qEl.focus({preventScroll:true}); setTimeout(()=>{ if(qEl.setSelectionRange){ const l=qEl.value.length; qEl.setSelectionRange(l,l); } },0); }catch{} }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
-  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPin(); });
-  const firstTap = () => { focusPin(); window.removeEventListener('pointerdown', firstTap); };
-  window.addEventListener('pointerdown', firstTap, { once:true });
-
-  // prevent refocus while typing name
-  let nameFocusHold=false;
-  qEl.addEventListener('focus', ()=>{ nameFocusHold=true; });
-  qEl.addEventListener('blur', ()=>{ setTimeout(()=>{ nameFocusHold=false; },200); });
-  qEl.closest('.card').addEventListener('click', (e)=>{ if (e.target !== qEl) focusName(); });
-
-  // ====== Network badge ======
-  function onlineChanged(){
+  // Online/offline
+  function updateNet(){
     const on = navigator.onLine;
     netBadge.textContent = on ? 'Online' : 'Offline';
-    netBadge.className = 'badge ' + (on ? '' : 'offline');
+    netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
+    netBadge.style.color = on ? 'var(--text)' : '#991b1b';
   }
-  window.addEventListener('online', onlineChanged);
-  window.addEventListener('offline', onlineChanged);
-  onlineChanged();
+  window.addEventListener('online',updateNet);
+  window.addEventListener('offline',updateNet);
+  updateNet();
 
-  // ====== Action toggle ======
-  function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
+  // Action toggle
   function setAction(a){
-    const inActive = (a === 'in');
-    btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
-    btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
-    actBadge.textContent = inActive ? 'IN' : 'OUT';
-    setTimeout(() => focusPin(), 0);
+    const inActive=(a==='in');
+    btnIn.classList.toggle('active',inActive);
+    btnOut.classList.toggle('active',!inActive);
+    actBadge.textContent = inActive?'IN':'OUT';
   }
-  btnIn.addEventListener('click', ()=>setAction('in'));
-  btnOut.addEventListener('click', ()=>setAction('out'));
-  window.addEventListener('keydown', (e)=>{ if (e.key==='ArrowLeft') setAction('in'); if (e.key==='ArrowRight') setAction('out'); });
+  btnIn.addEventListener('click',()=>setAction('in'));
+  btnOut.addEventListener('click',()=>setAction('out'));
 
-  // ====== Normalize to 10 digits ======
-  function normalizeToTenDigits(raw){
-    const trimOn = lsGet(TRIM_KEY,'1') === '1';
-    if (!trimOn) return String(raw || '');
-    if (raw == null) return '';
-    const digits = String(raw).replace(/\D+/g,'');
-    if (!digits) return '';
-    return digits.length <= 10 ? digits.padStart(10,'0') : digits.slice(-10);
-  }
-
-  // ====== UID conversion helpers ======
-  function hexToBytes(hex){ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; }
-  function bytesToNumberLE(bytes){ return bytes.reduceRight((a,b)=>(a*256+b)>>>0,0); }
-  function bytesToNumberBE(bytes){ return bytes.reduce((a,b)=>(a*256+b)>>>0,0); }
-  function pad10(n){ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); }
-  function uidToTenByRule(uidHex, ruleId){
-    const bytes = hexToBytes(uidHex);
-    switch (ruleId) {
-      case 'HEX_LE_PAD10': return pad10(bytesToNumberLE(bytes.slice(-4)));
-      case 'HEX_BE_PAD10': return pad10(bytesToNumberBE(bytes.slice(-4)));
-      case 'LAST3_DEC_PAD10': return pad10(bytesToNumberBE(bytes.slice(-3)));
-      case 'FULL_UID_DEC_PAD10': return pad10(bytesToNumberBE(bytes));
-      case 'PASS_THROUGH_DIGITS_PAD10': return normalizeToTenDigits(uidHex);
-      default: return '';
-    }
-  }
-
-  // ====== Submit API ======
-  let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId }){
-    const act = currentAction();
-    const body = new URLSearchParams({ action:act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
-    try{
-      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok || (data && data.error)){
-        const msg = (data && data.error) ? String(data.error) : ('Error ' + res.status);
-        const nicer = /not found/i.test(msg) ? 'Quick Pin / Person not found in Directory' : msg;
-        showToast(nicer); return;
-      }
-      const { status, firstName, lastName, time, paired } = data || {};
-      const extra = (status === 'out' && typeof paired === 'boolean') ? (paired ? ' (paired)' : ' (no prior IN)') : '';
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : 'UPDATED';
-      const line = `${firstName||''} ${lastName||''} signed ${verb}${extra} — ${time||''}`.trim();
-      showToast(line || 'Done.');
-      try { navigator.vibrate?.(30); } catch {}
-    }catch{
-      showToast('Network error');
-    }finally{
-      lastSubmitAt = Date.now();
-      focusPin();
-    }
-  }
-
-  // ====== Pin: auto-submit (ignore Enter) ======
-  let pinTimer = null;
-  pinEl.addEventListener('input', ()=>{
-    clearTimeout(pinTimer);
-    const norm = normalizeToTenDigits(pinEl.value || '');
-    if (!norm) return;
-    if (norm.length === 10){
-      pinTimer = setTimeout(()=>{
-        if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-        pinEl.value = norm;
-        submitPinOrId({ pin:norm });
-        pinEl.value = '';
-        showToast('Submitted.');
-      }, 180);
+  // Submit pin
+  pinEl.addEventListener('input',()=>{
+    const val = pinEl.value.replace(/\D+/g,'');
+    if(val.length===10){
+      if(Date.now()-lastSubmitAt<COOLDOWN)return;
+      submit({pin:val});
+      pinEl.value='';
+      lastSubmitAt=Date.now();
     }
   });
-  pinEl.addEventListener('keydown', (e)=>{ if (lsGet(IGNENTER_KEY,'1')==='1' && e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); } });
 
-  // ====== Search (supports "first last") ======
-  let searchTimer = null;
-  qEl.addEventListener('input', ()=>{
+  async function submit({pin,personId}){
+    try{
+      const act = btnIn.classList.contains('active')?'in':'out';
+      const body = new URLSearchParams({action:act,...(pin?{pin}:{personId})});
+      const res=await fetch(ENDPOINT,{method:'POST',body});
+      const data=await res.json();
+      if(data.error){ showToast(data.error); return; }
+      const msg=`${data.firstName||''} ${data.lastName||''} signed ${data.status?.toUpperCase()} — ${data.time||''}`;
+      showToast(msg);
+    }catch{ showToast('Network error'); }
+  }
+
+  // Search
+  let searchTimer=null;
+  qEl.addEventListener('input',()=>{
     clearTimeout(searchTimer);
-    const q = qEl.value.trim();
-    resultsEl.innerHTML = '';
-    if (!q) return;
-    searchTimer = setTimeout(()=>doSearch(q), 160);
+    const q=qEl.value.trim();
+    if(!q){ $('#results').innerHTML=''; return; }
+    searchTimer=setTimeout(()=>doSearch(q),200);
   });
-  qEl.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter'){
-      clearTimeout(searchTimer);
-      const q = qEl.value.trim();
-      if (q) doSearch(q);
-      e.preventDefault();
-    }
-  });
-
-  // Tokenize query: collapse multiple spaces, split, lowercase
-  function queryTokens(q){
-    return q.toLowerCase().replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
-  }
-  function nameHaystack(first, last){
-    return `${(first||'').toLowerCase()} ${(last||'').toLowerCase()}`.trim();
-  }
-
   async function doSearch(q){
-    showToast('Searching…');
-    const tokens = queryTokens(q); // e.g., ["sara","cohen"]
     try{
-      const res = await fetch(ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`, { method:'GET' });
-      const data = await res.json();
-
-      let rows = Array.isArray(data) ? data : [];
-      // Local AND filter: every token must appear in "first last"
-      if (tokens.length){
-        rows = rows.filter(({ firstName, lastName }) => {
-          const hay = nameHaystack(firstName, lastName);
-          return tokens.every(t => hay.includes(t));
-        });
-      }
-
-      if (!rows.length){
-        resultsEl.innerHTML = '<div class="muted">No matches.</div>'; showToast('No matches'); return;
-      }
-
-      resultsEl.innerHTML = '';
-      rows.forEach(({ firstName, lastName, personId })=>{
-        const row = document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-        const name = document.createElement('div'); name.className='name'; name.textContent = `${firstName} ${lastName}`;
-        const btn = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-        btn.addEventListener('click', ()=>{ submitPinOrId({ personId }); focusPin(); });
-        row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
+      const res=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`);
+      const data=await res.json();
+      const box=$('#results');
+      if(!Array.isArray(data)||!data.length){ box.innerHTML='<div class="muted">No matches found.</div>'; return; }
+      box.innerHTML='';
+      data.forEach(p=>{
+        const row=document.createElement('div');
+        row.className='row';
+        row.innerHTML=`<div class="name">${p.firstName} ${p.lastName}</div>`;
+        const btn=document.createElement('button');
+        btn.className='actionBtn';
+        btn.textContent='Submit';
+        btn.onclick=()=>submit({personId:p.personId});
+        row.appendChild(btn);
+        box.appendChild(row);
       });
-      showToast('Select a name then click Submit.');
-    }catch{
-      resultsEl.innerHTML = '<div class="muted">Search failed.</div>'; showToast('Search failed');
-    }
+    }catch{ showToast('Search failed'); }
   }
 
-  // ====== NFC (Android Chrome) ======
-  function supportsWebNFC(){ return 'NDEFReader' in window; }
-  function DEBUG_ON(){ return lsGet(DEBUG_KEY,'0')==='1'; }
-  function nfcUidToTen(uidHex){ return uidToTenByRule(uidHex, getSelectedNfcRule()); }
-  function hexToShort(uid){ return (uid || '').slice(-8); }
-  let ndef=null, nfcStarted=false;
-
-  function pushLive(uidHex, ten){
-    liveUidEl.textContent = uidHex || '—';
-    liveTenEl.textContent = ten || '—';
-    const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    const div = document.createElement('div'); div.className='item';
-    div.textContent = `[${ts}] UID:${hexToShort(uidHex)} → ${ten} (${getSelectedNfcRule()})`;
-    liveLogEl.appendChild(div); liveLogEl.scrollTop = liveLogEl.scrollHeight;
+  // NFC
+  if('NDEFReader' in window){
+    nfcBar.style.display='';
+    let ndef=new NDEFReader();
+    nfcStart.onclick=async()=>{
+      try{
+        await ndef.scan();
+        nfcBadge.style.display='';
+        showToast('NFC scanning started');
+        ndef.onreading=e=>{
+          const uid=e.serialNumber?.replace(/[^0-9A-F]/g,'')||'';
+          const pin=uid.slice(-10).padStart(10,'0');
+          if(pin)submit({pin});
+        };
+      }catch{ showToast('NFC not available'); }
+    };
+    nfcStop.onclick=()=>{ndef.onreading=null;showToast('NFC stopped');};
   }
 
-  async function startNFC(){
-    if (!supportsWebNFC() || nfcStarted) return;
-    try{
-      ndef = new NDEFReader(); await ndef.scan(); nfcStarted = true;
-      showToast('NFC scanning started'); nfcStartBtn.disabled = true; nfcStopBtn.disabled = false; nfcBadge.style.display='';
-      ndef.onreadingerror = ()=>{ showToast('NFC read error — try again'); };
-      ndef.onreading = (event)=>{
-        const { message, serialNumber } = event;
-        const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
-        let ten = '';
-        for (const record of message.records){
-          const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
-          if (!texty) continue;
-          try{
-            const td = new TextDecoder(record.encoding || 'utf-8');
-            const text = record.data ? td.decode(record.data) : '';
-            const maybe = normalizeToTenDigits(text); if (maybe){ ten = maybe; break; }
-          }catch{}
-        }
-        if (!ten && uidHex) ten = nfcUidToTen(uidHex);
-        pushLive(uidHex, ten);
-        if (DEBUG_ON()) showToast(`UID:${hexToShort(uidHex)} → ${ten} [${getSelectedNfcRule()}]`);
-        if (!ten){ showToast('NFC must resolve to a 10-digit code.'); return; }
-        if (Date.now() - lastSubmitAt >= COOLDOWN_MS){ submitPinOrId({ pin:ten }); showToast('NFC submitted.'); }
-        focusPin();
-      };
-    }catch{ showToast('NFC not permitted or unavailable'); }
-  }
-  function stopNFC(){
-    if (ndef){ ndef.onreading = null; ndef.onreadingerror = null; }
-    nfcStarted = false; nfcStartBtn.disabled = false; nfcStopBtn.disabled = true; showToast('NFC stopped.');
-    focusPin();
-  }
-  if (supportsWebNFC()){
-    nfcBar.style.display = '';
-    nfcStopBtn.disabled = true;
-    nfcStartBtn.addEventListener('click', startNFC);
-    nfcStopBtn.addEventListener('click', stopNFC);
-    const startOnFirstGesture = () => { startNFC(); focusPin(); window.removeEventListener('pointerdown', startOnFirstGesture); };
-    window.addEventListener('pointerdown', startOnFirstGesture, { once:true });
-  }
-
-  // keep focus on pin after most clicks
-  document.addEventListener('click', (e)=>{
-    if (nameFocusHold || e.target === qEl || qEl.contains(e.target)) return;
-    if (e.target !== pinEl && e.target !== nfcStartBtn && e.target !== nfcStopBtn && e.target !== adminBtn && !admin.contains(e.target)){
-      setTimeout(()=>focusPin(), 0);
-    }
-  });
-
-  // ====== Init ======
-  document.addEventListener('DOMContentLoaded', ()=>{
-    initTheme();
-    setAction('in');
-    mountAdmin();
-    focusPin();
-  });
+  // Admin drawer
+  adminBtn.onclick=()=>adminDrawer.style.display='block';
+  adminDrawer.onclick=e=>{if(e.target===adminDrawer)adminDrawer.style.display='none';};
 </script>
 </body>
 </html>
