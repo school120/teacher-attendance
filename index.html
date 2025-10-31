@@ -17,7 +17,6 @@
     --shadow-2:0 14px 40px rgba(0,0,0,.18);
     --ring:0 0 0 6px rgba(59,130,246,.16);
 
-    /* Safe-area support (iOS notches & home indicator) */
     --safe-top: env(safe-area-inset-top);
     --safe-right: env(safe-area-inset-right);
     --safe-bottom: env(safe-area-inset-bottom);
@@ -29,13 +28,12 @@
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  html { overflow-x:hidden; }  /* iOS bleed fix */
+  html { overflow-x:hidden; }  /* prevent sideways bleed */
 
-  /* PAGE scroll (enabled), iOS safe-area & keyboard friendly */
   body{
-    min-height:100svh;                /* stable viewport height on iOS */
-    overscroll-behavior-y:contain;    /* reduce rubber-banding */
-    overflow:auto;                    /* page handles scrolling */
+    min-height:100svh;
+    overscroll-behavior-y:contain;
+    overflow:auto;
     -webkit-overflow-scrolling:touch;
   }
 
@@ -80,7 +78,7 @@
   .gear:hover{ background: color-mix(in oklab, var(--card) 90%, var(--text) 10%); }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
-  /* Single toast surface */
+  /* Toast */
   .toast{
     position:fixed; left:50%;
     bottom:calc(24px + var(--safe-bottom));
@@ -92,7 +90,7 @@
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
-  /* Big IN/OUT buttons */
+  /* IN/OUT buttons */
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
     flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
@@ -111,7 +109,7 @@
     color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
 
-  /* Symmetrical grid + cards */
+  /* Grid + cards (symmetrical) */
   .grid{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -122,8 +120,8 @@
     border:1px solid var(--border); border-radius:14px; background:var(--card);
     padding:16px; margin-bottom:0;
     display:flex; flex-direction:column; height:100%;
-    overflow:hidden;                /* iOS bleed fix */
-    background-clip: padding-box;   /* iOS bleed fix */
+    overflow:hidden;               /* iOS bleed fix for inner scroller */
+    background-clip: padding-box;  /* keep rounded edge tight */
   }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
@@ -137,34 +135,41 @@
   input[type=text]:focus-visible, input[type=password]:focus-visible{
     border-color:#3b82f6; box-shadow:var(--ring);
   }
-  /* Autofill consistency */
   input:-webkit-autofill{
     -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important;
     -webkit-text-fill-color:var(--text) !important;
     transition:background-color 5000s ease-in-out 0s;
   }
 
-  /* Results pane: solid bg, inner scroll, stable scrollbar WITHOUT page shift */
+  /* Results list */
   .list{
     display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
     background: var(--card); background-clip: padding-box;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     flex:1 1 auto;
-    scrollbar-gutter: stable both-edges;  /* modern browsers */
-    padding-right: 12px;                  /* Safari fallback to avoid white slice */
+    scrollbar-gutter: stable both-edges;
+    padding-right:16px; /* a bit more to ensure button never clips */
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
   .list::-webkit-scrollbar-track { background:var(--card); }
   .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
 
+  /* OPTION A: Grid rows so name can shrink and button stays visible */
   .row{
-    display:flex; justify-content:space-between; align-items:center; gap:16px;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto; /* name | button lane */
+    align-items:center;
+    gap:12px;
     padding:14px 16px; border:1px solid var(--border); border-radius:12px;
     background: var(--card);
   }
-  .name{ font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .name{
+    min-width:0;                     /* allow shrink */
+    font-weight:800; font-size:20px; color:var(--text);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
 
   /* Blue Submit button */
   .actionBtn{
@@ -174,6 +179,7 @@
     border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
     transition:transform .06s ease, filter .15s ease, box-shadow .2s ease;
     box-shadow:0 6px 14px rgba(0,0,0,.12);
+    justify-self:end;               /* hug right edge neatly */
   }
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
@@ -206,14 +212,9 @@
   .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
   .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
 
-  /* Prevent header overlap on narrow screens: stack badges above header */
+  /* Mobile: stack badges above header */
   @media (max-width:620px){
-    .badges{
-      position:static;
-      margin:0 0 8px 0;
-      justify-content:flex-end;
-      gap:6px;
-    }
+    .badges{ position:static; margin:0 0 8px 0; justify-content:flex-end; gap:6px; }
     h1{ margin-top:2px; }
   }
   @media (max-width:900px){
@@ -335,7 +336,7 @@
 
   let lastSubmitAt = 0;
 
-  // ===== Theme (with persistence) =====
+  // ===== Theme =====
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
@@ -417,7 +418,7 @@
   ckIgnoreEnter.addEventListener('change', () => lsSet(IGNENTER_KEY, ckIgnoreEnter.checked ? '1' : '0'));
   ckDebug.addEventListener('change', () => lsSet(DEBUG_KEY, ckDebug.checked ? '1' : '0'));
 
-  // ===== Debug hotkey — Ctrl/⌘ + Shift + D, ignored inside inputs =====
+  // ===== Debug hotkey — Ctrl/⌘ + Shift + D (ignored while typing) =====
   function isTypingTarget(el){
     return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
   }
@@ -425,14 +426,14 @@
     const keyIsD = (e.key || '').toLowerCase() === 'd';
     const combo = keyIsD && e.shiftKey && (e.ctrlKey || e.metaKey);
     if (!combo) return;
-    if (isTypingTarget(document.activeElement)) return;  // don't toggle while typing
+    if (isTypingTarget(document.activeElement)) return;
     e.preventDefault();
     const nv = lsGet(DEBUG_KEY, '0') === '1' ? '0' : '1';
     lsSet(DEBUG_KEY, nv);
     showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
   });
 
-  // ===== Normalize to 10 digits (respects wedge trim option) =====
+  // ===== Normalize to 10 digits =====
   function normalizeToTenDigits(raw) {
     const trimOn = lsGet(TRIM_KEY, DEFAULTS[TRIM_KEY]) === '1';
     if (!trimOn) return String(raw || '');
@@ -442,7 +443,7 @@
     return digits.length <= 10 ? digits.padStart(10, '0') : digits.slice(-10);
   }
 
-  // ===== UID conversion helpers for Admin rules =====
+  // ===== UID conversion helpers =====
   const DEBUG_ON = () => lsGet(DEBUG_KEY,'0') === '1';
   const hexToBytes = (hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
   const bytesToNumberLE = (bytes)=> bytes.reduceRight((a,b)=>(a*256+b)>>>0,0);
@@ -481,7 +482,7 @@
     }
   }
 
-  // ===== Cougar Card input: auto-submit on exact 10 digits =====
+  // ===== Cougar Card: auto-submit on exact 10 digits =====
   pinEl.addEventListener('input', ()=>{
     let norm = normalizeToTenDigits(pinEl.value || '');
     if (!norm) return;
@@ -497,7 +498,7 @@
     }
   });
 
-  // ===== Name Search (multi-word supported by backend) =====
+  // ===== Name Search =====
   let searchTimer=null;
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
@@ -533,7 +534,7 @@
     }
   }
 
-  // ===== NFC (Android Chrome) with Admin rules + Live log =====
+  // ===== NFC (Android Chrome) =====
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
   function pushLive(uidHex, ten) {
@@ -566,7 +567,7 @@
           const { message, serialNumber } = event;
           const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
 
-          // Prefer a 10-digit text record if present; else map UID by rule
+          // Prefer 10-digit text record if present; else map UID by rule
           let ten = '';
           for (const record of message.records) {
             const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
@@ -581,7 +582,7 @@
           if (!ten && uidHex) ten = nfcUidToTen(uidHex);
 
           pushLive(uidHex, ten);
-          if (DEBUG_ON()) showToast(`UID:${hexToShort(uidHex)} → ${ten} [${getSelectedNfcRule()}]`);
+          if (lsGet(DEBUG_KEY,'0') === '1') showToast(`UID:${hexToShort(uidHex)} → ${ten} [${getSelectedNfcRule()}]`);
           if (!ten) { showToast('Cougar Card must resolve to a 10-digit code'); return; }
 
           if (Date.now() - lastSubmitAt >= COOLDOWN_MS) {
@@ -605,7 +606,6 @@
   // ===== Init =====
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
-    // Initialize admin defaults on first run
     Object.entries(DEFAULTS).forEach(([k,v]) => { if (localStorage.getItem(k) == null) localStorage.setItem(k,v); });
     setAction('in');
   });
