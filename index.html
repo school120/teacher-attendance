@@ -55,11 +55,7 @@
     background:#dc2626; color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
     animation: pulse 350ms ease-out;
   }
-  @keyframes pulse {
-    0% { box-shadow:0 0 0 0 rgba(0,0,0,0.0); }
-    50% { box-shadow:0 0 0 6px rgba(0,0,0,0.06); }
-    100% { box-shadow:0 0 0 4px rgba(0,0,0,0.0); }
-  }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(0,0,0,0);} 50%{box-shadow:0 0 0 6px rgba(0,0,0,.06);} 100%{box-shadow:0 0 0 4px rgba(0,0,0,0);} }
 
   /* Toast */
   .toast {
@@ -120,7 +116,7 @@
       <div id="netBadge" class="badge ok">Online</div>
       <div id="nfcBadge" class="badge nfc" style="display:none;">NFC Ready</div>
       <div id="actBadge" class="badge">IN</div>
-      <button id="adminBtn" class="gear" title="Admin">⚙️ Admin</button>
+      <button id="adminBtn" class="gear" title="Admin">Admin</button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
@@ -144,14 +140,13 @@
         <div id="pinStatus" class="status muted" aria-live="polite">Waiting for 10-digit code…</div>
 
         <div id="nfcBar" class="nfcBar" style="display:none;">
-          <button id="nfcStart" class="nfcBtn">🔷 Scan with NFC</button>
+          <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
           <button id="nfcStop"  class="nfcBtn secondary">Stop</button>
         </div>
       </div>
 
       <div class="card">
         <h2>Lookup by Name</h2>
-        <button type="button" id="focusNameBtn" class="btn" style="margin:6px 0 10px;">⌨️ Type Name</button>
         <input id="q" type="text" inputmode="search" enterkeyhint="search" autocomplete="name"
                autocapitalize="words" autocorrect="off" spellcheck="false"
                placeholder="Start typing first or last name" aria-label="Search teacher by name" />
@@ -221,7 +216,6 @@
   const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
   const adminBtn = $('#adminBtn'), admin = $('#admin'), adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
-  const focusNameBtn = $('#focusNameBtn');
   // live admin elements
   const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
@@ -275,7 +269,6 @@
       setTimeout(()=>{ if (qEl.setSelectionRange) { const l=qEl.value.length; qEl.setSelectionRange(l,l); } },0);
     } catch(_) {}
   }
-  focusNameBtn.addEventListener('click', focusName);
 
   document.addEventListener('DOMContentLoaded', focusPin);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
