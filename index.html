@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup." />
+<title>Attendance — Guard Console</title>
+<meta name="description" content="IN/OUT for faculty + student Veracross sign-in with fallback." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -16,14 +16,12 @@
     --shadow-1:0 10px 30px rgba(0,0,0,.08);
     --shadow-2:0 14px 40px rgba(0,0,0,.18);
     --ring:0 0 0 6px rgba(59,130,246,.16);
-
     --safe-top: env(safe-area-inset-top);
     --safe-right: env(safe-area-inset-right);
     --safe-bottom: env(safe-area-inset-bottom);
     --safe-left: env(safe-area-inset-left);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
-
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   html { overflow-x:hidden; }
@@ -39,11 +37,7 @@
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
-
-  .badges{
-    position:absolute; right:calc(18px + var(--safe-right)); top:calc(18px + var(--safe-top));
-    display:flex; gap:8px; align-items:center;
-  }
+  .badges{ position:absolute; right:calc(18px + var(--safe-right)); top:calc(18px + var(--safe-top)); display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; transition:background .2s ease; }
   .gear:hover{ background: color-mix(in oklab, var(--card) 90%, var(--text) 10%); }
@@ -70,10 +64,7 @@
   }
 
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
-  .card{
-    border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; margin-bottom:0;
-    display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box;
-  }
+  .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; overflow:hidden; }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
   input[type=text], input[type=password], input[type=search]{
@@ -81,22 +72,15 @@
     outline:none; transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
   }
   input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); }
-  input:-webkit-autofill{
-    -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important; -webkit-text-fill-color:var(--text) !important; transition:background-color 5000s ease-in-out 0s;
-  }
 
-  .list{
-    display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); background-clip: padding-box;
-    -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; scrollbar-gutter: stable both-edges; padding-right:16px;
-  }
+  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); padding-right:16px; }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
   .list::-webkit-scrollbar-track { background:var(--card); }
   .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
-
-  .sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
   .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
-  .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .name{ min-width:0; font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
 
   .actionBtn{
     --c: var(--blue);
@@ -108,67 +92,62 @@
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease; }
+  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
   .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
 
-  .drawer{
-    position:fixed; right:calc(16px + var(--safe-right)); top:calc(64px + var(--safe-top));
-    width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
-    padding:16px; overflow:auto; display:none; z-index:40; color:var(--text);
+  /* Ribbon for manual Veracross fallback */
+  .ribbon{
+    display:none; position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(80px + var(--safe-bottom));
+    background:var(--card); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow-2);
+    padding:12px; z-index:60; gap:8px; align-items:center;
   }
-  .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
-  .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
-  .hint{ color:var(--muted); font-size:12px; margin:6px 0 8px; }
-  .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
-  .kv .k { color:var(--muted); }
-  .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
-  .log .item { padding:4px 0; border-bottom:1px dashed var(--border); }
-  .log .item:last-child { border-bottom:0; }
-  .drawer footer{ display:flex; gap:8px; margin-top:14px; }
-  .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
-  .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
+  .ribbon .pill{ padding:10px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); font-weight:800; cursor:pointer; }
+  .ribbon .pill.primary{ background:#111827; color:#fff; border-color:#111827; }
+  .ribbon .id{ font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:16px; padding:8px 10px; background:#f3f4f6; border-radius:8px; }
 
-  @media (max-width:620px){
-    .badges{ position:static; margin:0 0 8px 0; justify-content:flex-end; gap:6px; }
-    h1{ margin-top:2px; }
-  }
-  @media (max-width:900px){
-    .grid{ grid-template-columns:1fr; }
-    .segment.segment-xl button{ font-size:36px; min-height:88px; }
-  }
+  /* Manual Student Entry card */
+  .padRow{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .bigBtn{ padding:16px 20px; border-radius:14px; border:2px solid #111827; background:#111827; color:#fff; font-weight:900; font-size:18px; cursor:pointer; }
+  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
 </head>
 <body>
-  <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
+  <div class="wrap" role="application" aria-label="Attendance Guard Console">
     <div class="badges" aria-live="polite" aria-atomic="true">
       <div id="netBadge" class="badge">Online</div>
       <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
-      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
     </div>
 
-    <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then <b>swipe/tap your Cougar Card</b> or search the directory.</p>
+    <h1>Attendance — Guard Console</h1>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>. Faculty uses Quick Pin; students are sent to Veracross. Name search supports both.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
-      <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
-      <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
+      <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
+      <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
     </div>
 
     <div class="grid">
-      <!-- LEFT: Cougar Card -->
+      <!-- LEFT: Card / Quick Pin + Manual Student Entry -->
       <div class="card">
-        <h2>Cougar Card</h2>
+        <h2>Cougar Card / Quick Pin</h2>
         <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
+               placeholder="Swipe or tap card" aria-label="Cougar Card / Quick Pin" />
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
           <button id="nfcStop" class="nfcBtn secondary">Stop</button>
         </div>
-        <div style="margin-top:auto;"></div>
+
+        <div style="margin-top:18px;"></div>
+        <h2>Manual Student Entry</h2>
+        <div class="padRow">
+          <input id="stuId" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Legacy Student ID (10 digits)" />
+          <button id="stuSignIn" class="bigBtn">Student Sign In (Veracross)</button>
+        </div>
       </div>
 
-      <!-- RIGHT: Unified Lookup by Name -->
+      <!-- RIGHT: Lookup by Name -->
       <div class="card">
         <h2>Lookup by Name</h2>
         <input id="q" type="search" inputmode="search" enterkeyhint="search"
@@ -179,509 +158,347 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <!-- Manual action ribbon for students -->
+    <div id="ribbon" class="ribbon" role="group" aria-label="Veracross fallback">
+      <span>Student:</span>
+      <span id="ribbonName" class="name"></span>
+      <span class="id" id="ribbonId"></span>
+      <button id="copyBtn" class="pill">Copy Legacy ID</button>
+      <button id="openBtn" class="pill primary">Open Veracross Kiosk</button>
+    </div>
   </div>
 
-  <!-- Hidden background target for Veracross (silent submit) -->
+  <!-- Hidden background target for Veracross -->
   <iframe name="vc_bg" style="display:none;width:0;height:0;border:0;" aria-hidden="true"></iframe>
 
-  <!-- ===== Admin Drawer ===== -->
-  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
-    <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
-
-    <section>
-      <strong>NFC mapping rule</strong>
-      <div class="hint">Translate NFC UID/text → 10-digit Cougar Card code (faculty). Students use 10-digit Legacy ID.</div>
-      <div class="opt"><input type="radio" name="rule" value="HEX_LE_PAD10" id="r1"><label for="r1">HEX_LE_PAD10</label></div>
-      <div class="opt"><input type="radio" name="rule" value="HEX_BE_PAD10" id="r2"><label for="r2">HEX_BE_PAD10</label></div>
-      <div class="opt"><input type="radio" name="rule" value="LAST3_DEC_PAD10" id="r3"><label for="r3">LAST3_DEC_PAD10</label></div>
-      <div class="opt"><input type="radio" name="rule" value="FULL_UID_DEC_PAD10" id="r4"><label for="r4">FULL_UID_DEC_PAD10</label></div>
-      <div class="opt"><input type="radio" name="rule" value="PASS_THROUGH_DIGITS_PAD10" id="r5"><label for="r5">PASS_THROUGH_DIGITS_PAD10</label></div>
-    </section>
-
-    <section style="margin-top:12px;">
-      <strong>Keyboard wedge</strong>
-      <div class="opt"><input type="checkbox" id="ckTrim"><label for="ckTrim">Trim to digits & pad to 10 (recommended)</label></div>
-      <div class="opt"><input type="checkbox" id="ckIgnoreEnter"><label for="ckIgnoreEnter">Ignore Enter key (prevents double submit)</label></div>
-    </section>
-
-    <section style="margin-top:12px;">
-      <strong>Debug</strong>
-      <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show parsed values in toast</label></div>
-      <div class="hint">Toggle with <b>Ctrl/⌘ + Shift + D</b>.</div>
-    </section>
-
-    <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
-      <h3 style="margin-bottom:8px;">Live Reader</h3>
-      <div class="kv">
-        <div class="k">Rule</div><div id="liveRule">—</div>
-        <div class="k">Last UID</div><div id="liveUid">—</div>
-        <div class="k">Last parsed</div><div id="liveTen">—</div>
-      </div>
-      <div class="log" id="liveLog" aria-label="Reader log"></div>
-    </section>
-
-    <footer>
-      <button id="adminClose" class="btn">Close</button>
-      <button id="adminReset" class="btn">Reset to defaults</button>
-      <button id="adminClearLog" class="btn">Clear Log</button>
-    </footer>
-  </div>
-
 <script>
-  // ===== Config =====
-  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-  const COOLDOWN_MS = 400;
-  const THEME_KEY = 'theme';
+/* ===== Config ===== */
+const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+const KIOSK_URL = 'https://checkin.veracross.com/frisch/kiosk/entrance'; // visible page
+const KIOSK_POST = 'https://checkin.veracross.com/frisch/checkin/log';   // background endpoint
+const COOLDOWN_MS = 400;
+const THEME_KEY = 'theme';
 
-  // Admin keys + defaults
-  const RULE_KEY='nfcRule', TRIM_KEY='wedgeTrim', IGNENTER_KEY='wedgeIgnoreEnter', DEBUG_KEY='debugOn';
-  const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
+/* ===== DOM ===== */
+const $ = s => document.querySelector(s);
+const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
+const btnIn = $('#actIn'), btnOut = $('#actOut');
+const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
+const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
 
-  // ===== DOM =====
-  const $ = s => document.querySelector(s);
-  const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
-  const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
-  const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
-  const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
-  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'),
-        adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
-  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
-  const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
-  let lastSubmitAt = 0;
+/* Ribbon */
+const ribbon = $('#ribbon'), ribbonName = $('#ribbonName'), ribbonId = $('#ribbonId');
+const copyBtn = $('#copyBtn'), openBtn = $('#openBtn');
 
-  // ===== Theme =====
-  function setTheme(mode){
-    const dark = mode === 'dark';
-    document.body.classList.toggle('dark', dark);
-    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
-    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
-    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
-  }
-  function initTheme(){
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved) { setTheme(saved); return; }
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    setTheme(prefersDark ? 'dark' : 'light');
-  }
-  themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
+/* Manual student */
+const stuIdEl = $('#stuId'), stuSignInBtn = $('#stuSignIn');
 
-  // ===== Toast =====
-  let toastTimer=null;
-  function showToast(text){
-    toastEl.textContent = text;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400);
-  }
+let lastSubmitAt = 0;
 
-  // ===== Net badge =====
-  function updateNet(){
-    const on = navigator.onLine;
-    netBadge.textContent = on ? 'Online' : 'Offline';
-    netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
-    netBadge.style.color = on ? 'var(--text)' : '#991b1b';
-  }
-  window.addEventListener('online', updateNet);
-  window.addEventListener('offline', updateNet);
-  updateNet();
+/* ===== Theme ===== */
+function setTheme(mode){
+  const dark = mode === 'dark';
+  document.body.classList.toggle('dark', dark);
+  $('#meta-theme').content = dark ? '#0b1020' : '#ffffff';
+  localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+}
+function initTheme(){
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved) setTheme(saved);
+  else setTheme(window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+$('#themeBtn').addEventListener('click', ()=> setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Focus =====
-  function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-  function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
-  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
+/* ===== Toast ===== */
+let toastTimer=null;
+function showToast(text, tone='neutral'){
+  toastEl.textContent = text;
+  toastEl.classList.add('show');
+  // reset style
+  toastEl.style.background = 'var(--card)';
+  toastEl.style.borderColor = 'var(--border)';
+  toastEl.style.color = 'var(--text)';
+  if (tone==='ok'){ toastEl.style.background='#ecfdf5'; toastEl.style.borderColor='#065f46'; toastEl.style.color='#065f46'; }
+  if (tone==='err'){ toastEl.style.background='#fee2e2'; toastEl.style.borderColor='#b91c1c'; toastEl.style.color='#b91c1c'; }
+  if (tone==='warn'){ toastEl.style.background='#fff7ed'; toastEl.style.borderColor='#92400e'; toastEl.style.color='#92400e'; }
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2400);
+}
 
-  // ===== IN/OUT toggle =====
-  function setAction(a){
-    const inActive = a === 'in';
-    btnIn.classList.toggle('active', inActive);
-    btnOut.classList.toggle('active', !inActive);
-    setTimeout(focusPinSafely, 0);
-  }
-  btnIn.addEventListener('click', () => setAction('in'));
-  btnOut.addEventListener('click', () => setAction('out'));
-  window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+/* ===== Net badge ===== */
+function updateNet(){
+  const on = navigator.onLine;
+  netBadge.textContent = on ? 'Online' : 'Offline';
+  netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
+  netBadge.style.color = on ? 'var(--text)' : '#991b1b';
+}
+window.addEventListener('online', updateNet);
+window.addEventListener('offline', updateNet);
+updateNet();
 
-  // ===== Admin storage =====
-  const lsGet=(k,d)=>{const v=localStorage.getItem(k); return v==null?d:v;};
-  const lsSet=(k,v)=>localStorage.setItem(k,v);
-  const getSelectedNfcRule=()=>lsGet(RULE_KEY, DEFAULTS[RULE_KEY]);
+/* ===== Focus helpers ===== */
+function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
+function focusPinSafely(){ if (document.activeElement !== qEl && document.activeElement !== stuIdEl) focusPin(); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
-  function mountAdmin(){
-    (document.querySelector(`input[name="rule"][value="${getSelectedNfcRule()}"]`) || $('#r1')).checked = true;
-    ckTrim.checked = lsGet(TRIM_KEY, DEFAULTS[TRIM_KEY]) === '1';
-    ckIgnoreEnter.checked = lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1';
-    ckDebug.checked = lsGet(DEBUG_KEY, DEFAULTS[DEBUG_KEY]) === '1';
-    liveRuleEl.textContent = getSelectedNfcRule();
-  }
-  function showAdmin(show=true){
-    adminDrawer.style.display = show ? 'block' : 'none';
-    adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
-  }
-  adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); });
-  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
-  adminReset.addEventListener('click', () => {
-    Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
-    mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
-    showToast('Admin reset to defaults');
-  });
-  adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; });
+/* ===== IN/OUT toggle ===== */
+function setAction(a){
+  const inActive = a === 'in';
+  btnIn.classList.toggle('active', inActive);
+  btnOut.classList.toggle('active', !inActive);
+  setTimeout(focusPinSafely, 0);
+}
+btnIn.addEventListener('click', () => setAction('in'));
+btnOut.addEventListener('click', () => setAction('out'));
+window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  document.querySelectorAll('input[name="rule"]').forEach(r => {
-    r.addEventListener('change', () => {
-      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPinSafely(); }
-    });
-  });
-  ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
-  ckIgnoreEnter.addEventListener('change', () => lsSet(IGNENTER_KEY, ckIgnoreEnter.checked ? '1' : '0'));
-  ckDebug.addEventListener('change', () => lsSet(DEBUG_KEY, ckDebug.checked ? '1' : '0'));
-  window.addEventListener('keydown', (e) => {
-    const isD = (e.key||'').toLowerCase()==='d';
-    const combo = isD && e.shiftKey && (e.ctrlKey || e.metaKey);
-    if (!combo) return;
-    if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
-    e.preventDefault();
-    const nv = lsGet(DEBUG_KEY,'0')==='1' ? '0':'1'; lsSet(DEBUG_KEY,nv);
-    showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
-  });
+/* ===== Helpers ===== */
+const digitsOnly = s => String(s||'').replace(/\D+/g,'');
+const padLeft10 = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
+function lfToFl(name){ const m=String(name||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? `${m[2]} ${m[1]}`.trim() : String(name||''); }
 
-  // ===== Helpers =====
-  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-  const padLeft10 = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
+/* ===== Veracross background POST (hidden) + manual fallback ribbon ===== */
+function postToVeracrossBackground(legacyId){
+  // fire-and-forget POST to KIOSK_POST in a hidden iframe
+  const form = document.createElement('form');
+  form.method='POST'; form.action=KIOSK_POST; form.target='vc_bg'; form.style.display='none';
+  const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+  add('legacy_id', legacyId); add('kiosk_type','4'); add('check_in_method','3'); add('kiosk','34');
+  document.body.appendChild(form);
+  try { form.submit(); } catch {}
+  setTimeout(()=>form.remove(), 1500);
+}
 
-  // Convert "Last, First" -> "First Last"
-  function lfToFl(name){
-    const s = String(name||'').trim();
-    const m = s.match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
-    return m ? `${m[2]} ${m[1]}`.trim() : s;
-  }
+function showRibbon(studentName, legacyId){
+  ribbonName.textContent = studentName || '';
+  ribbonId.textContent = legacyId || '';
+  ribbon.style.display = 'flex';
+}
+function hideRibbon(){ ribbon.style.display = 'none'; }
 
-  // ===== Veracross background POST (hidden iframe) =====
-  function postToVeracrossBackground(legacyId){
-    const form = document.createElement('form');
-    form.method='POST';
-    form.action='https://checkin.veracross.com/frisch/checkin/log';
-    form.target='vc_bg';
-    form.style.display='none';
-    const add=(n,v)=>{const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i);};
-    add('legacy_id', legacyId);
-    add('kiosk_type','4'); add('check_in_method','3'); add('kiosk','34');
-    document.body.appendChild(form);
-    try { form.submit(); } catch {}
-    setTimeout(()=>form.remove(),1500);
-  }
+copyBtn.addEventListener('click', async ()=>{
+  try { await navigator.clipboard.writeText(ribbonId.textContent || ''); showToast('Legacy ID copied', 'ok'); }
+  catch { showToast('Copy failed', 'warn'); }
+});
+openBtn.addEventListener('click', ()=>{ window.open(KIOSK_URL, '_blank', 'noopener'); });
 
-  // ===== Backend calls =====
-  async function postFaculty({ pin, personId }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) });
-    const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-    const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
-    return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
-  }
-  async function searchFaculty(q){ const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`); return r.json(); }
-  async function getStudentByLegacy(id){
-    try{
-      const res = await fetch(`${ENDPOINT}?action=studentbylegacy&id=${encodeURIComponent(id)}`); // all lowercase action
-      const data = await res.json();
-      if (data && data.found) return { found:true, fullName:String(data.fullName||''), personId:String(data.personId||''), legacyId:String(id||'') };
-    }catch{}
-    return { found:false, fullName:'', legacyId:String(id||'') };
-  }
-  async function searchStudents(q){
-    try{ const r=await fetch(`${ENDPOINT}?action=studentsearch&q=${encodeURIComponent(q)}`); return r.json(); } // all lowercase action
-    catch { return []; }
-  }
+/* ===== Backend calls ===== */
+async function postFaculty({ pin, personId }) {
+  const act = btnIn.classList.contains('active') ? 'in' : 'out';
+  const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) });
+  const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+  const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
+  return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
+}
 
-  // ===== Student helper: toast with "First Last"
-  async function sendStudentToVeracross(legacyId){
-    let display = 'Student ' + legacyId;
-    try {
-      const s = await getStudentByLegacy(legacyId);
-      if (s && s.found && s.fullName) display = lfToFl(s.fullName);
-    } catch {}
-    postToVeracrossBackground(legacyId);
-    showToast(`${display} — sent to Veracross`);
-  }
+async function searchFaculty(q){ const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`); return r.json(); }
 
-  // ===== “Not found” detector =====
-  function isNotFoundError(obj){
-    const msg = (obj && (obj.error || obj.message || obj.raw)) ? String(obj.error || obj.message || obj.raw) : '';
-    return /not\s*found/i.test(msg);
-  }
+async function fetchJson(u){ try{ const r=await fetch(u); const t=await r.text(); try{ return JSON.parse(t);}catch{return null;} }catch{return null;} }
+async function searchStudents(q){
+  let d = await fetchJson(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`);
+  if (!Array.isArray(d) || !d.length) d = await fetchJson(`${ENDPOINT}?action=studentsearch&q=${encodeURIComponent(q)}`);
+  return Array.isArray(d) ? d : [];
+}
+async function getStudentByLegacy(id){
+  let d = await fetchJson(`${ENDPOINT}?action=studentByLegacy&id=${encodeURIComponent(id)}`);
+  if (!d || d.error) d = await fetchJson(`${ENDPOINT}?action=studentbylegacy&id=${encodeURIComponent(id)}`);
+  return (d && d.found) ? d : { found:false };
+}
 
-  // ===== Wedge / Scan input (10 digits: faculty → student fallback) =====
-  let wedgeTimer=null;
-  const WEDGE_QUIET_MS=120;
-
-  pinEl.addEventListener('input', ()=>{
-    clearTimeout(wedgeTimer);
-    wedgeTimer=setTimeout(async ()=>{
-      const raw = pinEl.value || '';
-      const d = digitsOnly(raw);
-      if (!d) return;
-
-      if (d.length >= 10) {
-        const ten = padLeft10(d);
-        if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-        lastSubmitAt = Date.now();
-
-        const r = await postFaculty({ pin: ten });
-        if (r.ok) {
-          const { status, firstName, lastName, time } = r.data || {};
-          const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-          showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` signed ${verb} — ${time||''}`);
-        } else if (isNotFoundError(r.data)) {
-          if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); }
-          else { await sendStudentToVeracross(ten); }
-        } else {
-          showToast((r.data && r.data.error) || 'Server error');
-        }
-      } else {
-        showToast('ID too short');
+/* ===== Unified submit with colored toasts ===== */
+async function submitPinOrId({ pin, personId, uid }) {
+  const res = await postFaculty({ pin, personId });
+  if (!res.ok) {
+    const msg = (res.data && res.data.error) || ('Error ' + res.status);
+    // Student fallback if "not found"
+    if (/not\s*found/i.test(msg) && pin) {
+      const s = await getStudentByLegacy(pin);
+      if (s && s.found) {
+        const display = lfToFl(s.fullName || '') || ('Student ' + s.legacyId);
+        // Try background POST, always show ribbon so guard can manually finish if needed
+        postToVeracrossBackground(s.legacyId);
+        showRibbon(display, s.legacyId);
+        showToast(`${display} — sent to Veracross`, 'ok');
+        return;
       }
-
-      pinEl.value=''; focusPin();
-    }, WEDGE_QUIET_MS);
-  });
-
-  pinEl.addEventListener('keydown',(e)=>{
-    if (localStorage.getItem('wedgeIgnoreEnter') !== '0' && e.key === 'Enter') {
-      e.preventDefault(); e.stopPropagation();
     }
-  });
-
-  // ===== Unified name lookup — robust dedupe + single headers + request cancel =====
-  let searchDebounce = null;
-  let searchController = null;
-  let searchSeq = 0;
-
-  const normNameKey = (fn, ln) =>
-    `${String(fn||'').trim().toLowerCase()}|${String(ln||'').trim().toLowerCase()}`;
-
-  function uniqueBy(arr, keyFn) {
-    const seen = new Set();
-    const out = [];
-    for (const item of arr || []) {
-      const k = keyFn(item);
-      if (!k || seen.has(k)) continue;
-      seen.add(k);
-      out.push(item);
-    }
-    return out;
+    showToast(msg, 'err'); return;
   }
 
-  function sortFac(a,b){
-    const al = String(a.lastName||'').toLowerCase(), bl = String(b.lastName||'').toLowerCase();
-    if (al !== bl) return al < bl ? -1 : 1;
-    const af = String(a.firstName||'').toLowerCase(), bf = String(b.firstName||'').toLowerCase();
-    return af < bf ? -1 : af > bf ? 1 : 0;
+  const data = res.data || {};
+  if (data.status === 'in' || data.status === 'out') {
+    const { status, firstName, lastName, time, paired } = data;
+    const verb = status==='in' ? 'IN' : 'OUT';
+    const extra = (status==='out' && paired===false) ? ' (no prior IN)' : '';
+    showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` — ${verb}${extra} at ${time||''}`, 'ok');
+  } else if (data.status === 'student_in') {
+    const display = data.student || ('Student ' + (data.legacyId||''));
+    postToVeracrossBackground(String(data.legacyId||''));
+    showRibbon(display, String(data.legacyId||''));
+    showToast(`${display} — sent to Veracross`, 'ok');
+  } else {
+    showToast('Unknown response', 'warn');
   }
-  function sortStu(a,b){
-    const an = String(a.fullName||'').toLowerCase(), bn = String(b.fullName||'').toLowerCase();
-    return an < bn ? -1 : an > bn ? 1 : 0;
-  }
+}
 
-  qEl.addEventListener('input', () => {
-    clearTimeout(searchDebounce);
-    const q = qEl.value.trim();
-    const box = document.querySelector('#results');
-    box.replaceChildren();
+/* ===== Wedge / Quick Pin input ===== */
+let wedgeTimer=null;
+const WEDGE_QUIET_MS=120;
 
-    // ❗ do not search when empty or 1 char
-    if (!q || q.length < 2) return;
+pinEl.addEventListener('input', ()=>{
+  clearTimeout(wedgeTimer);
+  wedgeTimer=setTimeout(async ()=>{
+    const raw = pinEl.value || '';
+    const d = digitsOnly(raw);
+    if (!d) return;
+    if (d.length < 10) { showToast('ID too short', 'warn'); pinEl.value=''; focusPin(); return; }
+    const ten = padLeft10(d);
+    if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
+    lastSubmitAt = Date.now();
+    await submitPinOrId({ pin: ten });
+    pinEl.value=''; focusPin();
+  }, WEDGE_QUIET_MS);
+});
 
-    searchDebounce = setTimeout(() => doSearch(q, box), 200);
-  });
+/* ===== Name search (faculty + students) ===== */
+let searchDebounce = null, searchController = null, searchSeq = 0;
 
-  async function doSearch(q, box) {
-    // Safety: if somehow called with short q, bail
-    if (!q || q.length < 2) return;
+const normKey = (a,b)=>`${String(a||'').trim().toLowerCase()}|${String(b||'').trim().toLowerCase()}`;
+function uniqueBy(arr, keyFn){ const seen=new Set(), out=[]; for(const it of arr||[]){ const k=keyFn(it); if(!k||seen.has(k)) continue; seen.add(k); out.push(it);} return out; }
 
-    if (searchController) try { searchController.abort(); } catch(_) {}
-    searchController = new AbortController();
-    const signal = searchController.signal;
+function sortFac(a,b){ const al=String(a.lastName||'').toLowerCase(); const bl=String(b.lastName||'').toLowerCase();
+  if (al!==bl) return al<bl?-1:1; const af=String(a.firstName||'').toLowerCase(); const bf=String(b.firstName||'').toLowerCase(); return af<bf?-1:af>bf?1:0; }
+function sortStu(a,b){ const an=String(a.fullName||'').toLowerCase(); const bn=String(b.fullName||'').toLowerCase(); return an<bn?-1:an>bn?1:0; }
 
-    const mySeq = ++searchSeq;
+qEl.addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  const q = qEl.value.trim();
+  const box = $('#results'); box.replaceChildren();
+  if (!q || q.length < 2) return; // do nothing if empty/1 char
+  searchDebounce = setTimeout(() => doSearch(q, box), 200);
+});
 
-    let facRaw = [], stuRaw = [];
-    try {
-      const [facRes, stuRes] = await Promise.allSettled([
-        fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, { signal }),
-        fetch(`${ENDPOINT}?action=studentsearch&q=${encodeURIComponent(q)}`, { signal }) // lowercase action
-      ]);
+async function doSearch(q, box) {
+  if (!q || q.length < 2) return;
+  if (searchController) try { searchController.abort(); } catch(_) {}
+  searchController = new AbortController();
+  const signal = searchController.signal;
+  const mySeq = ++searchSeq;
 
-      if (mySeq !== searchSeq) return;
-
-      if (facRes.status === 'fulfilled') facRaw = await facRes.value.json();
-      if (stuRes.status === 'fulfilled') stuRaw = await stuRes.value.json();
-    } catch (e) {
-      if (e.name === 'AbortError') return;
-      box.replaceChildren(document.createTextNode('Search failed.'));
-      return;
-    }
-
+  let facList=[], stuList=[];
+  try {
+    const [facRes, stuRes] = await Promise.allSettled([
+      fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, { signal }),
+      (async()=>{ const a = await searchStudents(q); return a; })()
+    ]);
     if (mySeq !== searchSeq) return;
+    if (facRes.status==='fulfilled') facList = await facRes.value.json();
+    if (stuRes.status==='fulfilled') stuList = stuRes.value;
+  } catch { box.textContent = 'Search failed.'; return; }
 
-    if (!Array.isArray(facRaw)) facRaw = [];
-    if (!Array.isArray(stuRaw)) stuRaw = [];
+  if (!Array.isArray(facList)) facList = [];
+  if (!Array.isArray(stuList)) stuList = [];
 
-    const facList = uniqueBy(
-      facRaw.filter(r => r && (r.firstName || r.lastName)),
-      r => String(r.personId || '').trim() || normNameKey(r.firstName, r.lastName)
-    ).sort(sortFac);
+  facList = uniqueBy(facList.filter(r=>r && (r.firstName||r.lastName)),
+                     r => String(r.personId||'').trim() || normKey(r.firstName, r.lastName)).sort(sortFac);
 
-    const stuList = uniqueBy(
-      stuRaw.filter(r => r && (r.fullName || r.legacyId)),
-      r => String(r.legacyId || '').trim() || String(r.fullName || '').trim().toLowerCase()
-    ).sort(sortStu);
+  stuList = uniqueBy(stuList.filter(r=>r && (r.fullName||r.legacyId)),
+                     r => String(r.legacyId||'').trim() || String(r.fullName||'').trim().toLowerCase()).sort(sortStu);
 
-    box.replaceChildren();
+  if (!facList.length && !stuList.length) { const div=document.createElement('div'); div.className='muted'; div.textContent='No matches.'; box.appendChild(div); return; }
 
-    if (!facList.length && !stuList.length) {
-      const div = document.createElement('div');
-      div.className = 'muted';
-      div.textContent = 'No matches.';
-      box.appendChild(div);
-      return;
-    }
+  const addHeader = (t)=>{ const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
 
-    const addHeader = (title) => {
-      const h = document.createElement('div');
-      h.className = 'sectionTitle';
-      h.textContent = title;
-      box.appendChild(h);
-    };
-
-    // FACULTY
-    if (facList.length) {
-      addHeader('Faculty');
-      for (const { firstName, lastName, personId } of facList) {
-        const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-        const name=document.createElement('div'); name.className='name';
-        name.textContent = `${firstName||''} ${lastName||''}`.trim();
-        const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-        btn.addEventListener('click', async ()=>{
-          const r = await postFaculty({ personId });
-          if (r.ok) {
-            const { status, firstName, lastName, time } = r.data || {};
-            const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-            showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` ${verb} — ${time||''}`);
-          } else {
-            showToast((r.data && r.data.error) || 'Error');
-          }
-          setTimeout(() => { try { pinEl.focus(); } catch(_) {} }, 0);
-        });
-        row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-      }
-    }
-
-    // STUDENTS
-    if (stuList.length) {
-      addHeader('Students');
-      for (const { fullName, legacyId } of stuList) {
-        const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-        const name=document.createElement('div'); name.className='name';
-        const nameFL = lfToFl(fullName || '');
-        name.textContent = nameFL || legacyId || '';
-        const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
-        btn.addEventListener('click', async ()=>{
-          if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); return; }
-          await sendStudentToVeracross(String(legacyId||'')); 
-          setTimeout(() => { try { pinEl.focus(); } catch(_) {} }, 0);
-        });
-        row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-      }
+  if (facList.length) {
+    addHeader('Faculty');
+    for (const { firstName, lastName, personId } of facList) {
+      const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
+      const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName||''} ${lastName||''}`.trim();
+      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
+      btn.addEventListener('click', async ()=>{
+        const r = await postFaculty({ personId });
+        if (r.ok) {
+          const { status, firstName, lastName, time, paired } = r.data || {};
+          const verb = status==='in'?'IN':'OUT'; const extra = (status==='out' && paired===false) ? ' (no prior IN)' : '';
+          showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` — ${verb}${extra} at ${time||''}`,'ok');
+        } else {
+          showToast((r.data && r.data.error) || 'Error', 'err');
+        }
+        setTimeout(()=>focusPin(),0);
+      });
+      row.appendChild(name); row.appendChild(btn); box.appendChild(row);
     }
   }
 
-  // ===== NFC (Android Chrome). 10-digit: faculty first, then student fallback =====
-  function supportsWebNFC(){ return 'NDEFReader' in window; }
-  let ndef=null, nfcStarted=false;
-  const hexToBytes=(hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
-  const numLE=(a)=>a.reduceRight((x,b) => (x*256+b)>>>0, 0);
-  const numBE=(a)=>a.reduce((x,b) => (x*256+b)>>>0, 0);
-  const pad10=(n)=>{ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); };
-  function uidToTen(uidHex){
-    const b=hexToBytes(uidHex);
-    switch(localStorage.getItem('nfcRule') || 'HEX_LE_PAD10'){
-      case 'HEX_LE_PAD10': return pad10(numLE(b.slice(-4)));
-      case 'HEX_BE_PAD10': return pad10(numBE(b.slice(-4)));
-      case 'LAST3_DEC_PAD10': return pad10(numBE(b.slice(-3)));
-      case 'FULL_UID_DEC_PAD10': return pad10(numBE(b));
-      case 'PASS_THROUGH_DIGITS_PAD10': default: return digitsOnly(uidHex);
+  if (stuList.length) {
+    addHeader('Students');
+    for (const { fullName, legacyId } of stuList) {
+      const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
+      const name=document.createElement('div'); name.className='name'; name.textContent=lfToFl(fullName||'');
+      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
+      btn.addEventListener('click', async ()=>{
+        if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
+        postToVeracrossBackground(String(legacyId||'')); // background
+        showRibbon(lfToFl(fullName||''), String(legacyId||''));
+        showToast(`${lfToFl(fullName||'')} — sent to Veracross`, 'ok');
+        setTimeout(()=>focusPin(),0);
+      });
+      row.appendChild(name); row.appendChild(btn); box.appendChild(row);
     }
   }
-  function pushLive(uidHex, parsed){
-    liveUidEl.textContent=uidHex||'—';
-    liveTenEl.textContent=parsed||'—';
-    liveRuleEl.textContent=localStorage.getItem('nfcRule') || 'HEX_LE_PAD10';
-    const ts=new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    const div=document.createElement('div'); div.className='item';
-    div.textContent=`[${ts}] UID:${(uidHex||'').slice(-8)} → ${parsed} (${localStorage.getItem('nfcRule') || 'HEX_LE_PAD10'})`;
-    liveLogEl.appendChild(div); liveLogEl.scrollTop=liveLogEl.scrollHeight;
-  }
+}
 
-  if (supportsWebNFC()) {
-    nfcBar.style.display = ''; nfcStopBtn.disabled = true;
-    nfcStartBtn.addEventListener('click', async ()=>{
-      if (nfcStarted) return;
-      try{
-        ndef=new NDEFReader(); await ndef.scan(); nfcStarted=true;
-        nfcBadge.style.display=''; nfcStartBtn.disabled=true; nfcStopBtn.disabled=false;
-        showToast('NFC scanning started'); focusPinSafely();
+/* ===== Manual Student Entry ===== */
+stuSignInBtn.addEventListener('click', ()=>{
+  if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
+  const d = padLeft10(digitsOnly(stuIdEl.value||''));
+  if (!d || d.length!==10) { showToast('Enter a 10-digit Legacy ID', 'warn'); stuIdEl.focus(); return; }
+  postToVeracrossBackground(d);
+  showRibbon('Student', d);
+  showToast(`Student — sent to Veracross`, 'ok');
+  stuIdEl.value=''; focusPin();
+});
 
-        ndef.onreading=(ev)=>{
-          const uidHex=String(ev.serialNumber||'').toUpperCase().replace(/[^0-9A-F]/g,'');
-          let parsed=uidToTen(uidHex);
-          if (!parsed || parsed.length!==10) {
-            for (const rec of ev.message.records||[]) {
-              const txty = rec.recordType==='text' || rec.recordType==='url' || rec.mediaType==='text/plain';
-              if (!txty) continue;
-              try{ const td=new TextDecoder(rec.encoding||'utf-8'); const t=rec.data?td.decode(rec.data):''; const d=digitsOnly(t); if (d && d.length>=10) { parsed=padLeft10(d); break; } }catch{}
-            }
-          }
-          if (!parsed){ showToast('Unrecognized NFC'); return; }
+/* ===== NFC (Android Chrome) — optional ===== */
+function supportsWebNFC(){ return 'NDEFReader' in window; }
+let ndef=null, nfcStarted=false;
+const hexToBytes=(hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
+const numLE=(a)=>a.reduceRight((x,b)=>(x*256+b)>>>0,0);
+const numBE=(a)=>a.reduce((x,b)=>(x*256+b)>>>0,0);
+const pad10=(n)=>{ const s=String(n>>>0); return s.length>=10? s.slice(-10):s.padStart(10,'0'); };
+function uidToTen(uidHex){ const b=hexToBytes(uidHex); return pad10(numLE(b.slice(-4))); }
 
-          const go = async ()=>{
-            const ten = padLeft10(parsed);
-            const r = await postFaculty({ pin: ten });
-            if (r.ok) {
-              const { status, firstName, lastName, time } = r.data || {};
-              const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-              showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` ${verb} — ${time||''}`);
-            } else if (isNotFoundError(r.data)) {
-              if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); }
-              else { await sendStudentToVeracross(ten); }
-            } else {
-              showToast((r.data && r.data.error) || 'Server error');
-            }
-          };
-
-          if (Date.now()-lastSubmitAt>=COOLDOWN_MS) { lastSubmitAt=Date.now(); go(); }
-          pushLive(uidHex, parsed);
-          focusPinSafely();
-        };
-        ndef.onreadingerror=()=>showToast('NFC read error');
-      }catch{ showToast('NFC not permitted or unavailable'); focusPinSafely(); }
-    });
-    nfcStopBtn.addEventListener('click', ()=>{
-      if (ndef){ ndef.onreading=null; ndef.onreadingerror=null; }
-      nfcStarted=false; nfcStartBtn.disabled=false; nfcStopBtn.disabled=true;
-      showToast('NFC stopped'); focusPinSafely();
-    });
-  }
-
-  // ===== Init =====
-  document.addEventListener('DOMContentLoaded', ()=>{
-    initTheme();
-    Object.entries(DEFAULTS).forEach(([k,v])=>{ if(localStorage.getItem(k)==null) localStorage.setItem(k,v); });
-    setAction('in'); focusPinSafely();
+if (supportsWebNFC()) {
+  nfcBar.style.display = ''; nfcStopBtn.disabled = true;
+  nfcStartBtn.addEventListener('click', async ()=>{
+    if (nfcStarted) return;
+    try{
+      ndef=new NDEFReader(); await ndef.scan(); nfcStarted=true;
+      nfcBadge.style.display=''; nfcStartBtn.disabled=true; nfcStopBtn.disabled=false;
+      showToast('NFC scanning started');
+      ndef.onreading=(ev)=>{
+        const uidHex=String(ev.serialNumber||'').toUpperCase().replace(/[^0-9A-F]/g,'');
+        let ten = uidToTen(uidHex);
+        ten = padLeft10(ten);
+        if (!ten || ten.length!==10) { showToast('Unrecognized NFC', 'warn'); return; }
+        if (Date.now()-lastSubmitAt>=COOLDOWN_MS) { lastSubmitAt=Date.now(); submitPinOrId({ pin: ten }); }
+      };
+      ndef.onreadingerror=()=>showToast('NFC read error','warn');
+    }catch{ showToast('NFC not permitted or unavailable', 'warn'); }
   });
+  nfcStopBtn.addEventListener('click', ()=>{
+    if (ndef){ ndef.onreading=null; ndef.onreadingerror=null; }
+    nfcStarted=false; nfcStartBtn.disabled=false; nfcStopBtn.disabled=true;
+    showToast('NFC stopped');
+  });
+}
 
-  // Admin drawer close via backdrop
-  adminDrawer.addEventListener('click',(e)=>{ if(e.target===adminDrawer){ showAdmin(false); focusPinSafely(); } });
+/* ===== Init ===== */
+document.addEventListener('DOMContentLoaded', ()=>{
+  initTheme();
+  setAction('in');
+  focusPin(); // focus quick pin on load
+});
 </script>
 </body>
 </html>
