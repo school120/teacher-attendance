@@ -354,8 +354,7 @@
   function lfToFl(name){
     const s = String(name||'').trim();
     const m = s.match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
-    if (!m) return s;
-    return `${m[2]} ${m[1]}`.trim();
+    return m ? `${m[2]} ${m[1]}`.trim() : s;
   }
 
   // ===== Veracross background POST (hidden iframe) =====
@@ -453,104 +452,142 @@
     }
   });
 
-  // ===== Unified name lookup — DEDUP + single headers =====
+  // ===== Unified name lookup — robust dedupe + single headers + request cancel =====
   let searchTimer = null;
+  let searchController = null;
+  let searchSeq = 0;
 
-  // Keys + dedup helpers
-  const normNameKey = (fn, ln) => `${String(fn||'').trim().toLowerCase()}|${String(ln||'').trim().toLowerCase()}`;
+  const normNameKey = (fn, ln) =>
+    `${String(fn||'').trim().toLowerCase()}|${String(ln||'').trim().toLowerCase()}`;
+
   function uniqueBy(arr, keyFn) {
-    const seen = new Set(); const out = [];
-    for (const item of arr) {
+    const seen = new Set();
+    const out = [];
+    for (const item of arr || []) {
       const k = keyFn(item);
       if (!k || seen.has(k)) continue;
-      seen.add(k); out.push(item);
+      seen.add(k);
+      out.push(item);
     }
     return out;
+  }
+
+  function sortFac(a,b){
+    const al = String(a.lastName||'').toLowerCase(), bl = String(b.lastName||'').toLowerCase();
+    if (al !== bl) return al < bl ? -1 : 1;
+    const af = String(a.firstName||'').toLowerCase(), bf = String(b.firstName||'').toLowerCase();
+    return af < bf ? -1 : af > bf ? 1 : 0;
+  }
+  function sortStu(a,b){
+    const an = String(a.fullName||'').toLowerCase(), bn = String(b.fullName||'').toLowerCase();
+    return an < bn ? -1 : an > bn ? 1 : 0;
   }
 
   qEl.addEventListener('input', () => {
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
     const box = document.querySelector('#results');
-    box.innerHTML = '';
+    box.replaceChildren();
     if (!q) return;
+
     searchTimer = setTimeout(() => doSearch(q, box), 200);
   });
 
   async function doSearch(q, box) {
+    if (searchController) try { searchController.abort(); } catch(_) {}
+    searchController = new AbortController();
+    const signal = searchController.signal;
+
+    const mySeq = ++searchSeq;
+
+    let facRaw = [], stuRaw = [];
     try {
-      const [facRaw, stuRaw] = await Promise.all([
-        searchFaculty(q).catch(() => []),
-        searchStudents(q).catch(() => [])
+      const [facRes, stuRes] = await Promise.allSettled([
+        fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, { signal }),
+        fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, { signal })
       ]);
 
-      // Faculty: dedupe by personId, fallback to normalized name
-      const facList = uniqueBy(
-        (Array.isArray(facRaw) ? facRaw : []).filter(r => r && (r.firstName || r.lastName)),
-        r => String(r.personId || '').trim() || normNameKey(r.firstName, r.lastName)
-      ).sort((a,b)=>{
-        const al = String(a.lastName||'').toLowerCase(), bl = String(b.lastName||'').toLowerCase();
-        if (al !== bl) return al < bl ? -1 : 1;
-        const af = String(a.firstName||'').toLowerCase(), bf = String(b.firstName||'').toLowerCase();
-        return af < bf ? -1 : af > bf ? 1 : 0;
-      });
+      if (mySeq !== searchSeq) return;
 
-      // Students: dedupe by legacyId, fallback to fullName
-      const stuList = uniqueBy(
-        (Array.isArray(stuRaw) ? stuRaw : []).filter(r => r && (r.fullName || r.legacyId)),
-        r => String(r.legacyId || '').trim() || String(r.fullName || '').trim().toLowerCase()
-      ).sort((a,b)=>{
-        const an = String(a.fullName||'').toLowerCase(), bn = String(b.fullName||'').toLowerCase();
-        return an < bn ? -1 : an > bn ? 1 : 0;
-      });
+      if (facRes.status === 'fulfilled') facRaw = await facRes.value.json();
+      if (stuRes.status === 'fulfilled') stuRaw = await stuRes.value.json();
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      box.replaceChildren(document.createTextNode('Search failed.'));
+      return;
+    }
 
-      if (!facList.length && !stuList.length) {
-        box.innerHTML = '<div class="muted">No matches.</div>';
-        return;
+    if (mySeq !== searchSeq) return;
+
+    if (!Array.isArray(facRaw)) facRaw = [];
+    if (!Array.isArray(stuRaw)) stuRaw = [];
+
+    const facList = uniqueBy(
+      facRaw.filter(r => r && (r.firstName || r.lastName)),
+      r => String(r.personId || '').trim() || normNameKey(r.firstName, r.lastName)
+    ).sort(sortFac);
+
+    const stuList = uniqueBy(
+      stuRaw.filter(r => r && (r.fullName || r.legacyId)),
+      r => String(r.legacyId || '').trim() || String(r.fullName || '').trim().toLowerCase()
+    ).sort(sortStu);
+
+    box.replaceChildren();
+
+    if (!facList.length && !stuList.length) {
+      const div = document.createElement('div');
+      div.className = 'muted';
+      div.textContent = 'No matches.';
+      box.appendChild(div);
+      return;
+    }
+
+    const addHeader = (title) => {
+      const h = document.createElement('div');
+      h.className = 'sectionTitle';
+      h.textContent = title;
+      box.appendChild(h);
+    };
+
+    // FACULTY
+    if (facList.length) {
+      addHeader('Faculty');
+      for (const { firstName, lastName, personId } of facList) {
+        const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
+        const name=document.createElement('div'); name.className='name';
+        name.textContent = `${firstName||''} ${lastName||''}`.trim();
+        const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
+        btn.addEventListener('click', async ()=>{
+          const r = await postFaculty({ personId });
+          if (r.ok) {
+            const { status, firstName, lastName, time } = r.data || {};
+            const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
+            showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` ${verb} — ${time||''}`);
+          } else {
+            showToast((r.data && r.data.error) || 'Error');
+          }
+          setTimeout(() => { try { pinEl.focus(); } catch(_) {} }, 0);
+        });
+        row.appendChild(name); row.appendChild(btn); box.appendChild(row);
       }
+    }
 
-      const addHeader = (t) => { const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
-
-      // FACULTY
-      if (facList.length) {
-        addHeader('Faculty');
-        for (const { firstName,lastName,personId } of facList) {
-          const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-          const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName||''} ${lastName||''}`.trim();
-          const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-          btn.addEventListener('click', async ()=>{
-            const r = await postFaculty({ personId });
-            if (r.ok) {
-              const { status, firstName, lastName, time } = r.data || {};
-              const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-              showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` ${verb} — ${time||''}`);
-            } else {
-              showToast((r.data && r.data.error) || 'Error');
-            }
-            setTimeout(() => { try { pinEl.focus(); } catch(_) {} }, 0);
-          });
-          row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-        }
+    // STUDENTS
+    if (stuList.length) {
+      addHeader('Students');
+      for (const { fullName, legacyId } of stuList) {
+        const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
+        const name=document.createElement('div'); name.className='name';
+        const nameFL = lfToFl(fullName || '');
+        name.textContent = nameFL || legacyId || '';
+        const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
+        btn.addEventListener('click', async ()=>{
+          if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); return; }
+          await sendStudentToVeracross(String(legacyId||'')); 
+          setTimeout(() => { try { pinEl.focus(); } catch(_) {} }, 0);
+        });
+        row.appendChild(name); row.appendChild(btn); box.appendChild(row);
       }
-
-      // STUDENTS
-      if (stuList.length) {
-        addHeader('Students');
-        for (const { fullName, legacyId } of stuList) {
-          const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-          const nameFL = lfToFl(fullName||'');
-          const name=document.createElement('div'); name.className='name'; name.textContent=nameFL || legacyId;
-          const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
-          btn.addEventListener('click', async ()=>{
-            if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); return; }
-            await sendStudentToVeracross(String(legacyId||'')); 
-            setTimeout(() => { try { pinEl.focus(); } catch(_) {} }, 0);
-          });
-          row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-        }
-      }
-    } catch {
-      box.innerHTML = '<div class="muted">Search failed.</div>';
     }
   }
 
@@ -638,6 +675,7 @@
     setAction('in'); focusPinSafely();
   });
 
+  // Admin drawer close via backdrop
   adminDrawer.addEventListener('click',(e)=>{ if(e.target===adminDrawer){ showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
