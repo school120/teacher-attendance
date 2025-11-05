@@ -27,118 +27,67 @@
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   html { overflow-x:hidden; }
-
-  body{
-    min-height:100svh;
-    overscroll-behavior-y:contain;
-    overflow:auto;
-    -webkit-overflow-scrolling:touch;
-  }
+  body{ min-height:100svh; overscroll-behavior-y:contain; overflow:auto; -webkit-overflow-scrolling:touch; }
 
   .wrap{
-    margin:auto;
-    width:min(1100px,96%);
-    background:var(--card);
-    border-radius:var(--radius-xl);
-    box-shadow:var(--shadow-1);
-    position:relative;
-
+    margin:auto; width:min(1100px,96%); background:var(--card);
+    border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
     min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
-    padding:
-      calc(28px + var(--safe-top))
-      calc(28px + var(--safe-right))
-      calc(28px + var(--safe-bottom))
-      calc(28px + var(--safe-left));
-    overflow:visible;
-    overflow-x:clip;
+    padding: calc(28px + var(--safe-top)) calc(28px + var(--safe-right)) calc(28px + var(--safe-bottom)) calc(28px + var(--safe-left));
+    overflow:visible; overflow-x:clip;
   }
 
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
 
   .badges{
-    position:absolute;
-    right:calc(18px + var(--safe-right));
-    top:calc(18px + var(--safe-top));
+    position:absolute; right:calc(18px + var(--safe-right)); top:calc(18px + var(--safe-top));
     display:flex; gap:8px; align-items:center;
   }
-  .badge{
-    font-size:12px; font-weight:800; padding:6px 10px;
-    border-radius:999px; border:1px solid var(--border);
-    background:var(--card); color:var(--text);
-  }
-  .gear{
-    border:1px solid var(--border); background:var(--card); color:var(--text);
-    border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800;
-    display:flex; align-items:center; gap:6px; transition:background .2s ease;
-  }
+  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+  .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; transition:background .2s ease; }
   .gear:hover{ background: color-mix(in oklab, var(--card) 90%, var(--text) 10%); }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
   .toast{
-    position:fixed; left:50%;
-    bottom:calc(24px + var(--safe-bottom));
-    transform:translateX(-50%) translateY(20px);
-    opacity:0; background:var(--card); border:1px solid var(--border);
-    box-shadow:0 8px 30px rgba(0,0,0,.12);
-    border-radius:14px; padding:16px 20px; font-weight:800;
-    transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50;
+    position:fixed; left:50%; bottom:calc(24px + var(--safe-bottom)); transform:translateX(-50%) translateY(20px);
+    opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12);
+    border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50;
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
-    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
-    font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
-    padding:22px 24px; cursor:pointer; color:#111;
-    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-    transition:transform .06s ease, box-shadow .2s ease, background .2s ease;
-    box-shadow:0 4px 10px rgba(0,0,0,.05);
+    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px; font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
+    padding:22px 24px; cursor:pointer; color:#111; background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05);
   }
   .segment.segment-xl button.active#actIn{
-    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%);
-    color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
   }
   .segment.segment-xl button.active#actOut{
-    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
-    color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
 
-  .grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:18px;
-    align-items:stretch;
-  }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
   .card{
-    border:1px solid var(--border); border-radius:14px; background:var(--card);
-    padding:16px; margin-bottom:0;
-    display:flex; flex-direction:column; height:100%;
-    overflow:hidden;
-    background-clip: padding-box;
+    border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; margin-bottom:0;
+    display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box;
   }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
   input[type=text], input[type=password], input[type=search]{
-    width:100%; padding:18px 20px; font-size:24px;
-    border:1.5px solid var(--border); border-radius:12px;
-    background:var(--card); color:var(--text);
+    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
     outline:none; transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
   }
-  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{
-    border-color:#3b82f6; box-shadow:var(--ring);
-  }
+  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); }
   input:-webkit-autofill{
-    -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important;
-    -webkit-text-fill-color:var(--text) !important;
-    transition:background-color 5000s ease-in-out 0s;
+    -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important; -webkit-text-fill-color:var(--text) !important; transition:background-color 5000s ease-in-out 0s;
   }
 
   .list{
-    display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
-    background: var(--card); background-clip: padding-box;
-    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-    flex:1 1 auto; scrollbar-gutter: stable both-edges; padding-right:16px;
+    display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); background-clip: padding-box;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; scrollbar-gutter: stable both-edges; padding-right:16px;
   }
   .list::-webkit-scrollbar { width:10px; height:10px; }
   .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
@@ -146,35 +95,25 @@
   .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
 
   .sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
-  .row{
-    display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center;
-    gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card);
-  }
+  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .actionBtn{
     --c: var(--blue);
     background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
-    color:#fff; font-size:20px; padding:16px 20px;
-    border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
-    transition:transform .06s ease, filter .15s ease, box-shadow .2s ease;
-    box-shadow:0 6px 14px rgba(0,0,0,.12);
-    justify-self:end;
+    color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
+    transition:transform .06s ease, filter .15s ease, box-shadow .2s ease; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end;
   }
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn{
-    padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
-  }
+  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease; }
   .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
 
   .drawer{
     position:fixed; right:calc(16px + var(--safe-right)); top:calc(64px + var(--safe-top));
-    width:min(560px,92%); max-height:80vh;
-    border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
+    width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
     padding:16px; overflow:auto; display:none; z-index:40; color:var(--text);
   }
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
@@ -185,7 +124,6 @@
   .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
   .log .item { padding:4px 0; border-bottom:1px dashed var(--border); }
   .log .item:last-child { border-bottom:0; }
-
   .drawer footer{ display:flex; gap:8px; margin-top:14px; }
   .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
   .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
@@ -299,6 +237,7 @@
   const RULE_KEY='nfcRule', TRIM_KEY='wedgeTrim', IGNENTER_KEY='wedgeIgnoreEnter', DEBUG_KEY='debugOn';
   const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
 
+  // ===== DOM =====
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
@@ -411,6 +350,14 @@
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const padLeft10 = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
 
+  // Convert "Last, First" -> "First Last"
+  function lfToFl(name){
+    const s = String(name||'').trim();
+    const m = s.match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
+    if (!m) return s;
+    return `${m[2]} ${m[1]}`.trim();
+  }
+
   // ===== Veracross background POST (hidden iframe) =====
   function postToVeracrossBackground(legacyId){
     const form = document.createElement('form');
@@ -434,41 +381,38 @@
     const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
     return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
   }
-  // Faculty search (existing)
   async function searchFaculty(q){ const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`); return r.json(); }
-  // Student lookup by Legacy ID (for toast name)
   async function getStudentByLegacy(id){
     try{
       const res = await fetch(`${ENDPOINT}?action=studentByLegacy&id=${encodeURIComponent(id)}`);
       const data = await res.json();
-      if (data && data.found) return { found:true, fullName:String(data.fullName||''), personId:String(data.personId||'') };
+      if (data && data.found) return { found:true, fullName:String(data.fullName||''), personId:String(data.personId||''), legacyId:String(id||'') };
     }catch{}
-    return { found:false, fullName:'' };
+    return { found:false, fullName:'', legacyId:String(id||'') };
   }
-  // Student search by name (optional backend)
   async function searchStudents(q){
     try{ const r=await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`); return r.json(); }
     catch { return { error:true }; }
   }
 
-  // ===== Student helper: always toast name if available =====
+  // ===== Student helper: toast with "First Last"
   async function sendStudentToVeracross(legacyId){
-    let fullName = '';
+    let display = 'Student ' + legacyId;
     try {
       const s = await getStudentByLegacy(legacyId);
-      if (s && s.found && s.fullName) fullName = s.fullName;
+      if (s && s.found && s.fullName) display = lfToFl(s.fullName);
     } catch {}
     postToVeracrossBackground(legacyId);
-    showToast(`${fullName || ('Student ' + legacyId)} — sent to Veracross`);
+    showToast(`${display} — sent to Veracross`);
   }
 
-  // ===== Decide student fallback on “not found” only =====
+  // ===== “Not found” detector =====
   function isNotFoundError(obj){
     const msg = (obj && (obj.error || obj.message || obj.raw)) ? String(obj.error || obj.message || obj.raw) : '';
     return /not\s*found/i.test(msg);
   }
 
-  // ===== Wedge / Scan input (10 digits: try faculty → fallback to student) =====
+  // ===== Wedge / Scan input (10 digits: faculty → student fallback) =====
   let wedgeTimer=null;
   const WEDGE_QUIET_MS=120;
 
@@ -488,14 +432,10 @@
         if (r.ok) {
           const { status, firstName, lastName, time } = r.data || {};
           const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-          showToast(`${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim());
+          showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` signed ${verb} — ${time||''}`);
         } else if (isNotFoundError(r.data)) {
-          // Student path (10-digit Legacy ID); students can only IN
-          if (!btnIn.classList.contains('active')) {
-            showToast('Students can only sign IN');
-          } else {
-            await sendStudentToVeracross(ten);
-          }
+          if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); }
+          else { await sendStudentToVeracross(ten); }
         } else {
           showToast((r.data && r.data.error) || 'Server error');
         }
@@ -513,19 +453,17 @@
     }
   });
 
-  // ===== Unified name lookup — dedup and single headers =====
+  // ===== Unified name lookup — DEDUP + single headers =====
   let searchTimer = null;
 
-  // Small utilities
+  // Keys + dedup helpers
   const normNameKey = (fn, ln) => `${String(fn||'').trim().toLowerCase()}|${String(ln||'').trim().toLowerCase()}`;
   function uniqueBy(arr, keyFn) {
-    const seen = new Set();
-    const out = [];
+    const seen = new Set(); const out = [];
     for (const item of arr) {
       const k = keyFn(item);
       if (!k || seen.has(k)) continue;
-      seen.add(k);
-      out.push(item);
+      seen.add(k); out.push(item);
     }
     return out;
   }
@@ -536,7 +474,6 @@
     const box = document.querySelector('#results');
     box.innerHTML = '';
     if (!q) return;
-
     searchTimer = setTimeout(() => doSearch(q, box), 200);
   });
 
@@ -547,8 +484,8 @@
         searchStudents(q).catch(() => [])
       ]);
 
-      // Faculty: dedupe by personId, fallback to normalized "fn|ln"
-      const facListDedupe = uniqueBy(
+      // Faculty: dedupe by personId, fallback to normalized name
+      const facList = uniqueBy(
         (Array.isArray(facRaw) ? facRaw : []).filter(r => r && (r.firstName || r.lastName)),
         r => String(r.personId || '').trim() || normNameKey(r.firstName, r.lastName)
       ).sort((a,b)=>{
@@ -559,7 +496,7 @@
       });
 
       // Students: dedupe by legacyId, fallback to fullName
-      const stuListDedupe = uniqueBy(
+      const stuList = uniqueBy(
         (Array.isArray(stuRaw) ? stuRaw : []).filter(r => r && (r.fullName || r.legacyId)),
         r => String(r.legacyId || '').trim() || String(r.fullName || '').trim().toLowerCase()
       ).sort((a,b)=>{
@@ -567,21 +504,17 @@
         return an < bn ? -1 : an > bn ? 1 : 0;
       });
 
-      if (!facListDedupe.length && !stuListDedupe.length) {
+      if (!facList.length && !stuList.length) {
         box.innerHTML = '<div class="muted">No matches.</div>';
         return;
       }
 
-      const addTitleOnce = (title) => {
-        const h = document.createElement('div');
-        h.className = 'sectionTitle';
-        h.textContent = title;
-        box.appendChild(h);
-      };
+      const addHeader = (t) => { const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
 
-      if (facListDedupe.length) {
-        addTitleOnce('Faculty');
-        for (const { firstName,lastName,personId } of facListDedupe) {
+      // FACULTY
+      if (facList.length) {
+        addHeader('Faculty');
+        for (const { firstName,lastName,personId } of facList) {
           const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
           const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName||''} ${lastName||''}`.trim();
           const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
@@ -590,7 +523,7 @@
             if (r.ok) {
               const { status, firstName, lastName, time } = r.data || {};
               const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-              showToast(`${firstName||''} ${lastName||''} ${verb} — ${time||''}`.trim());
+              showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` ${verb} — ${time||''}`);
             } else {
               showToast((r.data && r.data.error) || 'Error');
             }
@@ -600,11 +533,13 @@
         }
       }
 
-      if (stuListDedupe.length) {
-        addTitleOnce('Students');
-        for (const { fullName, legacyId } of stuListDedupe) {
+      // STUDENTS
+      if (stuList.length) {
+        addHeader('Students');
+        for (const { fullName, legacyId } of stuList) {
           const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-          const name=document.createElement('div'); name.className='name'; name.textContent=fullName || legacyId;
+          const nameFL = lfToFl(fullName||'');
+          const name=document.createElement('div'); name.className='name'; name.textContent=nameFL || legacyId;
           const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
           btn.addEventListener('click', async ()=>{
             if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); return; }
@@ -673,7 +608,7 @@
             if (r.ok) {
               const { status, firstName, lastName, time } = r.data || {};
               const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
-              showToast(`${firstName||''} ${lastName||''} ${verb} — ${time||''}`.trim());
+              showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` ${verb} — ${time||''}`);
             } else if (isNotFoundError(r.data)) {
               if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); }
               else { await sendStudentToVeracross(ten); }
