@@ -2,414 +2,254 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup." />
-<meta name="color-scheme" content="light dark">
-<meta id="meta-theme" name="theme-color" content="#ffffff">
+<meta name="description" content="Guard console for IN/OUT with 10-digit Quick Pin or name lookup. Web NFC on Android; keyboard-wedge readers everywhere. Includes Veracross handoff." />
+<meta name="color-scheme" content="light">
 <style>
-  :root{
-    --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
-    --in:#16a34a; --out:#dc2626; --blue:#2563eb;
-    --radius-lg:14px; --radius-xl:18px;
-    --shadow-1:0 10px 30px rgba(0,0,0,.08);
-    --shadow-2:0 14px 40px rgba(0,0,0,.18);
-    --ring:0 0 0 6px rgba(59,130,246,.16);
-
-    --safe-top: env(safe-area-inset-top);
-    --safe-right: env(safe-area-inset-right);
-    --safe-bottom: env(safe-area-inset-bottom);
-    --safe-left: env(safe-area-inset-left);
+  :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { display:flex; min-height:100svh; margin:0; background:#f6f7fb; }
+  .wrap { margin:auto; width:min(1100px,96%); background:#fff; padding:28px; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.08); position:relative; }
+  h1 { margin:0 0 6px; font-weight:800; font-size:28px; letter-spacing:.2px; }
+  .sub { color:#475467; margin-bottom:18px; font-size:16px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
+  .card { border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff; }
+  .card h2 { margin:0 0 10px; font-size:20px; }
+  input[type="password"], input[type="search"], input[type="text"] {
+    padding:18px 20px; font-size:24px; border:1.5px solid #d0d5dd; border-radius:12px; width:100%;
   }
-  body.dark{
-    --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151;
-  }
+  .muted { color:#667085; }
+  .list { display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; }
+  .name { font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .btn { padding:16px 20px; border:0; border-radius:14px; font-size:20px; cursor:pointer; }
+  .primary { background:#111827; color:#fff; }
+  .status { margin-top:12px; min-height:32px; font-weight:800; font-size:18px; }
+  .good { color:#0f766e; }
+  .bad  { color:#b91c1c; }
 
-  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  html { overflow-x:hidden; }
-
-  body{
-    min-height:100svh;
-    overscroll-behavior-y:contain;
-    overflow:auto;
-    -webkit-overflow-scrolling:touch;
-  }
-
-  .wrap{
-    margin:auto;
-    width:min(1100px,96%);
-    background:var(--card);
-    border-radius:var(--radius-xl);
-    box-shadow:var(--shadow-1);
-    position:relative;
-
-    min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
-    padding:
-      calc(28px + var(--safe-top))
-      calc(28px + var(--safe-right))
-      calc(28px + var(--safe-bottom))
-      calc(28px + var(--safe-left));
-    overflow:visible;
-    overflow-x:clip; /* iOS bleed fix */
-  }
-
-  h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
-  .muted{ color:var(--muted); }
-
-  /* Header controls */
-  .badges{
-    position:absolute;
-    right:calc(18px + var(--safe-right));
-    top:calc(18px + var(--safe-top));
-    display:flex; gap:8px; align-items:center;
-  }
-  .badge{
-    font-size:12px; font-weight:800; padding:6px 10px;
-    border-radius:999px; border:1px solid var(--border);
-    background:var(--card); color:var(--text);
-  }
-  .gear{
-    border:1px solid var(--border); background:var(--card); color:var(--text);
-    border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800;
-    display:flex; align-items:center; gap:6px; transition:background .2s ease;
-  }
-  .gear:hover{ background: color-mix(in oklab, var(--card) 90%, var(--text) 10%); }
-  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
-
-  /* Toast */
-  .toast{
-    position:fixed; left:50%;
-    bottom:calc(24px + var(--safe-bottom));
-    transform:translateX(-50%) translateY(20px);
-    opacity:0; background:var(--card); border:1px solid var(--border);
-    box-shadow:0 8px 30px rgba(0,0,0,.12);
-    border-radius:14px; padding:16px 20px; font-weight:800;
-    transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50;
-  }
-  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
-
-  /* IN/OUT buttons */
-  .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
-  .segment.segment-xl button{
+  /* BIG IN/OUT toggle */
+  .segment { display:flex; gap:14px; width:100%; }
+  .segment.segment-xl button {
     flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
     font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
-    padding:22px 24px; cursor:pointer; color:#111;
-    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-    transition:transform .06s ease, box-shadow .2s ease, background .2s ease;
-    box-shadow:0 4px 10px rgba(0,0,0,.05);
+    padding:22px 24px; cursor:pointer; color:#111; background:#f3f4f6;
+    transition: transform .06s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease;
+    box-shadow:0 4px 10px rgba(0,0,0,.05); touch-action: manipulation; user-select:none;
   }
-  .segment.segment-xl button.active#actIn{
-    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%);
-    color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+  .segment.segment-xl button:active { transform: scale(.99); }
+  .segment.segment-xl button.active#actIn {
+    background:#16a34a; color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
   }
-  .segment.segment-xl button.active#actOut{
-    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
-    color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+  .segment.segment-xl button.active#actOut {
+    background:#dc2626; color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
 
-  /* Grid + cards (symmetrical) */
-  .grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:18px;
-    align-items:stretch;
+  /* Toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    opacity: 0; background: #ffffff; border:1px solid #e5e7eb; box-shadow: 0 8px 30px rgba(0,0,0,.12);
+    border-radius: 14px; padding: 16px 20px; font-weight:800; transition: all .25s ease; pointer-events:none; font-size:18px;
   }
-  .card{
-    border:1px solid var(--border); border-radius:14px; background:var(--card);
-    padding:16px; margin-bottom:0;
-    display:flex; flex-direction:column; height:100%;
-    overflow:hidden;               /* iOS bleed fix for inner scroller */
-    background-clip: padding-box;  /* keep rounded edge tight */
-  }
-  .card h2{ margin:0 0 12px; font-size:20px; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* Inputs */
-  input[type=text], input[type=password], input[type=search]{
-    width:100%; padding:18px 20px; font-size:24px;
-    border:1.5px solid var(--border); border-radius:12px;
-    background:var(--card); color:var(--text);
-    outline:none; transition:border-color .2s ease, box-shadow .2s ease, background .2s ease;
-  }
-  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{
-    border-color:#3b82f6; box-shadow:var(--ring);
-  }
-  input:-webkit-autofill{
-    -webkit-box-shadow:0 0 0px 1000px var(--card) inset !important;
-    -webkit-text-fill-color:var(--text) !important;
-    transition:background-color 5000s ease-in-out 0s;
-  }
+  /* Badges + admin button */
+  .badges { position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
+  .badge { font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#fff; }
+  .badge.offline { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+  .badge.ok { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+  .badge.nfc { background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; }
+  .gear { border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
 
-  /* Results list */
-  .list{
-    display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px;
-    background: var(--card); background-clip: padding-box;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-    flex:1 1 auto;
-    scrollbar-gutter: stable both-edges;
-    padding-right:16px; /* ensure button never clips */
+  /* Admin panel (drawer) */
+  .drawer {
+    position: fixed; right: 16px; top: 64px; width: min(560px, 92%); max-height: 80vh;
+    border:1px solid #e5e7eb; background:#fff; border-radius:16px; box-shadow:0 14px 40px rgba(0,0,0,.18);
+    padding:16px; overflow:auto; display:none; z-index:20;
   }
-  .list::-webkit-scrollbar { width:10px; height:10px; }
-  .list::-webkit-scrollbar-thumb { border-radius:999px; background:#b7c0d133; }
-  .list::-webkit-scrollbar-track { background:var(--card); }
-  .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
-
-  /* Result row uses CSS Grid so name can shrink and button stays visible */
-  .row{
-    display:grid;
-    grid-template-columns:minmax(0,1fr) auto; /* name | button lane */
-    align-items:center;
-    gap:12px;
-    padding:14px 16px; border:1px solid var(--border); border-radius:12px;
-    background: var(--card);
-  }
-  .name{
-    min-width:0; font-weight:800; font-size:20px; color:var(--text);
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-
-  /* Blue Submit button */
-  .actionBtn{
-    --c: var(--blue);
-    background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
-    color:#fff; font-size:20px; padding:16px 20px;
-    border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
-    transition:transform .06s ease, filter .15s ease, box-shadow .2s ease;
-    box-shadow:0 6px 14px rgba(0,0,0,.12);
-    justify-self:end;
-  }
-  .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
-  .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
-
-  /* NFC buttons */
-  .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn{
-    padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5;
-    font-weight:800; cursor:pointer; font-size:18px; transition: transform .06s ease, box-shadow .2s ease;
-  }
-  .nfcBtn.secondary{ background:transparent; color:#4f46e5; }
-
-  /* Admin drawer */
-  .drawer{
-    position:fixed; right:calc(16px + var(--safe-right)); top:calc(64px + var(--safe-top));
-    width:min(560px,92%); max-height:80vh;
-    border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
-    padding:16px; overflow:auto; display:none; z-index:40; color:var(--text);
-  }
-  .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
-  .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
-  .hint{ color:var(--muted); font-size:12px; margin:6px 0 8px; }
+  .drawer h3 { margin:0 0 10px; font-size:18px; }
+  .opt { display:flex; gap:10px; align-items:center; margin:8px 0; }
+  .opt label { font-size:14px; }
+  .hint { color:#667085; font-size:12px; margin-top:6px; }
+  .live { margin-top:14px; border-top:1px dashed #e5e7eb; padding-top:12px; }
   .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
-  .kv .k { color:var(--muted); }
-  .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
-  .log .item { padding:4px 0; border-bottom:1px dashed var(--border); }
+  .kv .k { color:#6b7280; }
+  .log { margin-top:10px; max-height:200px; overflow:auto; background:#fafafa; border:1px solid #e5e7eb; border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+  .log .item { padding:4px 0; border-bottom:1px dashed #e5e7eb; }
   .log .item:last-child { border-bottom:0; }
 
-  .drawer footer{ display:flex; gap:8px; margin-top:14px; }
-  .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
-  .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
+  .nfcBar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
+  .nfcBtn { padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
+  .nfcBtn.secondary { background:#fff; color:#4f46e5; }
 
-  /* Mobile: stack badges above header */
-  @media (max-width:620px){
-    .badges{ position:static; margin:0 0 8px 0; justify-content:flex-end; gap:6px; }
-    h1{ margin-top:2px; }
-  }
-  @media (max-width:900px){
-    .grid{ grid-template-columns:1fr; }
-    .segment.segment-xl button{ font-size:36px; min-height:88px; }
+  input#pin.invalid { border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); }
+  input#pin.valid   { border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.15); }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .segment.segment-xl button { font-size:36px; min-height:88px; }
+    .wrap { padding:22px; }
   }
 </style>
 </head>
 <body>
   <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
     <div class="badges" aria-live="polite" aria-atomic="true">
-      <div id="netBadge" class="badge">Online</div>
-      <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
-      <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
-      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
+      <div id="netBadge" class="badge ok">Online</div>
+      <div id="nfcBadge" class="badge nfc" style="display:none;">NFC Ready</div>
+      <div id="actBadge" class="badge">IN</div>
+      <button id="adminBtn" class="gear" title="Admin">Admin</button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then <b>swipe/tap your Cougar Card</b> or search the faculty directory.</p>
+    <p class="sub">Choose <b>IN</b> or <b>OUT</b>, then swipe/tap a card (10-digit Quick Pin) or look up by name. Android Chrome supports Web NFC; iPhone uses a Bluetooth/USB keyboard-wedge reader or manual entry. If enabled, Student IDs (Legacy) will be passed to Veracross.</p>
 
-    <div class="segment segment-xl" role="tablist" aria-label="Action">
-      <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
-      <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div class="segment segment-xl" role="tablist" aria-label="Action">
+          <button id="actIn"  class="active" role="tab" aria-selected="true"  type="button" aria-label="Set action to IN">IN</button>
+          <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
+        </div>
+        <div class="muted" style="flex:1 1 100%;">Action applies to both card pins and name lookup.</div>
+      </div>
     </div>
 
     <div class="grid">
-      <!-- LEFT: Cougar Card -->
       <div class="card">
-        <h2>Cougar Card</h2>
-        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="Swipe or tap your Cougar Card" aria-label="Cougar Card" />
+        <h2>Quick Pin (10 digits, auto)</h2>
+        <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="\d{10}" maxlength="10"
+               placeholder="Enter 10-digit code…" type="password" aria-label="Quick Pin" autofocus />
+        <div id="pinStatus" class="status muted" aria-live="polite">Waiting for 10-digit code…</div>
+
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
-          <button id="nfcStop" class="nfcBtn secondary">Stop</button>
+          <button id="nfcStop"  class="nfcBtn secondary">Stop</button>
         </div>
-        <div style="margin-top:auto;"></div>
       </div>
 
-      <!-- RIGHT: Lookup by Name -->
       <div class="card">
         <h2>Lookup by Name</h2>
-        <input id="q" type="search" inputmode="search" enterkeyhint="search"
+        <input id="q" type="text" inputmode="search" enterkeyhint="search" autocomplete="name"
                autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search faculty directory" aria-label="Search teacher by name" />
+               placeholder="Start typing first or last name" aria-label="Search teacher by name" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="msg" class="status muted" style="margin-top:16px;" aria-live="polite">Ready.</div>
+    <p class="muted" style="margin:8px 0 0; font-size:12px;">© Yeshivat Frisch 5786</p>
   </div>
 
-  <!-- ===== Admin Drawer ===== -->
+  <!-- Admin drawer with Live Reader + Veracross settings -->
   <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
-    <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
+    <h3 id="adminTitle">Admin Settings</h3>
 
-    <section>
+    <div style="margin-top:8px;">
       <strong>NFC mapping rule</strong>
-      <div class="hint">Translate NFC UID/text → 10-digit Cougar Card code.</div>
+      <div class="hint">Use a different rule if some cards don’t match. Default is HEX_LE_PAD10.</div>
       <div class="opt"><input type="radio" name="rule" value="HEX_LE_PAD10" id="r1"><label for="r1">HEX_LE_PAD10 (last 4 bytes, little-endian → dec → pad10)</label></div>
       <div class="opt"><input type="radio" name="rule" value="HEX_BE_PAD10" id="r2"><label for="r2">HEX_BE_PAD10 (last 4 bytes, big-endian → dec → pad10)</label></div>
       <div class="opt"><input type="radio" name="rule" value="LAST3_DEC_PAD10" id="r3"><label for="r3">LAST3_DEC_PAD10 (last 3 bytes, big-endian → dec → pad10)</label></div>
       <div class="opt"><input type="radio" name="rule" value="FULL_UID_DEC_PAD10" id="r4"><label for="r4">FULL_UID_DEC_PAD10 (full UID big-endian → dec → last10)</label></div>
-      <div class="opt"><input type="radio" name="rule" value="PASS_THROUGH_DIGITS_PAD10" id="r5"><label for="r5">PASS_THROUGH_DIGITS_PAD10 (for readers that already type digits)</label></div>
-    </section>
+      <div class="opt"><input type="radio" name="rule" value="PASS_THROUGH_DIGITS_PAD10" id="r5"><label for="r5">PASS_THROUGH_DIGITS_PAD10 (reader already types digits)</label></div>
+    </div>
 
-    <section style="margin-top:12px;">
+    <div style="margin-top:14px;">
       <strong>Keyboard wedge</strong>
-      <div class="opt"><input type="checkbox" id="ckTrim"><label for="ckTrim">Trim to digits & pad to 10 (recommended)</label></div>
-      <div class="opt"><input type="checkbox" id="ckIgnoreEnter"><label for="ckIgnoreEnter">Ignore Enter key (prevents double submit)</label></div>
-    </section>
+      <div class="opt"><input type="checkbox" id="ckTrim" checked><label for="ckTrim">Trim to digits & pad to 10 (recommended)</label></div>
+      <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevents double submit)</label></div>
+    </div>
 
-    <section style="margin-top:12px;">
+    <div style="margin-top:14px;">
       <strong>Debug</strong>
       <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show UID → computed 10-digit in toast</label></div>
-      <div class="hint">Toggle with <b>Ctrl/⌘ + Shift + D</b> (ignored while typing).</div>
-    </section>
+      <div class="hint">Toggle also with Shift + D.</div>
+    </div>
 
-    <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
+    <div class="live">
       <h3 style="margin-bottom:8px;">Live Reader</h3>
       <div class="kv">
-        <div class="k">Rule</div><div id="liveRule">—</div>
+        <div class="k">Rule</div><div id="liveRule">HEX_LE_PAD10</div>
         <div class="k">Last UID</div><div id="liveUid">—</div>
         <div class="k">Last 10-digit</div><div id="liveTen">—</div>
       </div>
       <div class="log" id="liveLog" aria-label="Reader log"></div>
-    </section>
+    </div>
 
-    <footer>
+    <div style="margin-top:14px;">
+      <strong>Veracross</strong>
+      <div class="opt"><input type="checkbox" id="vcEnable"><label for="vcEnable">Enable Veracross handoff (open kiosk and submit Student ID)</label></div>
+      <div class="opt"><label for="vcKioskId" style="width:160px;">Kiosk ID</label><input id="vcKioskId" type="text" value="34" style="flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px;"></div>
+      <div class="opt"><label for="vcKioskType" style="width:160px;">Kiosk Type</label><input id="vcKioskType" type="text" value="4" style="flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px;"></div>
+      <div class="opt"><label for="vcMethod" style="width:160px;">Check-in Method</label><input id="vcMethod" type="text" value="3" style="flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px;"></div>
+      <div class="opt">
+        <label style="width:160px;">Open Mode</label>
+        <select id="vcOpenMode" style="flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px;">
+          <option value="blank" selected>New Tab</option>
+          <option value="self">Same Tab</option>
+        </select>
+      </div>
+      <div class="hint">Target URL: https://checkin.veracross.com/frisch/kiosk/entrance → posts to /frisch/checkin/log with legacy_id + hidden fields.</div>
+    </div>
+
+    <div style="margin-top:14px; display:flex; gap:8px;">
       <button id="adminClose" class="btn">Close</button>
       <button id="adminReset" class="btn">Reset to defaults</button>
       <button id="adminClearLog" class="btn">Clear Log</button>
-    </footer>
+    </div>
   </div>
 
 <script>
-  // ===== Config =====
+  // ====== CONFIG ======
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  const PIN_REQUIRED_LEN = 10;
   const COOLDOWN_MS = 400;
-  const THEME_KEY = 'theme';
 
-  // Admin state keys + defaults
+  // ====== DOM ======
+  const $ = sel => document.querySelector(sel);
+  const pinEl = $('#pin'), qEl = $('#q'), msgEl = $('#msg'), pinStatusEl = $('#pinStatus'), resultsEl = $('#results'), toastEl = $('#toast');
+  const btnIn = $('#actIn'), btnOut = $('#actOut');
+  const netBadge = $('#netBadge'), actBadge = $('#actBadge');
+  const nfcBadge = $('#nfcBadge'), nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
+  const adminBtn = $('#adminBtn'), admin = $('#admin'), adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
+  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
+  const vcEnable = $('#vcEnable'), vcKioskId = $('#vcKioskId'), vcKioskType = $('#vcKioskType'), vcMethod = $('#vcMethod'), vcOpenMode = $('#vcOpenMode');
+  // live admin elements
+  const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
+
+  // ====== Admin state ======
   const RULE_KEY = 'nfcRule';
   const TRIM_KEY = 'wedgeTrim';
   const IGNENTER_KEY = 'wedgeIgnoreEnter';
   const DEBUG_KEY = 'debugOn';
-  const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0' };
+  const VC_EN = 'vcEnable', VC_ID='vcKioskId', VC_TYPE='vcKioskType', VC_METHOD='vcMethod', VC_OPEN='vcOpenMode';
+  const DEFAULTS = { [RULE_KEY]:'HEX_LE_PAD10', [TRIM_KEY]:'1', [IGNENTER_KEY]:'1', [DEBUG_KEY]:'0',
+                     [VC_EN]:'0', [VC_ID]:'34', [VC_TYPE]:'4', [VC_METHOD]:'3', [VC_OPEN]:'blank' };
 
-  // ===== DOM =====
-  const $ = s => document.querySelector(s);
-  const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
-  const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
-  const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
-  const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
-  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'),
-        adminClose = $('#adminClose'), adminReset = $('#adminReset'), adminClearLog = $('#adminClearLog');
-  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
-  const liveRuleEl = $('#liveRule'), liveUidEl = $('#liveUid'), liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
+  function lsGet(k, def){ const v = localStorage.getItem(k); return v==null ? def : v; }
+  function lsSet(k, v){ localStorage.setItem(k, v); }
 
-  let lastSubmitAt = 0;
-
-  // ===== Theme =====
-  function setTheme(mode){
-    const dark = mode === 'dark';
-    document.body.classList.toggle('dark', dark);
-    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
-    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
-    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
-  }
-  function initTheme(){
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved) { setTheme(saved); return; }
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    setTheme(prefersDark ? 'dark' : 'light');
-  }
-  themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
-
-  // ===== Toast =====
-  let toastTimer=null;
-  function showToast(text){
-    toastEl.textContent = text;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400);
-  }
-
-  // ===== Network badge =====
-  function updateNet(){
-    const on = navigator.onLine;
-    netBadge.textContent = on ? 'Online' : 'Offline';
-    netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
-    netBadge.style.color = on ? 'var(--text)' : '#991b1b';
-  }
-  window.addEventListener('online', updateNet);
-  window.addEventListener('offline', updateNet);
-  updateNet();
-
-  // ===== Focus helpers =====
-  function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-  function focusPinSafely(){
-    // Don't steal from name search; allow OSK to stay up if user is typing
-    if (document.activeElement !== qEl) focusPin();
-  }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
-  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
-
-  // ===== Action toggle (refocus pin on change, but safely) =====
-  function setAction(a){
-    const inActive = a === 'in';
-    btnIn.classList.toggle('active', inActive);
-    btnOut.classList.toggle('active', !inActive);
-    setTimeout(focusPinSafely, 0);
-  }
-  btnIn.addEventListener('click', () => setAction('in'));
-  btnOut.addEventListener('click', () => setAction('out'));
-  window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
-
-  // ===== Admin storage helpers =====
-  const lsGet = (k, def) => { const v = localStorage.getItem(k); return v==null ? def : v; };
-  const lsSet = (k, v) => localStorage.setItem(k, v);
-  const getSelectedNfcRule = () => lsGet(RULE_KEY, DEFAULTS[RULE_KEY]);
+  function getSelectedNfcRule(){ return lsGet(RULE_KEY, DEFAULTS[RULE_KEY]); }
 
   function mountAdmin(){
     (document.querySelector(`input[name="rule"][value="${getSelectedNfcRule()}"]`) || $('#r1')).checked = true;
     ckTrim.checked = lsGet(TRIM_KEY, DEFAULTS[TRIM_KEY]) === '1';
     ckIgnoreEnter.checked = lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1';
     ckDebug.checked = lsGet(DEBUG_KEY, DEFAULTS[DEBUG_KEY]) === '1';
+
+    vcEnable.checked = lsGet(VC_EN, DEFAULTS[VC_EN]) === '1';
+    vcKioskId.value = lsGet(VC_ID, DEFAULTS[VC_ID]);
+    vcKioskType.value = lsGet(VC_TYPE, DEFAULTS[VC_TYPE]);
+    vcMethod.value = lsGet(VC_METHOD, DEFAULTS[VC_METHOD]);
+    vcOpenMode.value = lsGet(VC_OPEN, DEFAULTS[VC_OPEN]);
+
     liveRuleEl.textContent = getSelectedNfcRule();
   }
-  function showAdmin(show=true){
-    adminDrawer.style.display = show ? 'block' : 'none';
-    adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
-  }
-
+  function showAdmin(show=true){ admin.style.display = show ? 'block' : 'none'; }
   adminBtn.addEventListener('click', () => { mountAdmin(); showAdmin(true); });
-  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
+  adminClose.addEventListener('click', () => showAdmin(false));
   adminReset.addEventListener('click', () => {
     Object.entries(DEFAULTS).forEach(([k,v]) => lsSet(k,v));
     mountAdmin(); liveLogEl.innerHTML=''; liveUidEl.textContent='—'; liveTenEl.textContent='—';
@@ -419,211 +259,314 @@
 
   document.querySelectorAll('input[name="rule"]').forEach(r => {
     r.addEventListener('change', () => {
-      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPinSafely(); }
+      if (r.checked) { lsSet(RULE_KEY, r.value); liveRuleEl.textContent = r.value; showToast('Rule: ' + r.value); focusPin(); }
     });
   });
-  ckTrim.addEventListener('change', () => lsSet(TRIM_KEY, ckTrim.checked ? '1' : '0'));
-  ckIgnoreEnter.addEventListener('change', () => lsSet(IGNENTER_KEY, ckIgnoreEnter.checked ? '1' : '0'));
-  ckDebug.addEventListener('change', () => lsSet(DEBUG_KEY, ckDebug.checked ? '1' : '0'));
-
-  // ===== Debug hotkey — Ctrl/⌘ + Shift + D (ignored while typing) =====
-  function isTypingTarget(el){
-    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-  }
-  window.addEventListener('keydown', (e) => {
-    const keyIsD = (e.key || '').toLowerCase() === 'd';
-    const combo = keyIsD && e.shiftKey && (e.ctrlKey || e.metaKey);
-    if (!combo) return;
-    if (isTypingTarget(document.activeElement)) return;
-    e.preventDefault();
-    const nv = lsGet(DEBUG_KEY, '0') === '1' ? '0' : '1';
-    lsSet(DEBUG_KEY, nv);
-    showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
+  [ckTrim, ckIgnoreEnter, ckDebug].forEach(el => el.addEventListener('change', () => {
+    const map = { ckTrim:TRIM_KEY, ckIgnoreEnter:IGNENTER_KEY, ckDebug:DEBUG_KEY };
+    lsSet(map[el.id], el.checked ? '1' : '0');
+  }));
+  [vcEnable, vcKioskId, vcKioskType, vcMethod, vcOpenMode].forEach(el => {
+    el.addEventListener('change', () => {
+      const map = { vcEnable:VC_EN, vcKioskId:VC_ID, vcKioskType:VC_TYPE, vcMethod:VC_METHOD, vcOpenMode:VC_OPEN };
+      lsSet(map[el.id], (el.type==='checkbox') ? (el.checked?'1':'0') : el.value);
+    });
   });
 
-  // ===== Helpers =====
-  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
+  window.addEventListener('keydown', (e) => {
+    if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+      const nv = lsGet(DEBUG_KEY, '0') === '1' ? '0' : '1';
+      lsSet(DEBUG_KEY, nv); showToast('Debug ' + (nv==='1' ? 'ON' : 'OFF'));
+    }
+  });
+
+  // ====== Focus management ======
+  function focusPin(){ try { pinEl.focus(); pinEl.select && pinEl.select(); } catch(_) {} }
+  function focusName(){
+    try {
+      qEl.focus({ preventScroll:true });
+      setTimeout(()=>{ if (qEl.setSelectionRange) { const l=qEl.value.length; qEl.setSelectionRange(l,l); } },0);
+    } catch(_) {}
+  }
+
+  document.addEventListener('DOMContentLoaded', focusPin);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPin(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPin(); });
+  const firstTap = () => { focusPin(); window.removeEventListener('pointerdown', firstTap); };
+  window.addEventListener('pointerdown', firstTap, { once:true });
+
+  // prevent refocus while typing name
+  let nameFocusHold = false;
+  qEl.addEventListener('focus', () => { nameFocusHold = true; });
+  qEl.addEventListener('blur',  () => { setTimeout(()=>{ nameFocusHold = false; }, 200); });
+  qEl.closest('.card').addEventListener('click', (e) => { if (e.target !== qEl) focusName(); });
+
+  // ====== Network + UI helpers ======
+  function setMsg(text, cls='muted'){ msgEl.className = 'status ' + cls; msgEl.textContent = text; }
+  function setPinMsg(text, cls='muted'){ pinStatusEl.className = 'status ' + cls; pinStatusEl.textContent = text; }
+  let toastTimer = null;
+  function showToast(text){ toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400); }
+  function onlineChanged(){
+    const on = navigator.onLine;
+    netBadge.textContent = on ? 'Online' : 'Offline';
+    netBadge.className = 'badge ' + (on ? 'ok' : 'offline');
+  }
+  window.addEventListener('online', onlineChanged);
+  window.addEventListener('offline', onlineChanged);
+  onlineChanged();
+
+  // ====== Action toggle ======
+  function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
+  function setAction(a){
+    const inActive = (a === 'in');
+    btnIn.classList.toggle('active', inActive);  btnIn.setAttribute('aria-selected', String(inActive));
+    btnOut.classList.toggle('active', !inActive); btnOut.setAttribute('aria-selected', String(!inActive));
+    actBadge.textContent = inActive ? 'IN' : 'OUT';
+    setTimeout(() => focusPin(), 0);
+  }
+  btnIn.addEventListener('click', () => setAction('in'));
+  btnOut.addEventListener('click', () => setAction('out'));
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') setAction('in');
+    if (e.key === 'ArrowRight') setAction('out');
+  });
+
+  // ====== Normalize to 10 digits ======
   function normalizeToTenDigits(raw) {
     const trimOn = lsGet('wedgeTrim', '1') === '1';
     if (!trimOn) return String(raw || '');
-    const d = digitsOnly(raw);
-    if (!d) return '';
-    return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10);
+    if (raw == null) return '';
+    const digits = String(raw).replace(/\D+/g, '');
+    if (!digits) return '';
+    return digits.length <= 10 ? digits.padStart(10, '0') : digits.slice(-10);
   }
 
-  // ===== Submit API =====
-  async function submitPinOrId({ pin, personId, uid }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}), ...(uid?{uid}:{}) }).toString();
-    try{
-      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok || (data && data.error)) { showToast((data && data.error) || ('Error ' + res.status)); return; }
-      const { status, firstName, lastName, time } = data || {};
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.');
-      try{ navigator.vibrate?.(30); }catch{}
-    }catch{
-      showToast('Network error');
-    }finally{
-      lastSubmitAt = Date.now();
-      focusPinSafely();
-    }
-  }
-
-  // ===== USB wedge — robust 10-digit capture =====
-  let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 120;
-  pinEl.addEventListener('input', ()=>{
-    clearTimeout(wedgeTimer);
-    wedgeTimer = setTimeout(()=>{
-      const nowDigits = digitsOnly(pinEl.value);
-      if (nowDigits.length < 10) return;
-      const ten = nowDigits.slice(-10);
-      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten });
-      pinEl.value = '';
-      focusPinSafely();
-    }, WEDGE_QUIET_MS);
-  });
-  pinEl.addEventListener('keydown',(e)=>{
-    if (lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1' && e.key === 'Enter') {
-      e.preventDefault(); e.stopPropagation();
-    }
-  });
-
-  // ===== Name Search =====
-  let searchTimer=null;
-  qEl.addEventListener('input', ()=>{
-    clearTimeout(searchTimer);
-    const q = qEl.value.trim();
-    if (!q) { $('#results').innerHTML = ''; return; }
-    searchTimer = setTimeout(()=>doSearch(q), 180);
-  });
-  qEl.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter') {
-      clearTimeout(searchTimer);
-      const q = qEl.value.trim();
-      if (q) doSearch(q);
-      e.preventDefault();
-    }
-  });
-
-  async function doSearch(q){
-    try{
-      const res = await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      const box = $('#results');
-      if (!Array.isArray(data) || !data.length) { box.innerHTML = '<div class="muted">No matches found.</div>'; return; }
-      box.innerHTML = '';
-      data.forEach(({ firstName, lastName, personId })=>{
-        const row = document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-        const name = document.createElement('div'); name.className='name'; name.textContent = `${firstName} ${lastName}`;
-        const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-        btn.addEventListener('click', ()=> { submitPinOrId({ personId }); });
-        row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-      });
-    }catch{
-      showToast('Search failed');
-    }
-  }
-
-  // ===== NFC (Android Chrome) =====
-  function supportsWebNFC(){ return 'NDEFReader' in window; }
-  let ndef = null, nfcStarted = false;
-  const hexToBytes = (hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
-  const bytesToNumberLE = (bytes)=> bytes.reduceRight((a,b)=>(a*256+b)>>>0,0);
-  const bytesToNumberBE = (bytes)=> bytes.reduce((a,b)=>(a*256+b)>>>0,0);
-  const pad10 = (n)=>{ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); };
+  // ====== UID conversion helpers (for NFC monitor/rules) ======
+  function hexToBytes(hex){ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; }
+  function bytesToNumberLE(bytes){ return bytes.reduceRight((a,b)=>(a*256+b)>>>0,0); }
+  function bytesToNumberBE(bytes){ return bytes.reduce((a,b)=>(a*256+b)>>>0,0); }
+  function pad10(n){ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); }
   function uidToTenByRule(uidHex, ruleId){
     const bytes = hexToBytes(uidHex);
     switch (ruleId) {
-      case 'HEX_LE_PAD10': return pad10(bytesToNumberLE(bytes.slice(-4)));
-      case 'HEX_BE_PAD10': return pad10(bytesToNumberBE(bytes.slice(-4)));
-      case 'LAST3_DEC_PAD10': return pad10(bytesToNumberBE(bytes.slice(-3)));
-      case 'FULL_UID_DEC_PAD10': return pad10(bytesToNumberBE(bytes));
+      case 'HEX_LE_PAD10':      return pad10(bytesToNumberLE(bytes.slice(-4)));
+      case 'HEX_BE_PAD10':      return pad10(bytesToNumberBE(bytes.slice(-4)));
+      case 'LAST3_DEC_PAD10':   return pad10(bytesToNumberBE(bytes.slice(-3)));
+      case 'FULL_UID_DEC_PAD10':return pad10(bytesToNumberBE(bytes));
       case 'PASS_THROUGH_DIGITS_PAD10': return normalizeToTenDigits(uidHex);
       default: return '';
     }
   }
-  const hexToShort = (uid)=> (uid||'').slice(-8);
 
+  // ====== Veracross handoff ======
+  function veracrossEnabled(){ return lsGet(VC_EN, DEFAULTS[VC_EN]) === '1'; }
+  function buildAndPostVeracross(legacyId){
+    if (!legacyId) return;
+    const kioskId   = lsGet(VC_ID, DEFAULTS[VC_ID]);
+    const kioskType = lsGet(VC_TYPE, DEFAULTS[VC_TYPE]);
+    const method    = lsGet(VC_METHOD, DEFAULTS[VC_METHOD]);
+    const targetMode= lsGet(VC_OPEN, DEFAULTS[VC_OPEN]); // 'blank' or 'self'
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://checkin.veracross.com/frisch/checkin/log';
+    form.target = (targetMode === 'self') ? '_self' : '_blank';
+
+    const add = (n,v) => { const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+    add('legacy_id', legacyId);
+    add('kiosk_type', kioskType || '4');
+    add('check_in_method', method || '3');
+    add('kiosk', kioskId || '34');
+
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(()=> form.remove(), 1500);
+    showToast('Opening Veracross kiosk…');
+  }
+
+  // ====== Submit to Apps Script, then optional Veracross ======
+  let lastSubmitAt = 0;
+
+  async function submitPinOrId({ pin, personId }) {
+    const act = currentAction();
+    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{}), ...(personId?{personId}:{}) }).toString();
+    try {
+      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      const text = await res.text(); let data=null; try { data = JSON.parse(text); } catch {}
+      if (!res.ok || (data && data.error)) {
+        const msg = (data && data.error) ? String(data.error) : ('Error ' + res.status);
+        const nicer = /not found/i.test(msg) ? 'Quick Pin / Person not found in Directory' : msg;
+        setMsg(nicer, 'bad'); showToast(nicer); return;
+      }
+
+      const { status, firstName, lastName, time, studentId } = data || {};
+      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : 'UPDATED';
+      const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
+      setMsg(line || 'Done.', 'good'); showToast(line || 'Done.');
+
+      // === Veracross handoff (prefer backend studentId from roster via Person ID) ===
+      if (veracrossEnabled()) {
+        let legacyId = '';
+        if (studentId && /^\d{4,}$/.test(String(studentId))) legacyId = String(studentId);
+        else if (pin && /^\d{4,}$/.test(pin)) legacyId = pin; // fallback if needed
+        else if (personId && /^\d{4,}$/.test(personId)) legacyId = personId;
+        if (legacyId) buildAndPostVeracross(legacyId);
+      }
+
+    } catch {
+      setMsg('Network error', 'bad'); showToast('Network error');
+    } finally {
+      lastSubmitAt = Date.now();
+      focusPin();
+    }
+  }
+
+  // ====== Auto-submit only (ignore Enter) ======
+  let pinTimer = null;
+  pinEl.addEventListener('input', () => {
+    clearTimeout(pinTimer);
+    const norm = normalizeToTenDigits(pinEl.value || '');
+    pinEl.classList.remove('invalid','valid');
+
+    if (!norm) { if (pinEl.value) pinEl.classList.add('invalid'); setPinMsg('Waiting for 10-digit code…', 'muted'); return; }
+
+    if (norm.length === PIN_REQUIRED_LEN) {
+      pinEl.classList.add('valid');
+      pinTimer = setTimeout(() => {
+        if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
+        pinEl.value = norm;
+        submitPinOrId({ pin: norm });
+        pinEl.value = '';
+        pinEl.classList.remove('valid');
+        setPinMsg('Submitted.', 'good');
+      }, 180);
+    }
+  });
+
+  pinEl.addEventListener('keydown', (e) => {
+    if (lsGet('wedgeIgnoreEnter', '1') === '1' && e.key === 'Enter') {
+      e.preventDefault(); e.stopPropagation();
+    }
+  });
+
+  // ====== Name Lookup ======
+  let searchTimer = null;
+  qEl.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = qEl.value.trim(); resultsEl.innerHTML = '';
+    if (!q) { setMsg('Ready.', 'muted'); return; }
+    searchTimer = setTimeout(() => doSearch(q), 160);
+  });
+
+  async function doSearch(q) {
+    setMsg('Searching…', 'muted');
+    try {
+      const res = await fetch(ENDPOINT + `?action=search&q=${encodeURIComponent(q)}`, { method:'GET' });
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        resultsEl.innerHTML = '<div class="muted">No matches.</div>'; setMsg('No matches', 'muted'); return;
+      }
+      resultsEl.innerHTML = '';
+      data.forEach(({ firstName, lastName, personId }) => {
+        const row = document.createElement('div'); row.className = 'row'; row.setAttribute('role','listitem');
+        const name = document.createElement('div'); name.className = 'name'; name.textContent = `${firstName} ${lastName}`;
+        const btn = document.createElement('button'); btn.className = 'btn primary'; btn.textContent = 'Submit';
+        btn.addEventListener('click', () => { submitPinOrId({ personId }); focusPin(); });
+        row.appendChild(name); row.appendChild(btn); resultsEl.appendChild(row);
+      });
+      setMsg('Select a name then click Submit (uses selected IN/OUT).', 'muted');
+    } catch {
+      resultsEl.innerHTML = '<div class="bad">Search failed.</div>'; setMsg('Search failed', 'bad');
+    }
+  }
+
+  // ====== NFC (Android Chrome) with Live Monitor ======
+  function supportsWebNFC(){ return 'NDEFReader' in window; }
+  function DEBUG_ON(){ return lsGet('debugOn','0') === '1'; }
+  function nfcUidToTen(uidHex){
+    const rule = lsGet(RULE_KEY, DEFAULTS[RULE_KEY]);
+    return uidToTenByRule(uidHex, rule);
+  }
+  function hexToShort(uid){ return (uid || '').slice(-8); }
+
+  let ndef = null, nfcStarted = false;
   function pushLive(uidHex, ten) {
     liveUidEl.textContent = uidHex || '—';
     liveTenEl.textContent = ten || '—';
-    liveRuleEl.textContent = getSelectedNfcRule();
     const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     const div = document.createElement('div');
     div.className = 'item';
-    div.textContent = `[${ts}] UID:${hexToShort(uidHex)} → ${ten} (${getSelectedNfcRule()})`;
+    div.textContent = `[${ts}] UID:${hexToShort(uidHex)} → ${ten} (${lsGet(RULE_KEY, DEFAULTS[RULE_KEY])})`;
     liveLogEl.appendChild(div);
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
-  function nfcUidToTen(uidHex){ return uidToTenByRule(uidHex, getSelectedNfcRule()); }
 
-  if (supportsWebNFC()) {
+  async function startNFC() {
+    if (!supportsWebNFC() || nfcStarted) return;
+    try {
+      ndef = new NDEFReader();
+      await ndef.scan(); nfcStarted = true;
+      setMsg('NFC scanning started', 'good'); showToast('NFC scanning started');
+      nfcStartBtn.disabled = true; nfcStopBtn.disabled = false; nfcBadge.style.display = '';
+
+      ndef.onreadingerror = () => { setMsg('NFC read error — try again', 'bad'); showToast('NFC read error'); };
+      ndef.onreading = (event) => {
+        const { message, serialNumber } = event;
+        const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
+        let ten = '';
+
+        // Try NDEF text payloads first (some encoders write plain text)
+        for (const record of message.records) {
+          const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
+          if (!texty) continue;
+          try {
+            const td = new TextDecoder(record.encoding || 'utf-8');
+            const text = record.data ? td.decode(record.data) : '';
+            const maybe = normalizeToTenDigits(text);
+            if (maybe) { ten = maybe; break; }
+          } catch {}
+        }
+        if (!ten && uidHex) ten = nfcUidToTen(uidHex);
+
+        pushLive(uidHex, ten);
+        if (DEBUG_ON()) showToast(`UID:${hexToShort(uidHex)} → ${ten} [${lsGet(RULE_KEY, DEFAULTS[RULE_KEY])}]`);
+        if (!ten) { setMsg('NFC must resolve to a 10-digit code.', 'bad'); showToast('NFC needs 10 digits'); return; }
+
+        if (Date.now() - lastSubmitAt >= COOLDOWN_MS) {
+          submitPinOrId({ pin: ten });
+          setPinMsg('NFC submitted.', 'good');
+        }
+        focusPin();
+      };
+    } catch {
+      setMsg('NFC not permitted or unavailable', 'bad'); showToast('NFC not permitted');
+    }
+  }
+  function stopNFC() {
+    if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
+    nfcStarted = false;
+    nfcStartBtn.disabled = false; nfcStopBtn.disabled = true; setMsg('NFC stopped.', 'muted');
+    focusPin();
+  }
+  if ('NDEFReader' in window) {
     nfcBar.style.display = '';
     nfcStopBtn.disabled = true;
-
-    nfcStartBtn.addEventListener('click', async ()=>{
-      if (nfcStarted) return;
-      try {
-        ndef = new NDEFReader();
-        await ndef.scan(); nfcStarted = true;
-        nfcBadge.style.display = '';
-        nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
-        showToast('NFC scanning started');
-        focusPinSafely();
-
-        ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
-        ndef.onreading = (event) => {
-          const { message, serialNumber } = event;
-          const uidHex = String(serialNumber || '').toUpperCase().replace(/[^0-9A-F]/g,'');
-          let ten = '';
-          if (uidHex) ten = nfcUidToTen(uidHex);
-          if ((!ten || ten.length !== 10) && message?.records?.length) {
-            for (const record of message.records) {
-              const texty = record.recordType === 'text' || record.recordType === 'url' || record.mediaType === 'text/plain';
-              if (!texty) continue;
-              try {
-                const td = new TextDecoder(record.encoding || 'utf-8');
-                const text = record.data ? td.decode(record.data) : '';
-                const maybe = normalizeToTenDigits(text);
-                if (maybe && maybe.length === 10) { ten = maybe; break; }
-              } catch {}
-            }
-          }
-          if (!ten || ten.length !== 10) { showToast('Cougar Card must resolve to a 10-digit code'); return; }
-          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten, uid: uidHex });
-          pushLive(uidHex, ten);
-          focusPinSafely();
-        };
-      } catch {
-        showToast('NFC not permitted or unavailable');
-        focusPinSafely();
-      }
-    });
-
-    nfcStopBtn.addEventListener('click', ()=>{
-      if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
-      nfcStarted = false;
-      nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
-      showToast('NFC stopped');
-      focusPinSafely();
-    });
+    nfcStartBtn.addEventListener('click', startNFC);
+    nfcStopBtn.addEventListener('click', stopNFC);
+    const startOnFirstGesture = () => { startNFC(); focusPin(); window.removeEventListener('pointerdown', startOnFirstGesture); };
+    window.addEventListener('pointerdown', startOnFirstGesture, { once: true });
   }
 
-  // ===== Init =====
-  document.addEventListener('DOMContentLoaded', ()=>{
-    initTheme();
-    Object.entries(DEFAULTS).forEach(([k,v]) => { if (localStorage.getItem(k) == null) localStorage.setItem(k,v); });
-    setAction('in');
-    focusPinSafely(); // focus on load unless user taps search
+  // ====== Keep focus on pin after most clicks ======
+  document.addEventListener('click', (e) => {
+    if (nameFocusHold || e.target === qEl || qEl.contains(e.target)) return;
+    if (e.target !== pinEl && e.target !== nfcStartBtn && e.target !== nfcStopBtn && e.target !== adminBtn && !admin.contains(e.target)) {
+      setTimeout(() => focusPin(), 0);
+    }
   });
 
-  // Close drawer by clicking backdrop area
-  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
+  // Initialize defaults and UI
+  setAction('in'); focusPin(); mountAdmin();
 </script>
 </body>
 </html>
