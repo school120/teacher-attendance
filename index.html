@@ -1,341 +1,173 @@
 <!doctype html>
 <html lang="en">
+>
 <head>
 <meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>Attendance — Guard Console</title>
-<meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
-  :root{
-    --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
-    --radius-xl:18px; --ring:0 0 0 6px rgba(59,130,246,.16);
-  }
-  body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
-  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  .wrap{ margin:auto; width:min(1100px,96%); background:var(--card); border-radius:var(--radius-xl); box-shadow:0 10px 30px rgba(0,0,0,.08);
-         min-height:100svh; padding:28px; position:relative; }
-  h1{ margin:0 0 8px; font-weight:800; font-size:28px; }
-  .muted{ color:var(--muted); }
-  .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; }
-  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); }
-  .gear{ border:1px solid var(--border); background:var(--card); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
-
-  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
-    opacity:0; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px 20px; font-weight:800;
-    transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
-  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
-
-  .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
-  .segment.segment-xl button{
-    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px; font-weight:900; font-size:42px; min-height:96px;
-    padding:22px 24px; cursor:pointer; color:#111; background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-  }
-  .segment.segment-xl button.active#actIn { background:linear-gradient(180deg,#16a34a 0%,#15803d 100%); color:#fff; border-color:#16a34a; }
-  .segment.segment-xl button.active#actOut{ background:linear-gradient(180deg,#dc2626 0%,#991b1b 100%); color:#fff; border-color:#dc2626; }
-
-  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
-  .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; }
-  .card h2{ margin:0 0 12px; font-size:20px; }
-
-  input[type=text], input[type=password], input[type=search]{
-    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
-    outline:none; transition:border-color .2s ease, box-shadow .2s ease;
-  }
-  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{
-    border-color:#3b82f6; box-shadow:var(--ring);
-  }
-
-  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); padding-right:16px; }
-  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
-  .name{ min-width:0; font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
-
-  .actionBtn{ --c:#2563eb; background:linear-gradient(180deg,var(--c) 0%, #1e4fb9 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; }
-
-  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
+:root{
+  --bg:#f6f7fb;--card:#fff;--text:#0f172a;--muted:#667085;--border:#e5e7eb;
+  --in:#16a34a;--out:#dc2626;--blue:#2563eb;--ring:0 0 0 6px rgba(59,130,246,.16)
+}
+body.dark{--bg:#0b1020;--card:#111827;--text:#f3f4f6;--muted:#cbd5e1;--border:#374151}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{margin:auto;width:min(1100px,96%);background:var(--card);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.08);
+min-height:100svh;padding:28px;position:relative}
+h1{margin:0 0 8px;font-weight:800;font-size:28px}
+.muted{color:var(--muted)}
+.badges{position:absolute;right:18px;top:18px;display:flex;gap:8px}
+.badge{font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--card)}
+.gear{border:1px solid var(--border);background:var(--card);border-radius:10px;padding:6px 10px;cursor:pointer;font-weight:800}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--card);
+border:1px solid var(--border);border-radius:14px;padding:16px 20px;font-weight:800;transition:all .25s ease;pointer-events:none;
+font-size:18px;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.segment{display:flex;gap:14px;width:100%;margin:20px 0}
+.segment.segment-xl button{flex:1 1 0;border:2px solid #d1d5db;border-radius:16px;font-weight:900;font-size:42px;min-height:96px;
+padding:22px 24px;cursor:pointer;color:#111;background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%)}
+.segment.segment-xl button.active#actIn{background:linear-gradient(180deg,#16a34a 0%,#15803d 100%);color:#fff;border-color:#16a34a}
+.segment.segment-xl button.active#actOut{background:linear-gradient(180deg,#dc2626 0%,#991b1b 100%);color:#fff;border-color:#dc2626}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{border:1px solid var(--border);border-radius:14px;background:var(--card);padding:16px;display:flex;flex-direction:column}
+.card h2{margin:0 0 12px;font-size:20px}
+input[type=text],input[type=password],input[type=search]{width:100%;padding:18px 20px;font-size:24px;border:1.5px solid var(--border);
+border-radius:12px;background:var(--card);color:var(--text);outline:none;transition:border-color .2s ease,box-shadow .2s ease}
+input:focus-visible{border-color:#3b82f6;box-shadow:var(--ring)}
+.list{display:grid;gap:12px;max-height:460px;overflow:auto;margin-top:14px;background:var(--card);padding-right:16px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);
+border-radius:12px;background:var(--card)}
+.name{font-weight:800;font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sectionTitle{font-size:13px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:4px 2px}
+.actionBtn{--c:#2563eb;background:linear-gradient(180deg,var(--c) 0%,#1e4fb9 100%);color:#fff;font-size:20px;padding:16px 20px;
+border:2px solid var(--c);border-radius:14px;font-weight:900;cursor:pointer}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.segment.segment-xl button{font-size:36px;min-height:88px}}
 </style>
 </head>
 <body>
-  <div class="wrap" role="application" aria-label="Attendance Guard Console">
-    <div class="badges">
-      <div id="netBadge" class="badge">Online</div>
-      <button id="themeBtn" class="gear" aria-label="Toggle dark mode">🌙 Dark</button>
-    </div>
+<div class="wrap">
+  <div class="badges">
+    <div id="netBadge" class="badge">Online</div>
+    <button id="themeBtn" class="gear" aria-label="Toggle dark mode">🌙 Dark</button>
+  </div>
+  <h1>Attendance — Guard Console</h1>
+  <p class="muted">Select <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search by name.</p>
 
-    <h1>Attendance — Guard Console</h1>
-    <p class="muted">Select <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search by name. Students auto-sign into Veracross in the background.</p>
-
-    <div class="segment segment-xl" role="tablist" aria-label="Action">
-      <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
-      <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
-    </div>
-
-    <div class="grid">
-      <!-- LEFT: Card / Quick Pin -->
-      <div class="card">
-        <h2>Cougar Card / Quick Pin</h2>
-        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="Swipe or tap card" aria-label="Cougar Card / Quick Pin" />
-      </div>
-
-      <!-- RIGHT: Lookup by Name -->
-      <div class="card">
-        <h2>Lookup by Name</h2>
-        <input id="q" type="search" inputmode="search" enterkeyhint="search"
-               autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search faculty or students" aria-label="Search by name" />
-        <div id="results" class="list" role="list" aria-live="polite"></div>
-      </div>
-    </div>
-
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div class="segment segment-xl">
+    <button id="actIn" class="active" type="button">IN</button>
+    <button id="actOut" type="button">OUT</button>
   </div>
 
-  <!-- Hidden background target for Veracross POSTS -->
-  <iframe name="vc_bg" style="display:none;width:0;height:0;border:0;" aria-hidden="true"></iframe>
+  <div class="grid">
+    <div class="card">
+      <h2>Cougar Card / Quick Pin</h2>
+      <input id="pin" type="password" inputmode="numeric" placeholder="Swipe or tap card" />
+    </div>
+    <div class="card">
+      <h2>Lookup by Name</h2>
+      <input id="q" type="search" placeholder="Search faculty or students" />
+      <div id="results" class="list"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+</div>
 
 <script>
-/* ===== Config ===== */
-const ENDPOINT   = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-const KIOSK_POST = 'https://checkin.veracross.com/frisch/checkin/log';
-const COOLDOWN_MS = 400;
-const THEME_KEY = 'theme';
+const ENDPOINT='https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';   // 👈 replace with your Script URL
+const COOLDOWN_MS=400; const THEME_KEY='theme';
+const $=s=>document.querySelector(s); const pinEl=$('#pin'),qEl=$('#q'),toastEl=$('#toast'),
+btnIn=$('#actIn'),btnOut=$('#actOut'),netBadge=$('#netBadge');
 
-/* ===== DOM ===== */
-const $ = s => document.querySelector(s);
-const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
-const btnIn = $('#actIn'), btnOut = $('#actOut');
-const netBadge = $('#netBadge');
-
-let lastSubmitAt = 0;
-
-/* ===== Theme ===== */
 function setTheme(mode){
-  const dark = mode === 'dark';
-  document.body.classList.toggle('dark', dark);
-  $('#meta-theme').content = dark ? '#0b1020' : '#ffffff';
-  localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  const dark=mode==='dark';
+  document.body.classList.toggle('dark',dark);
+  const btn=$('#themeBtn');
+  btn.textContent=dark?'☀️ Light':'🌙 Dark';
+  btn.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+  $('#meta-theme').content=dark?'#0b1020':'#ffffff';
+  localStorage.setItem(THEME_KEY,dark?'dark':'light');
 }
 function initTheme(){
-  const saved = localStorage.getItem(THEME_KEY);
-  setTheme(saved || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  const saved=localStorage.getItem(THEME_KEY);
+  setTheme(saved|| (window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light'));
 }
-$('#themeBtn').addEventListener('click', ()=> setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
+$('#themeBtn').onclick=()=>setTheme(document.body.classList.contains('dark')?'light':'dark');
 
-/* ===== Toast ===== */
 let toastTimer=null;
-function showToast(text, tone='neutral'){
-  toastEl.textContent = text;
-  toastEl.classList.add('show');
-  toastEl.style.background='var(--card)'; toastEl.style.borderColor='var(--border)'; toastEl.style.color='var(--text)';
-  if (tone==='ok'){ toastEl.style.background='#ecfdf5'; toastEl.style.borderColor='#065f46'; toastEl.style.color='#065f46'; }
-  if (tone==='err'){ toastEl.style.background='#fee2e2'; toastEl.style.borderColor='#b91c1c'; toastEl.style.color='#b91c1c'; }
-  if (tone==='warn'){ toastEl.style.background='#fff7ed'; toastEl.style.borderColor='#92400e'; toastEl.style.color='#92400e'; }
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2000);
+function showToast(t,tone='neutral'){
+  toastEl.textContent=t;toastEl.classList.add('show');
+  toastEl.style.background='var(--card)';toastEl.style.color='var(--text)';
+  if(tone==='ok'){toastEl.style.background='#ecfdf5';toastEl.style.color='#065f46';}
+  if(tone==='err'){toastEl.style.background='#fee2e2';toastEl.style.color='#b91c1c';}
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),2000);
 }
 
-/* ===== Online badge ===== */
-function updateNet(){
-  const on = navigator.onLine;
-  netBadge.textContent = on ? 'Online' : 'Offline';
-  netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
-  netBadge.style.color = on ? 'var(--text)' : '#991b1b';
+function updateNet(){const on=navigator.onLine;
+ netBadge.textContent=on?'Online':'Offline';
+ netBadge.style.background=on?'var(--card)':'#fee2e2';
+ netBadge.style.color=on?'var(--text)':'#991b1b';}
+window.addEventListener('online',updateNet);
+window.addEventListener('offline',updateNet);updateNet();
+
+function focusPin(){try{pinEl.focus();pinEl.select?.();}catch{}}
+function setAction(a){const inA=a==='in';btnIn.classList.toggle('active',inA);btnOut.classList.toggle('active',!inA);setTimeout(focusPin,0);}
+btnIn.onclick=()=>setAction('in');btnOut.onclick=()=>setAction('out');
+
+const digitsOnly=s=>String(s||'').replace(/\D+/g,'');
+const pad10=d=>d.length<=10?d.padStart(10,'0'):d.slice(-10);
+const lfToFl=s=>{const m=String(s||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);return m?`${m[2]} ${m[1]}`.trim():String(s||'');};
+
+async function postFaculty({pin,personId}){
+ const act=btnIn.classList.contains('active')?'in':'out';
+ const body=new URLSearchParams({action:act,...(pin?{pin}:{personId})});
+ const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+ const t=await r.text();let d=null;try{d=JSON.parse(t);}catch{};return{ok:r.ok&&d&&!d.error,data:d};
 }
-window.addEventListener('online', updateNet);
-window.addEventListener('offline', updateNet);
-updateNet();
-
-/* ===== focus / action ===== */
-function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-function setAction(a){
-  const inActive = a === 'in';
-  btnIn.classList.toggle('active', inActive);
-  btnOut.classList.toggle('active', !inActive);
-  setTimeout(focusPin, 0);
-}
-btnIn.addEventListener('click', ()=>setAction('in'));
-btnOut.addEventListener('click', ()=>setAction('out'));
-
-/* ===== helpers ===== */
-const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-const padLeft10  = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
-const lfToFl = s => { const m=String(s||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? `${m[2]} ${m[1]}`.trim() : String(s||''); };
-
-/* ===== Veracross background POST (automatic, no UI) ===== */
-function postToVeracrossBackground(legacyId){
-  const form = document.createElement('form');
-  form.method='POST'; form.action=KIOSK_POST; form.target='vc_bg'; form.style.display='none';
-  const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
-  add('legacy_id', legacyId); add('kiosk_type','4'); add('check_in_method','3'); add('kiosk','34');
-  document.body.appendChild(form);
-  try { form.submit(); } catch {}
-  setTimeout(()=>form.remove(), 1500);
+async function getStudentByLegacy(id){const r=await fetch(`${ENDPOINT}?action=studentByLegacy&id=${id}`);try{return await r.json();}catch{return{found:false};}}
+async function serverStudentSign(legacy){
+ const body=new URLSearchParams({action:'student_sign',legacy});
+ const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+ const t=await r.text();let d=null;try{d=JSON.parse(t);}catch{};return{ok:r.ok&&d&&!d.error,data:d};
 }
 
-/* ===== Backend calls ===== */
-async function postFaculty({ pin, personId }) {
-  const act = btnIn.classList.contains('active') ? 'in' : 'out';
-  const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) });
-  const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-  const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
-  return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
-}
-async function fetchJson(u){ try{ const r=await fetch(u); const t=await r.text(); try{ return JSON.parse(t);}catch{return null;} }catch{return null;} }
-async function searchStudents(q){
-  let d = await fetchJson(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`);
-  if (!Array.isArray(d) || !d.length) d = await fetchJson(`${ENDPOINT}?action=studentsearch&q=${encodeURIComponent(q)}`);
-  return Array.isArray(d) ? d : [];
-}
-async function getStudentByLegacy(id){
-  let d = await fetchJson(`${ENDPOINT}?action=studentByLegacy&id=${encodeURIComponent(id)}`);
-  if (!d || d.error) d = await fetchJson(`${ENDPOINT}?action=studentbylegacy&id=${encodeURIComponent(id)}`);
-  return (d && d.found) ? d : { found:false };
-}
-
-/* ===== Unified submit (handles student_in) ===== */
-async function submitPinOrId({ pin, personId }) {
-  const fac = await postFaculty({ pin, personId });
-
-  if (fac.ok) {
-    const d = fac.data || {};
-
-    // Faculty success
-    if (d.status === 'in' || d.status === 'out') {
-      const verb = d.status === 'in' ? 'IN' : 'OUT';
-      const extra = (d.status === 'out' && d.paired === false) ? ' (no prior IN)' : '';
-      showToast(`${(d.firstName||'') + ' ' + (d.lastName||'')}`.trim() + ` — ${verb}${extra} at ${d.time||''}`, 'ok');
-      return;
-    }
-
-    // Student identified by backend
-    if (d.status === 'student_in' && d.legacyId) {
-      if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-      const name = d.student ? lfToFl(d.student) : ('Student ' + d.legacyId);
-      postToVeracrossBackground(String(d.legacyId));
-      showToast(`${name} — sent to Veracross`, 'ok');
-      return;
-    }
-  }
-
-  // Fallback: try student roster ourselves if backend said "not found"
-  const message = (fac.data && fac.data.error) ? String(fac.data.error) : '';
-  if (pin && /not\s*found|missing|invalid/i.test(message)) {
-    const s = await getStudentByLegacy(pin);
-    if (s && s.found) {
-      if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-      const name = s.fullName ? lfToFl(s.fullName) : ('Student ' + s.legacyId);
-      postToVeracrossBackground(String(s.legacyId));
-      showToast(`${name} — sent to Veracross`, 'ok');
-      return;
-    }
-  }
-
-  showToast(message || 'Error', 'err');
+async function submitPinOrId({pin,personId}){
+ const f=await postFaculty({pin,personId});
+ if(f.ok){
+   const d=f.data;
+   if(d.status==='in'||d.status==='out'){const v=d.status==='in'?'IN':'OUT';showToast(`${d.firstName||''} ${d.lastName||''} — ${v} ${d.time||''}`,'ok');return;}
+   if(d.status==='student_in'&&d.legacyId){
+     if(!btnIn.classList.contains('active'))return showToast('Students can only sign IN','err');
+     const s=await serverStudentSign(d.legacyId);
+     showToast(`${(s.data&&s.data.student)||d.student||('Student '+d.legacyId)} — sent to Veracross`,s.ok?'ok':'err');
+     return;
+   }
+ }
+ const msg=f.data&&f.data.error;
+ if(pin&&/not\s*found|missing|invalid/i.test(msg||'')){
+   const s=await getStudentByLegacy(pin);
+   if(s.found){
+     if(!btnIn.classList.contains('active'))return showToast('Students can only sign IN','err');
+     const r=await serverStudentSign(s.legacyId);
+     showToast(`${lfToFl(s.fullName||'')} — sent to Veracross`,r.ok?'ok':'err');return;
+   }
+ }
+ showToast(msg||'Error','err');
 }
 
-/* ===== Quick Pin auto-submit (wedge) ===== */
-let wedgeTimer=null;
-const WEDGE_QUIET_MS=120;
-pinEl.addEventListener('input', ()=>{
-  clearTimeout(wedgeTimer);
-  wedgeTimer=setTimeout(async ()=>{
-    const raw = pinEl.value || '';
-    const d = digitsOnly(raw);
-    if (!d) return;
-    if (d.length < 10) { showToast('ID too short', 'warn'); pinEl.value=''; focusPin(); return; }
-    const ten = padLeft10(d);
-    if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-    lastSubmitAt = Date.now();
-    await submitPinOrId({ pin: ten });
-    pinEl.value=''; focusPin();
-  }, WEDGE_QUIET_MS);
+let wedgeTimer=null;const WEDGE_QUIET_MS=120;
+pinEl.addEventListener('input',()=>{
+ clearTimeout(wedgeTimer);
+ wedgeTimer=setTimeout(async()=>{
+   const d=digitsOnly(pinEl.value);if(!d)return;
+   if(d.length<10){pinEl.value='';return;}
+   await submitPinOrId({pin:pad10(d)});pinEl.value='';focusPin();
+ },WEDGE_QUIET_MS);
 });
 
-/* ===== Name search (faculty + students) ===== */
-let searchDebounce=null, searchSeq=0;
-const normKey=(a,b)=>`${String(a||'').trim().toLowerCase()}|${String(b||'').trim().toLowerCase()}`;
-function uniqueBy(arr,k){ const s=new Set(), out=[]; for(const it of arr||[]){ const key=k(it); if(!key||s.has(key)) continue; s.add(key); out.push(it);} return out; }
-function sortFac(a,b){ const al=String(a.lastName||'').toLowerCase(), bl=String(b.lastName||'').toLowerCase(); if(al!==bl) return al<bl?-1:1; const af=String(a.firstName||'').toLowerCase(), bf=String(b.firstName||'').toLowerCase(); return af<bf?-1:af>bf?1:0; }
-function sortStu(a,b){ const an=String(a.fullName||'').toLowerCase(), bn=String(b.fullName||'').toLowerCase(); return an<bn?-1:an>bn?1:0; }
-
-qEl.addEventListener('input', ()=>{
-  clearTimeout(searchDebounce);
-  const q = qEl.value.trim();
-  const box = $('#results'); box.replaceChildren();
-  if (!q || q.length < 2) return; // wait for 2+ chars
-  searchDebounce = setTimeout(()=>doSearch(q, box), 200);
-});
-
-async function doSearch(q, box){
-  const mySeq=++searchSeq;
-  let facList=[], stuList=[];
-  try{
-    const [facRes, stuRes] = await Promise.allSettled([
-      fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`).then(r=>r.json()),
-      (async()=> await searchStudents(q))()
-    ]);
-    if(mySeq!==searchSeq) return;
-    if(facRes.status==='fulfilled') facList=facRes.value;
-    if(stuRes.status==='fulfilled') stuList=stuRes.value;
-  }catch{ box.textContent='Search failed.'; return; }
-
-  facList = Array.isArray(facList)?facList:[]; stuList = Array.isArray(stuList)?stuList:[];
-  facList = uniqueBy(facList.filter(r=>r&&(r.firstName||r.lastName)),
-                     r=>String(r.personId||'').trim()||normKey(r.firstName,r.lastName)).sort(sortFac);
-  stuList = uniqueBy(stuList.filter(r=>r&&(r.fullName||r.legacyId)),
-                     r=>String(r.legacyId||'').trim()||String(r.fullName||'').trim().toLowerCase()).sort(sortStu);
-
-  if(!facList.length && !stuList.length){ const div=document.createElement('div'); div.className='muted'; div.textContent='No matches.'; box.appendChild(div); return; }
-
-  const addHeader=t=>{ const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
-
-  if(facList.length){
-    addHeader('Faculty');
-    for(const {firstName,lastName,personId} of facList){
-      const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-      const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName||''} ${lastName||''}`.trim();
-      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-      btn.addEventListener('click', async ()=>{
-        const r = await postFaculty({ personId });
-        if (r.ok) {
-          const { status, firstName, lastName, time, paired } = r.data || {};
-          const verb = status==='in'?'IN':'OUT'; const extra=(status==='out'&&paired===false)?' (no prior IN)':'';
-          showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim()+` — ${verb}${extra} at ${time||''}`,'ok');
-        } else {
-          showToast((r.data && r.data.error) || 'Error', 'err');
-        }
-        setTimeout(focusPin,0);
-      });
-      row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-    }
-  }
-
-  if(stuList.length){
-    addHeader('Students');
-    for(const {fullName, legacyId} of stuList){
-      const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
-      const name=document.createElement('div'); name.className='name'; name.textContent=lfToFl(fullName||'');
-      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
-      btn.addEventListener('click', ()=>{
-        if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-        postToVeracrossBackground(String(legacyId||'')); // automatic background post
-        showToast(`${lfToFl(fullName||'')} — sent to Veracross`, 'ok');
-        setTimeout(focusPin,0);
-      });
-      row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-    }
-  }
-}
-
-/* ===== init ===== */
-document.addEventListener('DOMContentLoaded', ()=>{
-  initTheme();
-  setAction('in');
-  focusPin(); // focused and ready on load
-});
+document.addEventListener('DOMContentLoaded',()=>{initTheme();setAction('in');focusPin();});
 </script>
 </body>
 </html>
