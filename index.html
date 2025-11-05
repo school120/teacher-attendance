@@ -145,6 +145,7 @@
   .list::-webkit-scrollbar-track { background:var(--card); }
   .list { scrollbar-color:#98a2b33d var(--card); scrollbar-width:thin; }
 
+  .sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
   .row{
     display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center;
     gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card);
@@ -157,7 +158,8 @@
     color:#fff; font-size:20px; padding:16px 20px;
     border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
     transition:transform .06s ease, filter .15s ease, box-shadow .2s ease;
-    box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end;
+    box-shadow:0 6px 14px rgba(0,0,0,.12);
+    justify-self:end;
   }
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
@@ -228,16 +230,12 @@
         <div style="margin-top:auto;"></div>
       </div>
 
-      <!-- RIGHT: Lookup by Name (Faculty / Students) -->
+      <!-- RIGHT: Unified Lookup by Name -->
       <div class="card">
         <h2>Lookup by Name</h2>
-        <div class="opt" style="gap:8px;margin:0 0 10px 0;">
-          <label><input type="radio" name="who" value="faculty" id="whoFac" checked> Faculty</label>
-          <label><input type="radio" name="who" value="student" id="whoStu"> Student</label>
-        </div>
         <input id="q" type="search" inputmode="search" enterkeyhint="search"
                autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search directory" aria-label="Search by name" />
+               placeholder="Search faculty or students" aria-label="Search by name" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
@@ -254,7 +252,7 @@
 
     <section>
       <strong>NFC mapping rule</strong>
-      <div class="hint">Translate NFC UID/text → 10-digit Cougar Card code (faculty). Student IDs are digits.</div>
+      <div class="hint">Translate NFC UID/text → 10-digit Cougar Card code (faculty). Students use 10-digit Legacy ID.</div>
       <div class="opt"><input type="radio" name="rule" value="HEX_LE_PAD10" id="r1"><label for="r1">HEX_LE_PAD10</label></div>
       <div class="opt"><input type="radio" name="rule" value="HEX_BE_PAD10" id="r2"><label for="r2">HEX_BE_PAD10</label></div>
       <div class="opt"><input type="radio" name="rule" value="LAST3_DEC_PAD10" id="r3"><label for="r3">LAST3_DEC_PAD10</label></div>
@@ -304,7 +302,6 @@
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const whoFac = $('#whoFac'), whoStu = $('#whoStu');
   const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
   const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
   const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
@@ -412,9 +409,7 @@
 
   // ===== Helpers =====
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-  function padLeft10(d){ return d.length<=10 ? d.padStart(10,'0') : d.slice(-10); }
-  function normalizeFacultyPin(raw){ const d=digitsOnly(raw); return d?padLeft10(d):''; }
-  function normalizeStudentId(raw){ return digitsOnly(raw); }
+  const padLeft10 = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
 
   // ===== Veracross background POST (hidden iframe) =====
   function postToVeracrossBackground(legacyId){
@@ -439,6 +434,9 @@
     const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
     return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
   }
+  // Faculty search (existing)
+  async function searchFaculty(q){ const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`); return r.json(); }
+  // Student lookup by Legacy ID (for name in toast)
   async function getStudentByLegacy(id){
     try{
       const res = await fetch(`${ENDPOINT}?action=studentByLegacy&id=${encodeURIComponent(id)}`);
@@ -447,19 +445,19 @@
     }catch{}
     return { found:false, fullName:'' };
   }
-  async function searchFaculty(q){ const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`); return r.json(); }
+  // Student search by name (optional backend)
   async function searchStudents(q){
     try{ const r=await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`); return r.json(); }
     catch { return { error:true }; }
   }
 
-  // ===== Decide faculty vs student when 10 digits =====
+  // ===== Decide student fallback on “not found” only =====
   function isNotFoundError(obj){
     const msg = (obj && (obj.error || obj.message || obj.raw)) ? String(obj.error || obj.message || obj.raw) : '';
     return /not\s*found/i.test(msg);
   }
 
-  // ===== Scanner/wedge input =====
+  // ===== Wedge / Scan input (10 digits: try faculty → fallback to student) =====
   let wedgeTimer=null;
   const WEDGE_QUIET_MS=120;
 
@@ -467,23 +465,21 @@
     clearTimeout(wedgeTimer);
     wedgeTimer=setTimeout(async ()=>{
       const raw = pinEl.value || '';
-      const digits = digitsOnly(raw);
-      if (!digits) return;
+      const d = digitsOnly(raw);
+      if (!d) return;
 
-      if (digits.length >= 10) {
-        // Always treat 10-digit as: try FACULTY first; if "not found" -> STUDENT
+      if (d.length >= 10) {
+        const ten = padLeft10(d);
         if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
         lastSubmitAt = Date.now();
 
-        const ten = padLeft10(digits);
         const r = await postFaculty({ pin: ten });
-
         if (r.ok) {
           const { status, firstName, lastName, time } = r.data || {};
           const verb = status==='in'?'IN': status==='out'?'OUT':'UPDATED';
           showToast(`${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim());
         } else if (isNotFoundError(r.data)) {
-          // Student path (10-digit Legacy ID)
+          // Student path (10-digit Legacy ID); students can only IN
           if (!btnIn.classList.contains('active')) {
             showToast('Students can only sign IN');
           } else {
@@ -492,13 +488,8 @@
             showToast(s.found ? `${s.fullName} — sent to Veracross` : `Sent to Veracross`);
           }
         } else {
-          // Real server error (do not fall back to student)
           showToast((r.data && r.data.error) || 'Server error');
         }
-      } else if (digits.length >= 4) {
-        // Shorter numeric: treat as Student legacy id (rare; kept for completeness)
-        if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); }
-        else { const s = await getStudentByLegacy(digits); postToVeracrossBackground(digits); showToast(s.found ? `${s.fullName} — sent to Veracross` : `Sent to Veracross`); }
       } else {
         showToast('ID too short');
       }
@@ -508,12 +499,12 @@
   });
 
   pinEl.addEventListener('keydown',(e)=>{
-    if (lsGet(IGNENTER_KEY, DEFAULTS[IGNENTER_KEY]) === '1' && e.key === 'Enter') {
+    if (localStorage.getItem('wedgeIgnoreEnter') !== '0' && e.key === 'Enter') {
       e.preventDefault(); e.stopPropagation();
     }
   });
 
-  // ===== Name lookup (Faculty / Students; OUT forbidden for students) =====
+  // ===== Unified name lookup — searches both and groups results =====
   let searchTimer=null;
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
@@ -523,11 +514,25 @@
     if (!q) return;
 
     searchTimer=setTimeout(async ()=>{
-      if (whoFac.checked) {
-        try{
-          const data = await searchFaculty(q);
-          if (!Array.isArray(data) || !data.length) { box.innerHTML='<div class="muted">No matches.</div>'; return; }
-          data.forEach(({ firstName,lastName,personId })=>{
+      try{
+        const [fac, stu] = await Promise.all([
+          searchFaculty(q).catch(()=>[]),
+          searchStudents(q).catch(()=>[])
+        ]);
+
+        const facList = Array.isArray(fac) ? fac : [];
+        const stuList = Array.isArray(stu) ? stu : [];
+
+        if (!facList.length && !stuList.length) {
+          box.innerHTML = '<div class="muted">No matches.</div>';
+          return;
+        }
+
+        const addTitle = (t) => { const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
+
+        if (facList.length) {
+          addTitle('Faculty');
+          facList.forEach(({ firstName,lastName,personId })=>{
             const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
             const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName} ${lastName}`;
             const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
@@ -540,16 +545,15 @@
               } else {
                 showToast((r.data && r.data.error) || 'Error');
               }
-              focusPin();
+              focusPinSafely();
             });
             row.appendChild(name); row.appendChild(btn); box.appendChild(row);
           });
-        }catch{ box.innerHTML='<div class="muted">Search failed.</div>'; }
-      } else {
-        // Student search (optional backend)
-        const data = await searchStudents(q);
-        if (data && Array.isArray(data) && data.length) {
-          data.forEach(({ fullName, legacyId })=>{
+        }
+
+        if (stuList.length) {
+          addTitle('Students');
+          stuList.forEach(({ fullName, legacyId })=>{
             const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
             const name=document.createElement('div'); name.className='name'; name.textContent=fullName || legacyId;
             const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
@@ -557,18 +561,19 @@
               if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN'); return; }
               postToVeracrossBackground(legacyId);
               showToast(`${fullName||'Student'} — sent to Veracross`);
-              focusPin();
+              focusPinSafely();
             });
             row.appendChild(name); row.appendChild(btn); box.appendChild(row);
           });
-        } else {
-          box.innerHTML = '<div class="muted">Enable studentSearch on backend to search students by name, or scan Student ID.</div>';
         }
+
+      }catch{
+        box.innerHTML = '<div class="muted">Search failed.</div>';
       }
     }, 200);
   });
 
-  // ===== NFC (Android Chrome). 10-digit → faculty first, then student fallback =====
+  // ===== NFC (Android Chrome). 10-digit: faculty first, then student fallback =====
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef=null, nfcStarted=false;
   const hexToBytes=(hex)=>{ const s=(hex||'').replace(/[^0-9a-f]/gi,''); const out=[]; for(let i=0;i<s.length;i+=2) out.push(parseInt(s.substr(i,2),16)); return out; };
@@ -577,7 +582,7 @@
   const pad10=(n)=>{ const s=String(n>>>0); return s.length>=10? s.slice(-10) : s.padStart(10,'0'); };
   function uidToTen(uidHex, rule){
     const b=hexToBytes(uidHex);
-    switch(lsGet('nfcRule','HEX_LE_PAD10')){
+    switch(localStorage.getItem('nfcRule') || 'HEX_LE_PAD10'){
       case 'HEX_LE_PAD10': return pad10(numLE(b.slice(-4)));
       case 'HEX_BE_PAD10': return pad10(numBE(b.slice(-4)));
       case 'LAST3_DEC_PAD10': return pad10(numBE(b.slice(-3)));
@@ -588,10 +593,10 @@
   function pushLive(uidHex, parsed){
     liveUidEl.textContent=uidHex||'—';
     liveTenEl.textContent=parsed||'—';
-    liveRuleEl.textContent=lsGet('nfcRule','HEX_LE_PAD10');
+    liveRuleEl.textContent=localStorage.getItem('nfcRule') || 'HEX_LE_PAD10';
     const ts=new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     const div=document.createElement('div'); div.className='item';
-    div.textContent=`[${ts}] UID:${(uidHex||'').slice(-8)} → ${parsed} (${lsGet('nfcRule','HEX_LE_PAD10')})`;
+    div.textContent=`[${ts}] UID:${(uidHex||'').slice(-8)} → ${parsed} (${localStorage.getItem('nfcRule') || 'HEX_LE_PAD10'})`;
     liveLogEl.appendChild(div); liveLogEl.scrollTop=liveLogEl.scrollHeight;
   }
 
@@ -616,7 +621,6 @@
           }
           if (!parsed){ showToast('Unrecognized NFC'); return; }
 
-          // Route for 10-digit: faculty first, student fallback (only if “not found”)
           const go = async ()=>{
             const ten = padLeft10(parsed);
             const r = await postFaculty({ pin: ten });
