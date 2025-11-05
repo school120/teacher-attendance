@@ -383,15 +383,15 @@
   async function searchFaculty(q){ const r=await fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`); return r.json(); }
   async function getStudentByLegacy(id){
     try{
-      const res = await fetch(`${ENDPOINT}?action=studentByLegacy&id=${encodeURIComponent(id)}`);
+      const res = await fetch(`${ENDPOINT}?action=studentbylegacy&id=${encodeURIComponent(id)}`); // all lowercase action
       const data = await res.json();
       if (data && data.found) return { found:true, fullName:String(data.fullName||''), personId:String(data.personId||''), legacyId:String(id||'') };
     }catch{}
     return { found:false, fullName:'', legacyId:String(id||'') };
   }
   async function searchStudents(q){
-    try{ const r=await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`); return r.json(); }
-    catch { return { error:true }; }
+    try{ const r=await fetch(`${ENDPOINT}?action=studentsearch&q=${encodeURIComponent(q)}`); return r.json(); } // all lowercase action
+    catch { return []; }
   }
 
   // ===== Student helper: toast with "First Last"
@@ -453,7 +453,7 @@
   });
 
   // ===== Unified name lookup — robust dedupe + single headers + request cancel =====
-  let searchTimer = null;
+  let searchDebounce = null;
   let searchController = null;
   let searchSeq = 0;
 
@@ -484,16 +484,21 @@
   }
 
   qEl.addEventListener('input', () => {
-    clearTimeout(searchTimer);
+    clearTimeout(searchDebounce);
     const q = qEl.value.trim();
     const box = document.querySelector('#results');
     box.replaceChildren();
-    if (!q) return;
 
-    searchTimer = setTimeout(() => doSearch(q, box), 200);
+    // ❗ do not search when empty or 1 char
+    if (!q || q.length < 2) return;
+
+    searchDebounce = setTimeout(() => doSearch(q, box), 200);
   });
 
   async function doSearch(q, box) {
+    // Safety: if somehow called with short q, bail
+    if (!q || q.length < 2) return;
+
     if (searchController) try { searchController.abort(); } catch(_) {}
     searchController = new AbortController();
     const signal = searchController.signal;
@@ -504,7 +509,7 @@
     try {
       const [facRes, stuRes] = await Promise.allSettled([
         fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, { signal }),
-        fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, { signal })
+        fetch(`${ENDPOINT}?action=studentsearch&q=${encodeURIComponent(q)}`, { signal }) // lowercase action
       ]);
 
       if (mySeq !== searchSeq) return;
