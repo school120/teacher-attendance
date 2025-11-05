@@ -2,332 +2,431 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-<title>Attendance — Guard Console</title>
-<meta id="meta-theme" name="theme-color" content="#ffffff" />
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Teacher Attendance — Guard Console</title>
+<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup." />
+<meta name="color-scheme" content="light dark">
+<meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
-:root{
-  --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
-  --in:#16a34a; --out:#dc2626; --blue:#2563eb; --ring:0 0 0 6px rgba(59,130,246,.16);
-}
-body.dark{
-  --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151;
-}
-*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-html,body{ height:100%; margin:0; background:var(--bg); color:var(--text);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-.wrap{ margin:auto; width:min(1100px,96%); background:var(--card); border-radius:18px;
-  box-shadow:0 10px 30px rgba(0,0,0,.08); min-height:100svh; padding:28px; position:relative; }
-h1{ margin:0 0 8px; font-weight:800; font-size:28px; }
-.muted{ color:var(--muted); }
-
-.badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
-.badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border);
-  background:var(--card); color:var(--text); }
-.gear{ border:1px solid var(--border); background:var(--card); color:var(--text);
-  border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
-.gear:focus-visible{ outline:none; box-shadow:var(--ring); }
-
-/* High-contrast theme toggle styles */
-#themeBtn{ transition:background .2s ease, color .2s ease, border-color .2s ease; }
-body:not(.dark) #themeBtn{ background:#ffffff; color:#0f172a; border-color:#d1d5db; }
-body.dark #themeBtn{ background:#111827; color:#ffffff; border-color:#475569; }
-
-/* Toast */
-.toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
-  opacity:0; background:var(--card); border:1px solid var(--border); border-radius:14px;
-  padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
-.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
-
-/* IN/OUT buttons */
-.segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
-.segment.segment-xl button{ flex:1 1 0; border:2px solid #d1d5db; border-radius:16px; font-weight:900; font-size:42px;
-  min-height:96px; padding:22px 24px; cursor:pointer; color:#111;
-  background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%); }
-.segment.segment-xl button.active#actIn{
-  background:linear-gradient(180deg,#16a34a 0%,#15803d 100%); color:#fff; border-color:#16a34a;
-}
-.segment.segment-xl button.active#actOut{
-  background:linear-gradient(180deg,#dc2626 0%,#991b1b 100%); color:#fff; border-color:#dc2626;
-}
-
-/* Grid + cards */
-.grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-.card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; }
-.card h2{ margin:0 0 12px; font-size:20px; }
-
-/* Inputs */
-input[type=text], input[type=password], input[type=search]{
-  width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px;
-  background:var(--card); color:var(--text); outline:none; transition:border-color .2s ease, box-shadow .2s ease;
-}
-input:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); }
-
-/* Results */
-.list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); padding-right:16px; }
-.row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px;
-  border:1px solid var(--border); border-radius:12px; background:var(--card); }
-.name{ font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
-.actionBtn{ --c:#2563eb; background:linear-gradient(180deg,var(--c) 0%, #1e4fb9 100%); color:#fff; font-size:20px; padding:16px 20px;
-  border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; }
-
-/* Mobile */
-@media (max-width:900px){
-  .grid{ grid-template-columns:1fr; }
-  .segment.segment-xl button{ font-size:36px; min-height:88px; }
-}
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
+    --in:#16a34a; --out:#dc2626; --blue:#2563eb;
+    --radius-lg:14px; --radius-xl:18px;
+    --shadow-1:0 10px 30px rgba(0,0,0,.08);
+    --shadow-2:0 14px 40px rgba(0,0,0,.18);
+    --ring:0 0 0 6px rgba(59,130,246,.16);
+    --safe-top: env(safe-area-inset-top);
+    --safe-right: env(safe-area-inset-right);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
+  }
+  body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  html { overflow-x:hidden; }
+  body{ min-height:100svh; overscroll-behavior-y:contain; overflow:auto; -webkit-overflow-scrolling:touch; }
+  .wrap{
+    margin:auto; width:min(1100px,96%); background:var(--card);
+    border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
+    min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
+    padding: calc(28px + var(--safe-top)) calc(28px + var(--safe-right)) calc(28px + var(--safe-bottom)) calc(28px + var(--safe-left));
+    overflow:visible; overflow-x:clip;
+  }
+  h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
+  .muted{ color:var(--muted); }
+  .badges{ position:absolute; right:calc(18px + var(--safe-right)); top:calc(18px + var(--safe-top)); display:flex; gap:8px; align-items:center; }
+  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+  .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
+  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
+  .toast{ position:fixed; left:50%; bottom:calc(24px + var(--safe-bottom)); transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
+  .segment.segment-xl button{
+    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
+    font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
+    padding:22px 24px; cursor:pointer; color:#111;
+    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05);
+  }
+  .segment.segment-xl button.active#actIn{
+    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+  }
+  .segment.segment-xl button.active#actOut{
+    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+  }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
+  .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box; }
+  .card h2{ margin:0 0 12px; font-size:20px; }
+  input[type=text], input[type=password], input[type=search]{
+    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
+  }
+  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); outline:none; }
+  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
+  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
+  .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .actionBtn{ --c: var(--blue); background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end; }
+  .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
+  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
+  .drawer{ position:fixed; right:calc(16px + var(--safe-right)); top:calc(64px + var(--safe-top)); width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:0 14px 40px rgba(0,0,0,.18); padding:16px; overflow:auto; display:none; z-index:40; color:var(--text); }
+  .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
+  .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
+  .hint{ color:var(--muted); font-size:12px; margin:6px 0 8px; }
+  .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
+  .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
 </head>
 <body>
-<div class="wrap" role="application" aria-label="Attendance Guard Console">
-  <div class="badges" aria-live="polite">
-    <div id="netBadge" class="badge">Online</div>
-    <button id="themeBtn" class="gear" type="button" aria-label="Switch to dark mode">🌙 Dark</button>
-  </div>
-
-  <h1>Attendance — Guard Console</h1>
-  <p class="muted">Select <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search by name. Students are auto-signed into Veracross.</p>
-
-  <div class="segment segment-xl" role="tablist" aria-label="Action">
-    <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
-    <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
-  </div>
-
-  <div class="grid">
-    <!-- LEFT -->
-    <div class="card">
-      <h2>Cougar Card / Quick Pin</h2>
-      <input id="pin" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="Swipe or tap card" aria-label="Quick Pin" />
+  <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
+    <div class="badges" aria-live="polite" aria-atomic="true">
+      <div id="netBadge" class="badge">Online</div>
+      <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
+      <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
+      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
     </div>
 
-    <!-- RIGHT -->
-    <div class="card">
-      <h2>Lookup by Name</h2>
-      <input id="q" type="search" placeholder="Search faculty or students" aria-label="Search by name" />
-      <div id="results" class="list" role="list" aria-live="polite"></div>
+    <h1>Teacher Attendance — Guard Console</h1>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then <b>swipe/tap card</b> or search by name (faculty & students).</p>
+
+    <div class="segment segment-xl" role="tablist" aria-label="Action">
+      <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
+      <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
     </div>
+
+    <div class="grid">
+      <!-- LEFT: Card -->
+      <div class="card">
+        <h2>Cougar Card (Quick Pin / Legacy ID)</h2>
+        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
+               placeholder="Tap or swipe card…" aria-label="Cougar Card" />
+        <div id="nfcBar" class="nfcBar" style="display:none;">
+          <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
+          <button id="nfcStop"  class="nfcBtn" style="background:transparent;color:#4f46e5;">Stop</button>
+        </div>
+        <div style="margin-top:auto;"></div>
+      </div>
+
+      <!-- RIGHT: Lookup -->
+      <div class="card">
+        <h2>Lookup by Name</h2>
+        <input id="q" type="search" inputmode="search" enterkeyhint="search"
+               autocapitalize="words" autocorrect="off" spellcheck="false"
+               placeholder="Search faculty or student" aria-label="Search name" />
+        <div id="results" class="list" role="list" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-</div>
+  <!-- Admin Drawer -->
+  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
+    <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
+    <section>
+      <strong>Keyboard wedge</strong>
+      <div class="opt"><input type="checkbox" id="ckTrim" checked><label for="ckTrim">Trim to digits & pad to 10</label></div>
+      <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevent double submit)</label></div>
+    </section>
+    <section style="margin-top:12px;">
+      <strong>Debug</strong>
+      <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show last code in toast</label></div>
+      <div class="hint">Toggle with <b>Ctrl/⌘ + Shift + D</b>.</div>
+    </section>
+    <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
+      <h3 style="margin-bottom:8px;">Live Reader</h3>
+      <div class="kv">
+        <div class="k">Last 10-digit</div><div id="liveTen">—</div>
+      </div>
+      <div class="log" id="liveLog" aria-label="Reader log"></div>
+    </section>
+    <footer style="display:flex;gap:8px;margin-top:12px;">
+      <button id="adminClose" class="gear">Close</button>
+      <button id="adminClearLog" class="gear">Clear Log</button>
+    </footer>
+  </div>
 
 <script>
-/* ===== Config ===== */
-const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-const COOLDOWN_MS = 400;
-const THEME_KEY = 'theme';
+  // ===== Config =====
+  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  const COOLDOWN_MS = 400;
 
-/* ===== DOM ===== */
-const $ = s => document.querySelector(s);
-const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
-const btnIn = $('#actIn'), btnOut = $('#actOut');
-const netBadge = $('#netBadge'), themeBtn = $('#themeBtn');
+  // ===== DOM =====
+  const $ = s => document.querySelector(s);
+  const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
+  const btnIn = $('#actIn'), btnOut = $('#actOut');
+  const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
+  const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
+  const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
+  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
+  const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
-/* ===== Theme (high-contrast toggle) ===== */
-function setTheme(mode){
-  const dark = mode === 'dark';
-  document.body.classList.toggle('dark', dark);
-  themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
-  themeBtn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
-  document.getElementById('meta-theme').content = dark ? '#0b1020' : '#ffffff';
-  localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
-}
-function initTheme(){
-  const saved = localStorage.getItem(THEME_KEY);
-  setTheme(saved || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-}
-themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
+  let lastSubmitAt = 0;
 
-/* ===== Toast ===== */
-let toastTimer=null;
-function showToast(text, tone='neutral'){
-  toastEl.textContent = text;
-  toastEl.classList.add('show');
-  // default neutrals
-  toastEl.style.background='var(--card)'; toastEl.style.borderColor='var(--border)'; toastEl.style.color='var(--text)';
-  if (tone==='ok'){ toastEl.style.background='#ecfdf5'; toastEl.style.borderColor='#065f46'; toastEl.style.color='#065f46'; }
-  if (tone==='err'){ toastEl.style.background='#fee2e2'; toastEl.style.borderColor='#b91c1c'; toastEl.style.color='#b91c1c'; }
-  if (tone==='warn'){ toastEl.style.background='#fff7ed'; toastEl.style.borderColor='#92400e'; toastEl.style.color='#92400e'; }
-  clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2200);
-}
+  // ===== Theme =====
+  function setTheme(mode){
+    const dark = mode === 'dark';
+    document.body.classList.toggle('dark', dark);
+    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
+    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  }
+  function initTheme(){
+    const saved = localStorage.getItem('theme');
+    if (saved) { setTheme(saved); return; }
+    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    setTheme(prefersDark ? 'dark' : 'light');
+  }
+  themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-/* ===== Online badge ===== */
-function updateNet(){
-  const on = navigator.onLine;
-  netBadge.textContent = on ? 'Online' : 'Offline';
-  netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
-  netBadge.style.color = on ? 'var(--text)' : '#991b1b';
-}
-window.addEventListener('online', updateNet);
-window.addEventListener('offline', updateNet);
-updateNet();
+  // ===== Toast =====
+  let toastTimer=null;
+  function showToast(text){
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400);
+  }
 
-/* ===== Focus & Action ===== */
-function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_){} }
-function setAction(a){
-  const inActive = a === 'in';
-  btnIn.classList.toggle('active', inActive);
-  btnOut.classList.toggle('active', !inActive);
-  setTimeout(focusPin, 0);
-}
-btnIn.addEventListener('click', ()=>setAction('in'));
-btnOut.addEventListener('click', ()=>setAction('out'));
+  // ===== Network badge =====
+  function updateNet(){
+    const on = navigator.onLine;
+    netBadge.textContent = on ? 'Online' : 'Offline';
+    netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
+    netBadge.style.color = on ? 'var(--text)' : '#991b1b';
+  }
+  window.addEventListener('online', updateNet);
+  window.addEventListener('offline', updateNet);
+  updateNet();
 
-/* ===== Helpers ===== */
-const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-const pad10 = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
-const lfToFl = s => { const m=String(s||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? `${m[2]} ${m[1]}`.trim() : String(s||''); };
+  // ===== Focus helpers =====
+  function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
+  function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
-/* ===== Backend helpers ===== */
-async function postFaculty({ pin, personId }){
-  const act = btnIn.classList.contains('active') ? 'in' : 'out';
-  const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) });
-  const r = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-  const t = await r.text(); let d=null; try{ d = JSON.parse(t); }catch{}
-  return { ok: r.ok && d && !d.error, data: d, raw: t };
-}
-async function serverStudentSign(legacy){
-  const body = new URLSearchParams({ action:'student_sign', legacy:String(legacy) });
-  const r = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-  const t = await r.text(); let d=null; try{ d = JSON.parse(t); }catch{}
-  return { ok: r.ok && d && !d.error, data: d, raw: t };
-}
-async function getStudentByLegacy(id){
-  try {
-    const r = await fetch(`${ENDPOINT}?action=studentByLegacy&id=${encodeURIComponent(id)}`);
-    return await r.json();
-  } catch { return { found:false }; }
-}
-async function searchStudents(q){
-  try {
-    const r = await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`);
-    return await r.json();
-  } catch { return []; }
-}
+  // ===== Action toggle =====
+  function setAction(a){
+    const inActive = a === 'in';
+    btnIn.classList.toggle('active', inActive);
+    btnOut.classList.toggle('active', !inActive);
+    setTimeout(focusPinSafely, 0);
+  }
+  btnIn.addEventListener('click', () => setAction('in'));
+  btnOut.addEventListener('click', () => setAction('out'));
+  window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-/* ===== Unified submit (Faculty + Student) ===== */
-async function submitPinOrId({ pin, personId }){
-  // 1) Try faculty first
-  const fac = await postFaculty({ pin, personId });
+  // ===== Admin drawer =====
+  function showAdmin(show=true){
+    adminDrawer.style.display = show ? 'block' : 'none';
+    adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
+  }
+  adminBtn.addEventListener('click', () => showAdmin(true));
+  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
+  adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; liveTenEl.textContent='—'; });
 
-  if (fac.ok) {
-    const d = fac.data || {};
-    // Faculty success
-    if (d.status === 'in' || d.status === 'out') {
-      const verb = d.status === 'in' ? 'IN' : 'OUT';
-      const extra = (d.status === 'out' && d.paired === false) ? ' (no prior IN)' : '';
-      showToast(`${(d.firstName||'') + ' ' + (d.lastName||'')}`.trim() + ` — ${verb}${extra} at ${d.time||''}`, 'ok');
-      return;
-    }
-    // Student identified by backend → server-side VC sign-in
-    if (d.status === 'student_in' && d.legacyId) {
-      if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-      const s = await serverStudentSign(d.legacyId);
-      if (s.ok) {
-        const name = (s.data && s.data.student) || d.student || ('Student ' + d.legacyId);
-        showToast(`${name} — sent to Veracross`, 'ok');
-      } else {
-        showToast((s.data && s.data.error) || 'Veracross sign-in failed', 'err');
+  // ===== Helpers =====
+  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
+  function normalizeToTenDigits(raw) {
+    if (!ckTrim.checked) return String(raw || '');
+    const d = digitsOnly(raw);
+    if (!d) return '';
+    return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10);
+  }
+  function pushLive(ten) {
+    liveTenEl.textContent = ten || '—';
+    const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    const div = document.createElement('div');
+    div.textContent = `[${ts}] ${ten || '—'}`;
+    liveLogEl.appendChild(div);
+    liveLogEl.scrollTop = liveLogEl.scrollHeight;
+  }
+
+  // ===== Submit API =====
+  async function submitPinOrId({ pin, personId }) {
+    const act = btnIn.classList.contains('active') ? 'in' : 'out';
+    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
+    try{
+      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
+      if (!res.ok || (data && data.error)) {
+        showToast((data && data.error) || ('Error ' + res.status));
+        return;
       }
-      return;
+      // Faculty success OR student redirect
+      if (data.status === 'student_in' && data.legacyId) {
+        // Server-side student submit
+        const sb = new URLSearchParams({ action:'student_sign', legacy: data.legacyId }).toString();
+        const sr = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: sb });
+        const st = await sr.text(); let sd=null; try{ sd = JSON.parse(st); }catch{}
+        if (!sr.ok || (sd && sd.error)) {
+          showToast((sd && sd.error) || 'Veracross sign-in failed');
+          return;
+        }
+        const name = (sd && sd.student) ? sd.student : '';
+        showToast((name ? (name + ' — sent to Veracross') : 'Sent to Veracross'));
+        try{ navigator.vibrate?.(30); }catch{}
+        return;
+      }
+
+      const { status, firstName, lastName, time } = data || {};
+      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
+      const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
+      showToast(line || 'Done.');
+      try{ navigator.vibrate?.(30); }catch{}
+    }catch{
+      showToast('Network error');
+    }finally{
+      lastSubmitAt = Date.now();
+      focusPinSafely();
     }
   }
 
-  // 2) Not faculty → try student roster directly and then server sign
-  const msg = (fac.data && fac.data.error) ? String(fac.data.error) : '';
-  if (pin && /not\s*found|missing|invalid/i.test(msg)) {
-    const s = await getStudentByLegacy(pin);
-    if (s && s.found) {
-      if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-      const r = await serverStudentSign(s.legacyId);
-      showToast(`${lfToFl(s.fullName||'')} — sent to Veracross`, r.ok ? 'ok' : 'err');
-      return;
+  // ===== USB wedge — auto submit on quiet
+  let wedgeTimer = null;
+  const WEDGE_QUIET_MS = 120;
+  pinEl.addEventListener('input', ()=>{
+    clearTimeout(wedgeTimer);
+    wedgeTimer = setTimeout(()=>{
+      const nowDigits = digitsOnly(pinEl.value);
+      if (nowDigits.length < 10) return;
+      const ten = nowDigits.slice(-10);
+      if (ckDebug.checked) showToast('Code: ' + ten);
+      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
+      submitPinOrId({ pin: ten });
+      pushLive(ten);
+      pinEl.value = '';
+      focusPinSafely();
+    }, WEDGE_QUIET_MS);
+  });
+  pinEl.addEventListener('keydown',(e)=>{
+    if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
+  });
+
+  // ===== Name Search (faculty & students)
+  let searchTimer=null;
+  qEl.addEventListener('input', ()=>{
+    clearTimeout(searchTimer);
+    const q = qEl.value.trim();
+    const box = $('#results');
+    if (!q) { box.innerHTML = ''; return; }
+    searchTimer = setTimeout(()=>doSearch(q), 180);
+  });
+  qEl.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter') {
+      clearTimeout(searchTimer);
+      const q = qEl.value.trim();
+      if (q) doSearch(q);
+      e.preventDefault();
+    }
+  });
+
+  async function doSearch(q){
+    const box = $('#results'); box.innerHTML = '';
+    try{
+      const [facRes, stuRes] = await Promise.all([
+        fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]),
+        fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])
+      ]);
+
+      if ((!facRes || !facRes.length) && (!stuRes || !stuRes.length)) {
+        box.innerHTML = '<div class="muted">No matches found.</div>'; return;
+      }
+
+      if (stuRes && stuRes.length) {
+        const hdr = document.createElement('div'); hdr.className='row'; hdr.innerHTML = '<div class="name">STUDENTS</div><div></div>';
+        box.appendChild(hdr);
+        stuRes.forEach(({ fullName, legacyId })=>{
+          const row = document.createElement('div'); row.className='row';
+          const name = document.createElement('div'); name.className='name'; name.textContent = lfToFl(fullName);
+          const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign IN';
+          btn.addEventListener('click', async ()=>{
+            const sb = new URLSearchParams({ action:'student_sign', legacy: legacyId }).toString();
+            const sr = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: sb });
+            const st = await sr.text(); let sd=null; try{ sd = JSON.parse(st); }catch{}
+            if (!sr.ok || (sd && sd.error)) { showToast((sd && sd.error) || 'Veracross sign-in failed'); return; }
+            const nice = lfToFl(fullName);
+            showToast(`${nice} — sent to Veracross`);
+          });
+          row.appendChild(name); row.appendChild(btn); box.appendChild(row);
+        });
+      }
+
+      if (facRes && facRes.length) {
+        const hdr = document.createElement('div'); hdr.className='row'; hdr.innerHTML = '<div class="name">FACULTY</div><div></div>';
+        box.appendChild(hdr);
+        facRes.forEach(({ firstName, lastName, personId })=>{
+          const row = document.createElement('div'); row.className='row';
+          const name = document.createElement('div'); name.className='name'; name.textContent = `${firstName} ${lastName}`;
+          const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
+          btn.addEventListener('click', ()=> submitPinOrId({ personId }) );
+          row.appendChild(name); row.appendChild(btn); box.appendChild(row);
+        });
+      }
+    }catch{
+      box.innerHTML = '<div class="muted">Search failed.</div>';
     }
   }
 
-  // 3) Show server error
-  showToast(msg || 'Error', 'err');
-}
+  // Small helper for UI label flip of “Last, First” → “First Last”
+  function lfToFl(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? `${m[2]} ${m[1]}`.trim() : String(full||'').trim(); }
 
-/* ===== Quick Pin auto-submit (keyboard wedge) ===== */
-let wedgeTimer=null; const WEDGE_QUIET_MS=120;
-pinEl.addEventListener('input', ()=>{
-  clearTimeout(wedgeTimer);
-  wedgeTimer = setTimeout(async ()=>{
-    const d = digitsOnly(pinEl.value);
-    if (!d) return;
-    if (d.length < 10) { pinEl.value=''; return; }
-    await submitPinOrId({ pin: pad10(d) });
-    pinEl.value=''; focusPin();
-  }, WEDGE_QUIET_MS);
-});
+  // ===== Optional Web NFC (Android Chrome)
+  function supportsWebNFC(){ return 'NDEFReader' in window; }
+  let ndef = null, nfcStarted = false;
+  if (supportsWebNFC()) {
+    nfcBar.style.display = '';
+    nfcStopBtn.disabled = true;
 
-/* ===== Name search (Faculty + Students) ===== */
-let searchTimer=null, searchSeq=0;
-qEl.addEventListener('input', ()=>{
-  clearTimeout(searchTimer);
-  const q = qEl.value.trim();
-  const box = document.getElementById('results'); box.replaceChildren();
-  if (q.length < 2) return; // wait for 2+ chars
-  searchTimer = setTimeout(()=>doSearch(q, box), 180);
-});
+    nfcStartBtn.addEventListener('click', async ()=>{
+      if (nfcStarted) return;
+      try {
+        ndef = new NDEFReader();
+        await ndef.scan(); nfcStarted = true;
+        nfcBadge.style.display = '';
+        nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
+        showToast('NFC scanning started');
+        focusPinSafely();
 
-function addHeader(box, title){
-  const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=title; box.appendChild(h);
-}
+        ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
+        ndef.onreading = (event) => {
+          const { serialNumber } = event;
+          const ten = normalizeToTenDigits(serialNumber);
+          if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); return; }
+          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten });
+          pushLive(ten);
+          focusPinSafely();
+        };
+      } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
+    });
 
-async function doSearch(q, box){
-  const mySeq = ++searchSeq;
-  let fac=[], stu=[];
-  try{
-    const [facRes, stuRes] = await Promise.allSettled([
-      fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`).then(r=>r.json()),
-      searchStudents(q)
-    ]);
-    if (mySeq !== searchSeq) return; // stale
-    if (facRes.status==='fulfilled' && Array.isArray(facRes.value)) fac = facRes.value;
-    if (stuRes.status==='fulfilled' && Array.isArray(stuRes.value)) stu = stuRes.value;
-  } catch { /* ignore */ }
-
-  if (!fac.length && !stu.length){
-    const d=document.createElement('div'); d.className='muted'; d.textContent='No matches.'; box.appendChild(d); return;
-  }
-
-  if (fac.length){
-    addHeader(box,'Faculty');
-    fac.forEach(({firstName,lastName,personId})=>{
-      const row=document.createElement('div'); row.className='row';
-      const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName||''} ${lastName||''}`.trim();
-      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-      btn.onclick=()=>submitPinOrId({ personId });
-      row.appendChild(name); row.appendChild(btn); box.appendChild(row);
+    nfcStopBtn.addEventListener('click', ()=>{
+      if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
+      nfcStarted = false; nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
+      showToast('NFC stopped'); focusPinSafely();
     });
   }
 
-  if (stu.length){
-    addHeader(box,'Students');
-    stu.forEach(({fullName, legacyId})=>{
-      const row=document.createElement('div'); row.className='row';
-      const name=document.createElement('div'); name.className='name'; name.textContent=lfToFl(fullName||'');
-      const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
-      btn.onclick=async ()=>{
-        if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-        const r = await serverStudentSign(String(legacyId));
-        showToast(`${lfToFl(fullName||'')} — sent to Veracross`, r.ok ? 'ok' : 'err');
-        focusPin();
-      };
-      row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-    });
-  }
-}
+  // ===== Debug hotkey — Ctrl/⌘ + Shift + D
+  function isTyping(el){ return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); }
+  window.addEventListener('keydown', (e) => {
+    const keyIsD = (e.key || '').toLowerCase() === 'd';
+    const combo = keyIsD && e.shiftKey && (e.ctrlKey || e.metaKey);
+    if (!combo) return;
+    if (isTyping(document.activeElement)) return;
+    e.preventDefault();
+    ckDebug.checked = !ckDebug.checked;
+    showToast('Debug ' + (ckDebug.checked ? 'ON' : 'OFF'));
+  });
 
-/* ===== Init ===== */
-document.addEventListener('DOMContentLoaded', ()=>{
-  initTheme();
-  setAction('in');
-  focusPin(); // autofocus Quick Pin on load
-});
+  // ===== Init =====
+  document.addEventListener('DOMContentLoaded', ()=>{
+    initTheme();
+    setAction('in');
+    focusPinSafely();
+  });
+  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
 </html>
