@@ -11,76 +11,50 @@
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
     --in:#16a34a; --out:#dc2626; --blue:#2563eb;
-    --radius-lg:14px; --radius-xl:18px;
-    --shadow-1:0 10px 30px rgba(0,0,0,.08);
-    --ring:0 0 0 6px rgba(59,130,246,.16);
-    --safe-top: env(safe-area-inset-top);
-    --safe-right: env(safe-area-inset-right);
-    --safe-bottom: env(safe-area-inset-bottom);
-    --safe-left: env(safe-area-inset-left);
+    --radius-xl:18px; --ring:0 0 0 6px rgba(59,130,246,.16);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  .wrap{
-    margin:auto; width:min(1100px,96%); background:var(--card);
-    border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
-    min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
-    padding: calc(28px + var(--safe-top)) calc(28px + var(--safe-right)) calc(28px + var(--safe-bottom)) calc(28px + var(--safe-left));
-  }
-  h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
+  .wrap{ margin:auto; width:min(1100px,96%); background:var(--card); border-radius:var(--radius-xl); box-shadow:0 10px 30px rgba(0,0,0,.08);
+         min-height:100svh; padding:28px; position:relative; }
+  h1{ margin:0 0 8px; font-weight:800; font-size:28px; }
   .muted{ color:var(--muted); }
-  .badges{ position:absolute; right:calc(18px + var(--safe-right)); top:calc(18px + var(--safe-top)); display:flex; gap:8px; align-items:center; }
-  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
-  .gear{ border:1px solid var(--border); background:var(--card); color:var(--text);
-         border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
+  .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; }
+  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); }
+  .gear{ border:1px solid var(--border); background:var(--card); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
 
-  .toast{
-    position:fixed; left:50%; bottom:calc(24px + var(--safe-bottom)); transform:translateX(-50%) translateY(20px);
-    opacity:0; background:var(--card); border:1px solid var(--border);
-    border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50;
-  }
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+    opacity:0; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px 20px; font-weight:800;
+    transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
-    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px; font-weight:900; font-size:42px;
-    min-height:96px; padding:22px 24px; cursor:pointer; color:#111;
-    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px; font-weight:900; font-size:42px; min-height:96px;
+    padding:22px 24px; cursor:pointer; color:#111; background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
   }
-  .segment.segment-xl button.active#actIn{
-    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a;
-  }
-  .segment.segment-xl button.active#actOut{
-    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626;
-  }
+  .segment.segment-xl button.active#actIn { background:linear-gradient(180deg,#16a34a 0%,#15803d 100%); color:#fff; border-color:#16a34a; }
+  .segment.segment-xl button.active#actOut{ background:linear-gradient(180deg,#dc2626 0%,#991b1b 100%); color:#fff; border-color:#dc2626; }
 
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
   .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
   input[type=text], input[type=password], input[type=search]{
-    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px;
-    background:var(--card); color:var(--text); outline:none;
+    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
+    outline:none; transition:border-color .2s ease, box-shadow .2s ease;
   }
   input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{
     border-color:#3b82f6; box-shadow:var(--ring);
   }
 
   .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); padding-right:16px; }
-  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px;
-        padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
+  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
   .name{ min-width:0; font-weight:800; font-size:20px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .sectionTitle{ font-size:13px; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:4px 2px; }
 
-  .actionBtn{
-    --c: var(--blue);
-    background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
-    color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
-  }
-
-  .padRow{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .bigBtn{ padding:16px 20px; border-radius:14px; border:2px solid #111827; background:#111827; color:#fff; font-weight:900; font-size:18px; cursor:pointer; }
+  .actionBtn{ --c:#2563eb; background:linear-gradient(180deg,var(--c) 0%, #1e4fb9 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; }
 
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
@@ -93,7 +67,7 @@
     </div>
 
     <h1>Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>. Faculty uses Quick Pin; students are auto-posted to Veracross via popup.</p>
+    <p class="muted">Select <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search by name. Students auto-sign into Veracross in the background.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
@@ -101,18 +75,11 @@
     </div>
 
     <div class="grid">
-      <!-- LEFT: Card / Quick Pin + Manual Student Entry -->
+      <!-- LEFT: Card / Quick Pin -->
       <div class="card">
         <h2>Cougar Card / Quick Pin</h2>
         <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
                placeholder="Swipe or tap card" aria-label="Cougar Card / Quick Pin" />
-
-        <div style="margin-top:18px;"></div>
-        <h2>Manual Student Entry</h2>
-        <div class="padRow">
-          <input id="stuId" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Legacy Student ID (10 digits)" />
-          <button id="stuSignIn" class="bigBtn">Student Sign In (Veracross)</button>
-        </div>
       </div>
 
       <!-- RIGHT: Lookup by Name -->
@@ -128,10 +95,12 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
+  <!-- Hidden background target for Veracross POSTS -->
+  <iframe name="vc_bg" style="display:none;width:0;height:0;border:0;" aria-hidden="true"></iframe>
+
 <script>
 /* ===== Config ===== */
-const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-const KIOSK_URL  = 'https://checkin.veracross.com/frisch/kiosk/entrance';
+const ENDPOINT   = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
 const KIOSK_POST = 'https://checkin.veracross.com/frisch/checkin/log';
 const COOLDOWN_MS = 400;
 const THEME_KEY = 'theme';
@@ -141,7 +110,8 @@ const $ = s => document.querySelector(s);
 const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
 const btnIn = $('#actIn'), btnOut = $('#actOut');
 const netBadge = $('#netBadge');
-const stuIdEl = $('#stuId'), stuSignInBtn = $('#stuSignIn');
+
+let lastSubmitAt = 0;
 
 /* ===== Theme ===== */
 function setTheme(mode){
@@ -161,14 +131,15 @@ let toastTimer=null;
 function showToast(text, tone='neutral'){
   toastEl.textContent = text;
   toastEl.classList.add('show');
-  toastEl.style.background = 'var(--card)'; toastEl.style.borderColor = 'var(--border)'; toastEl.style.color = 'var(--text)';
+  // reset color
+  toastEl.style.background='var(--card)'; toastEl.style.borderColor='var(--border)'; toastEl.style.color='var(--text)';
   if (tone==='ok'){ toastEl.style.background='#ecfdf5'; toastEl.style.borderColor='#065f46'; toastEl.style.color='#065f46'; }
   if (tone==='err'){ toastEl.style.background='#fee2e2'; toastEl.style.borderColor='#b91c1c'; toastEl.style.color='#b91c1c'; }
   if (tone==='warn'){ toastEl.style.background='#fff7ed'; toastEl.style.borderColor='#92400e'; toastEl.style.color='#92400e'; }
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2400);
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2000);
 }
 
-/* ===== Net badge ===== */
+/* ===== Online badge ===== */
 function updateNet(){
   const on = navigator.onLine;
   netBadge.textContent = on ? 'Online' : 'Offline';
@@ -179,25 +150,32 @@ window.addEventListener('online', updateNet);
 window.addEventListener('offline', updateNet);
 updateNet();
 
-/* ===== Focus helpers ===== */
+/* ===== focus ===== */
 function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-function focusPinSafely(){ if (document.activeElement !== qEl && document.activeElement !== stuIdEl) focusPin(); }
-
-/* ===== IN/OUT toggle ===== */
 function setAction(a){
   const inActive = a === 'in';
   btnIn.classList.toggle('active', inActive);
   btnOut.classList.toggle('active', !inActive);
-  setTimeout(focusPinSafely, 0);
+  setTimeout(focusPin, 0);
 }
-btnIn.addEventListener('click', () => setAction('in'));
-btnOut.addEventListener('click', () => setAction('out'));
-window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+btnIn.addEventListener('click', ()=>setAction('in'));
+btnOut.addEventListener('click', ()=>setAction('out'));
 
-/* ===== Helpers ===== */
+/* ===== helpers ===== */
 const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-const padLeft10 = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
+const padLeft10  = d => d.length<=10 ? d.padStart(10,'0') : d.slice(-10);
 const lfToFl = s => { const m=String(s||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? `${m[2]} ${m[1]}`.trim() : String(s||''); };
+
+/* ===== Veracross background POST (automatic, no UI) ===== */
+function postToVeracrossBackground(legacyId){
+  const form = document.createElement('form');
+  form.method='POST'; form.action=KIOSK_POST; form.target='vc_bg'; form.style.display='none';
+  const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+  add('legacy_id', legacyId); add('kiosk_type','4'); add('check_in_method','3'); add('kiosk','34');
+  document.body.appendChild(form);
+  try { form.submit(); } catch {}
+  setTimeout(()=>form.remove(), 1500);
+}
 
 /* ===== Backend calls ===== */
 async function postFaculty({ pin, personId }) {
@@ -205,9 +183,8 @@ async function postFaculty({ pin, personId }) {
   const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) });
   const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
   const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
-  return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
+  return { ok: res.ok && data && !data.error, data, status:res.status };
 }
-
 async function fetchJson(u){ try{ const r=await fetch(u); const t=await r.text(); try{ return JSON.parse(t);}catch{return null;} }catch{return null;} }
 async function searchStudents(q){
   let d = await fetchJson(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`);
@@ -220,42 +197,12 @@ async function getStudentByLegacy(id){
   return (d && d.found) ? d : { found:false };
 }
 
-/* ===== Student popup auto-submit (best-effort) =====
-   - Opens a small window your script controls
-   - Writes a tiny HTML doc that auto-POSTs to Veracross
-   - We keep a reference to the window and close it after a delay
-   NOTE: We cannot read success from Veracross (cross-origin), so we use a delay.
-*/
-function signStudentViaPopup(legacyId, opts={}) {
-  const { autoCloseMs = 2500 } = opts; // adjust if needed
-  const w = window.open('', 'vc_popup', 'width=520,height=720,noopener,noreferrer');
-  if (!w) { window.open(KIOSK_URL, '_blank', 'noopener'); return false; } // popup blocked → send to kiosk page
-  const html = `
-<!doctype html><html><head><meta charset="utf-8"><title>Signing In…</title>
-<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:24px}</style>
-</head><body>
-<h2>Signing in…</h2>
-<form id="f" method="POST" action="${KIOSK_POST}">
-  <input type="hidden" name="legacy_id" value="${legacyId}">
-  <input type="hidden" name="kiosk_type" value="4">
-  <input type="hidden" name="check_in_method" value="3">
-  <input type="hidden" name="kiosk" value="34">
-</form>
-<script>setTimeout(function(){document.getElementById('f').submit();}, 60);</script>
-</body></html>`;
-  w.document.open(); w.document.write(html); w.document.close();
-
-  // Close after a short delay; we still own the handle we opened.
-  setTimeout(()=> { try{ w.close(); }catch{} }, autoCloseMs);
-  return true;
-}
-
-/* ===== Unified submit ===== */
+/* ===== Unified submit (automatic) ===== */
 async function submitPinOrId({ pin, personId }) {
-  // Try faculty first
+  // Faculty first
   const fac = await postFaculty({ pin, personId });
   if (fac.ok) {
-    const d = fac.data || {};
+    const d=fac.data||{};
     if (d.status==='in' || d.status==='out') {
       const verb = d.status==='in' ? 'IN' : 'OUT';
       const extra = (d.status==='out' && d.paired===false) ? ' (no prior IN)' : '';
@@ -264,29 +211,24 @@ async function submitPinOrId({ pin, personId }) {
     }
   }
 
-  // If not faculty, and we have a 10-digit pin, try student roster.
-  const message = (fac.data && fac.data.error) || '';
-  if (pin && /not\s*found|missing|invalid/i.test(message)) {
+  // Not faculty — try student roster (IN only) with automatic background post
+  const msg = (fac.data && fac.data.error) || '';
+  if (pin && /not\s*found|missing|invalid/i.test(msg)) {
     const s = await getStudentByLegacy(pin);
     if (s && s.found) {
       if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-      const name = lfToFl(s.fullName || '') || ('Student ' + s.legacyId);
-      const okPopup = signStudentViaPopup(String(s.legacyId), { autoCloseMs: 2500 });
-      if (!okPopup) {
-        showToast('Popup blocked — opening Kiosk', 'warn');
-        return;
-      }
+      const name = lfToFl(s.fullName||'') || ('Student '+s.legacyId);
+      postToVeracrossBackground(String(s.legacyId));
       showToast(`${name} — sent to Veracross`, 'ok');
       return;
     }
   }
 
-  // Show the backend error (or generic)
-  showToast(message || 'Error', 'err');
+  showToast(msg || 'Error', 'err');
 }
 
-/* ===== Quick Pin (USB wedge / keypad) ===== */
-let wedgeTimer=null, lastSubmitAt=0;
+/* ===== Quick Pin auto-submit (wedge) ===== */
+let wedgeTimer=null;
 const WEDGE_QUIET_MS=120;
 pinEl.addEventListener('input', ()=>{
   clearTimeout(wedgeTimer);
@@ -304,52 +246,46 @@ pinEl.addEventListener('input', ()=>{
 });
 
 /* ===== Name search (faculty + students) ===== */
-let searchDebounce = null, searchSeq = 0;
-const normKey = (a,b)=>`${String(a||'').trim().toLowerCase()}|${String(b||'').trim().toLowerCase()}`;
-function uniqueBy(arr, keyFn){ const seen=new Set(), out=[]; for(const it of arr||[]){ const k=keyFn(it); if(!k||seen.has(k)) continue; seen.add(k); out.push(it);} return out; }
-function sortFac(a,b){ const al=String(a.lastName||'').toLowerCase(); const bl=String(b.lastName||'').toLowerCase();
-  if (al!==bl) return al<bl?-1:1; const af=String(a.firstName||'').toLowerCase(); const bf=String(b.firstName||'').toLowerCase(); return af<bf?-1:af>bf?1:0; }
-function sortStu(a,b){ const an=String(a.fullName||'').toLowerCase(); const bn=String(b.fullName||'').toLowerCase(); return an<bn?-1:an>bn?1:0; }
+let searchDebounce=null, searchSeq=0;
+const normKey=(a,b)=>`${String(a||'').trim().toLowerCase()}|${String(b||'').trim().toLowerCase()}`;
+function uniqueBy(arr,k){ const s=new Set(), out=[]; for(const it of arr||[]){ const key=k(it); if(!key||s.has(key)) continue; s.add(key); out.push(it);} return out; }
+function sortFac(a,b){ const al=String(a.lastName||'').toLowerCase(), bl=String(b.lastName||'').toLowerCase(); if(al!==bl) return al<bl?-1:1; const af=String(a.firstName||'').toLowerCase(), bf=String(b.firstName||'').toLowerCase(); return af<bf?-1:af>bf?1:0; }
+function sortStu(a,b){ const an=String(a.fullName||'').toLowerCase(), bn=String(b.fullName||'').toLowerCase(); return an<bn?-1:an>bn?1:0; }
 
-qEl.addEventListener('input', () => {
+qEl.addEventListener('input', ()=>{
   clearTimeout(searchDebounce);
   const q = qEl.value.trim();
   const box = $('#results'); box.replaceChildren();
-  if (!q || q.length < 2) return; // nothing until 2+ chars
-  searchDebounce = setTimeout(() => doSearch(q, box), 200);
+  if (!q || q.length < 2) return; // do nothing
+  searchDebounce = setTimeout(()=>doSearch(q, box), 200);
 });
 
-async function doSearch(q, box) {
-  const mySeq = ++searchSeq;
+async function doSearch(q, box){
+  const mySeq=++searchSeq;
   let facList=[], stuList=[];
-  try {
+  try{
     const [facRes, stuRes] = await Promise.allSettled([
       fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`).then(r=>r.json()),
-      (async()=>{ const a = await searchStudents(q); return a; })()
+      (async()=> await searchStudents(q))()
     ]);
-    if (mySeq !== searchSeq) return;
-    if (facRes.status==='fulfilled') facList = facRes.value;
-    if (stuRes.status==='fulfilled') stuList = stuRes.value;
-  } catch { box.textContent = 'Search failed.'; return; }
+    if(mySeq!==searchSeq) return;
+    if(facRes.status==='fulfilled') facList=facRes.value;
+    if(stuRes.status==='fulfilled') stuList=stuRes.value;
+  }catch{ box.textContent='Search failed.'; return; }
 
-  facList = Array.isArray(facList) ? facList : [];
-  stuList = Array.isArray(stuList) ? stuList : [];
+  facList = Array.isArray(facList)?facList:[]; stuList = Array.isArray(stuList)?stuList:[];
+  facList = uniqueBy(facList.filter(r=>r&&(r.firstName||r.lastName)),
+                     r=>String(r.personId||'').trim()||normKey(r.firstName,r.lastName)).sort(sortFac);
+  stuList = uniqueBy(stuList.filter(r=>r&&(r.fullName||r.legacyId)),
+                     r=>String(r.legacyId||'').trim()||String(r.fullName||'').trim().toLowerCase()).sort(sortStu);
 
-  facList = uniqueBy(facList.filter(r=>r && (r.firstName||r.lastName)),
-                     r => String(r.personId||'').trim() || normKey(r.firstName, r.lastName)).sort(sortFac);
+  if(!facList.length && !stuList.length){ const div=document.createElement('div'); div.className='muted'; div.textContent='No matches.'; box.appendChild(div); return; }
 
-  stuList = uniqueBy(stuList.filter(r=>r && (r.fullName||r.legacyId)),
-                     r => String(r.legacyId||'').trim() || String(r.fullName||'').trim().toLowerCase()).sort(sortStu);
+  const addHeader=t=>{ const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
 
-  if (!facList.length && !stuList.length) {
-    const div=document.createElement('div'); div.className='muted'; div.textContent='No matches.'; box.appendChild(div); return;
-  }
-
-  const addHeader = (t)=>{ const h=document.createElement('div'); h.className='sectionTitle'; h.textContent=t; box.appendChild(h); };
-
-  if (facList.length) {
+  if(facList.length){
     addHeader('Faculty');
-    for (const { firstName, lastName, personId } of facList) {
+    for(const {firstName,lastName,personId} of facList){
       const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
       const name=document.createElement('div'); name.className='name'; name.textContent=`${firstName||''} ${lastName||''}`.trim();
       const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
@@ -357,51 +293,39 @@ async function doSearch(q, box) {
         const r = await postFaculty({ personId });
         if (r.ok) {
           const { status, firstName, lastName, time, paired } = r.data || {};
-          const verb = status==='in'?'IN':'OUT'; const extra = (status==='out' && paired===false) ? ' (no prior IN)' : '';
-          showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim() + ` — ${verb}${extra} at ${time||''}`,'ok');
+          const verb = status==='in'?'IN':'OUT'; const extra=(status==='out'&&paired===false)?' (no prior IN)':'';
+          showToast(`${(firstName||'') + ' ' + (lastName||'')}`.trim()+` — ${verb}${extra} at ${time||''}`,'ok');
         } else {
           showToast((r.data && r.data.error) || 'Error', 'err');
         }
-        setTimeout(()=>focusPin(),0);
+        setTimeout(focusPin,0);
       });
       row.appendChild(name); row.appendChild(btn); box.appendChild(row);
     }
   }
 
-  if (stuList.length) {
+  if(stuList.length){
     addHeader('Students');
-    for (const { fullName, legacyId } of stuList) {
+    for(const {fullName, legacyId} of stuList){
       const row=document.createElement('div'); row.className='row'; row.setAttribute('role','listitem');
       const name=document.createElement('div'); name.className='name'; name.textContent=lfToFl(fullName||'');
       const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign In';
       btn.addEventListener('click', ()=>{
         if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-        const ok = signStudentViaPopup(String(legacyId||''), { autoCloseMs: 2500 });
-        if (!ok) { showToast('Popup blocked — opening Kiosk', 'warn'); }
-        else { showToast(`${lfToFl(fullName||'')} — sent to Veracross`, 'ok'); }
-        setTimeout(()=>focusPin(),0);
+        postToVeracrossBackground(String(legacyId||'')); // automatic background post
+        showToast(`${lfToFl(fullName||'')} — sent to Veracross`, 'ok');
+        setTimeout(focusPin,0);
       });
       row.appendChild(name); row.appendChild(btn); box.appendChild(row);
     }
   }
 }
 
-/* ===== Manual Student Entry ===== */
-stuSignInBtn.addEventListener('click', ()=>{
-  if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-  const d = padLeft10(digitsOnly(stuIdEl.value||''));
-  if (!d || d.length!==10) { showToast('Enter a 10-digit Legacy ID', 'warn'); stuIdEl.focus(); return; }
-  const ok = signStudentViaPopup(d, { autoCloseMs: 2500 });
-  if (!ok) { showToast('Popup blocked — opening Kiosk', 'warn'); }
-  else { showToast(`Student — sent to Veracross`, 'ok'); }
-  stuIdEl.value=''; focusPin();
-});
-
-/* ===== Init ===== */
+/* ===== init ===== */
 document.addEventListener('DOMContentLoaded', ()=>{
   initTheme();
   setAction('in');
-  focusPin(); // focus quick pin on load
+  focusPin(); // focused and ready on load
 });
 </script>
 </body>
