@@ -10,7 +10,6 @@
 <style>
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
-    --in:#16a34a; --out:#dc2626; --blue:#2563eb;
     --radius-xl:18px; --ring:0 0 0 6px rgba(59,130,246,.16);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
@@ -131,7 +130,6 @@ let toastTimer=null;
 function showToast(text, tone='neutral'){
   toastEl.textContent = text;
   toastEl.classList.add('show');
-  // reset color
   toastEl.style.background='var(--card)'; toastEl.style.borderColor='var(--border)'; toastEl.style.color='var(--text)';
   if (tone==='ok'){ toastEl.style.background='#ecfdf5'; toastEl.style.borderColor='#065f46'; toastEl.style.color='#065f46'; }
   if (tone==='err'){ toastEl.style.background='#fee2e2'; toastEl.style.borderColor='#b91c1c'; toastEl.style.color='#b91c1c'; }
@@ -150,7 +148,7 @@ window.addEventListener('online', updateNet);
 window.addEventListener('offline', updateNet);
 updateNet();
 
-/* ===== focus ===== */
+/* ===== focus / action ===== */
 function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
 function setAction(a){
   const inActive = a === 'in';
@@ -183,7 +181,7 @@ async function postFaculty({ pin, personId }) {
   const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) });
   const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
   const text = await res.text(); let data=null; try{ data=JSON.parse(text);}catch{}
-  return { ok: res.ok && data && !data.error, data, status:res.status };
+  return { ok: res.ok && data && !data.error, data, status:res.status, raw:text };
 }
 async function fetchJson(u){ try{ const r=await fetch(u); const t=await r.text(); try{ return JSON.parse(t);}catch{return null;} }catch{return null;} }
 async function searchStudents(q){
@@ -197,34 +195,45 @@ async function getStudentByLegacy(id){
   return (d && d.found) ? d : { found:false };
 }
 
-/* ===== Unified submit (automatic) ===== */
+/* ===== Unified submit (handles student_in) ===== */
 async function submitPinOrId({ pin, personId }) {
-  // Faculty first
   const fac = await postFaculty({ pin, personId });
+
   if (fac.ok) {
-    const d=fac.data||{};
-    if (d.status==='in' || d.status==='out') {
-      const verb = d.status==='in' ? 'IN' : 'OUT';
-      const extra = (d.status==='out' && d.paired===false) ? ' (no prior IN)' : '';
+    const d = fac.data || {};
+
+    // Faculty success
+    if (d.status === 'in' || d.status === 'out') {
+      const verb = d.status === 'in' ? 'IN' : 'OUT';
+      const extra = (d.status === 'out' && d.paired === false) ? ' (no prior IN)' : '';
       showToast(`${(d.firstName||'') + ' ' + (d.lastName||'')}`.trim() + ` — ${verb}${extra} at ${d.time||''}`, 'ok');
+      return;
+    }
+
+    // Student identified by backend
+    if (d.status === 'student_in' && d.legacyId) {
+      if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
+      const name = d.student ? lfToFl(d.student) : ('Student ' + d.legacyId);
+      postToVeracrossBackground(String(d.legacyId));
+      showToast(`${name} — sent to Veracross`, 'ok');
       return;
     }
   }
 
-  // Not faculty — try student roster (IN only) with automatic background post
-  const msg = (fac.data && fac.data.error) || '';
-  if (pin && /not\s*found|missing|invalid/i.test(msg)) {
+  // Fallback: try student roster ourselves if backend said "not found"
+  const message = (fac.data && fac.data.error) ? String(fac.data.error) : '';
+  if (pin && /not\s*found|missing|invalid/i.test(message)) {
     const s = await getStudentByLegacy(pin);
     if (s && s.found) {
       if (!btnIn.classList.contains('active')) { showToast('Students can only sign IN', 'err'); return; }
-      const name = lfToFl(s.fullName||'') || ('Student '+s.legacyId);
+      const name = s.fullName ? lfToFl(s.fullName) : ('Student ' + s.legacyId);
       postToVeracrossBackground(String(s.legacyId));
       showToast(`${name} — sent to Veracross`, 'ok');
       return;
     }
   }
 
-  showToast(msg || 'Error', 'err');
+  showToast(message || 'Error', 'err');
 }
 
 /* ===== Quick Pin auto-submit (wedge) ===== */
@@ -256,7 +265,7 @@ qEl.addEventListener('input', ()=>{
   clearTimeout(searchDebounce);
   const q = qEl.value.trim();
   const box = $('#results'); box.replaceChildren();
-  if (!q || q.length < 2) return; // do nothing
+  if (!q || q.length < 2) return; // wait for 2+ chars
   searchDebounce = setTimeout(()=>doSearch(q, box), 200);
 });
 
