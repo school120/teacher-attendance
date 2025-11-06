@@ -80,7 +80,6 @@
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
-  /* Admin drawer */
   .drawer{
     position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh;
     border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
@@ -119,7 +118,6 @@
     </div>
 
     <div class="grid">
-      <!-- LEFT -->
       <div class="card">
         <h2>Cougar Card</h2>
         <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
@@ -131,7 +129,6 @@
         <div style="margin-top:auto;"></div>
       </div>
 
-      <!-- RIGHT -->
       <div class="card">
         <h2>Lookup by Name</h2>
         <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false"
@@ -143,7 +140,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <!-- Admin / Settings -->
   <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle" aria-hidden="true">
     <h3 id="adminTitle"><span>⚙️</span><span>Settings</span></h3>
 
@@ -326,11 +322,15 @@
     try {
       res = await fetch(url, opts);
       text = await res.text();
-    } catch (e) {
+    } catch {
       throw new Error('Network error');
     }
-    let data;
-    try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON, keep text */ }
+    if (!res.ok) {
+      const m = (data && data.error) ? data.error : `HTTP ${res.status}`;
+      throw new Error(m);
+    }
     return { ok: res.ok, status: res.status, data, text };
   }
 
@@ -344,9 +344,7 @@
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
-      const { ok, status, data } = await fetchJson(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-
-      if (!ok) { showToast(`Error ${status}`); chimeFail(); logLine(`[ERR] ${status}`); return; }
+      const { data } = await fetchJson(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
 
       // If faculty not found and pin is 10 digits → treat as student
       if (data && data.error && /not found/i.test(String(data.error)) && pin && pin.length===10) {
@@ -387,15 +385,13 @@
     }
   }
 
-  // ========= Student kiosk handoff (no extension) =========
+  // ========= Student kiosk handoff =========
   function openKioskPopup(legacyId){
     const url = KIOSK_URL + '#legacy=' + encodeURIComponent(String(legacyId)) + '&auto=1';
-    // safer popup: noopener,noreferrer
     const w = window.open(url, 'vc_kiosk', 'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no,noopener,noreferrer');
     if (!w) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  // Experimental hidden form POST (may fail with CSRF)
   function tryHiddenFormPost(legacyId, label){
     const form = document.createElement('form');
     form.action = 'https://checkin.veracross.com/frisch/checkin/log';
@@ -466,7 +462,6 @@
       if (!q) { try { searchAbort?.abort?.(); } catch(_) {} searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
       doSearch(q); e.preventDefault();
     }
-    // handle arrow navigation when focus on input
     if ((e.key === 'ArrowDown' || e.key === 'Down') && $('#results [role="option"]')) {
       const first = $('#results [role="option"]');
       if (first) { first.focus(); e.preventDefault(); }
@@ -502,8 +497,8 @@
 
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
-      const facArr = (facRes.status==='fulfilled' && facRes.value.ok && Array.isArray(facRes.value.data)) ? facRes.value.data : [];
-      const stuArr = (stuRes.status==='fulfilled' && stuRes.value.ok && Array.isArray(stuRes.value.data)) ? stuRes.value.data : [];
+      const facArr = (facRes.status==='fulfilled' && Array.isArray(facRes.value.data)) ? facRes.value.data : [];
+      const stuArr = (stuRes.status==='fulfilled' && Array.isArray(stuRes.value.data)) ? stuRes.value.data : [];
 
       const facMap = new Map();
       facArr.forEach(r=>{
@@ -550,7 +545,11 @@
       }
     } catch (e){
       if (e && e.name === 'AbortError') return;
-      if (myToken === searchToken) $('#results').innerHTML = '<div class="muted">Search failed.</div>';
+      if (myToken === searchToken) {
+        const msg = (e && e.message) ? String(e.message) : 'Search failed';
+        $('#results').innerHTML = `<div class="muted">${msg}</div>`;
+        logLine(`[SEARCH ERR] ${msg}`);
+      }
     }
   }
 
@@ -574,8 +573,6 @@
     row.appendChild(name); row.appendChild(btn);
     return row;
   }
-
-  // Keyboard navigation within results list
   function wireResultKeyboardNav(){
     const options = Array.from(document.querySelectorAll('#results [role="option"]'));
     options.forEach((opt, idx)=>{
@@ -591,7 +588,7 @@
     });
   }
 
-  // ========= Optional Web NFC (Android Chrome only) =========
+  // ========= NFC =========
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
   if (supportsWebNFC()) {
@@ -630,14 +627,12 @@
     initTheme();
     setAction('in');
     focusPinSafely();
-    // Load saved dedupe if any
     const savedD = localStorage.getItem('dedupeSec'); if (savedD) dedupeSec.value = savedD;
     dedupeSec.addEventListener('change', ()=> localStorage.setItem('dedupeSec', String(Math.max(1, parseInt(dedupeSec.value||'5',10)))));
 
-    // Warm up Apps Script endpoint (optional; improves first-search latency)
+    // Warm up Apps Script endpoint (improves first-search latency)
     try { await fetchJson(`${ENDPOINT}?action=selftest&selftest=1`); } catch {}
 
-    // If offline at boot, prompt user
     if (!navigator.onLine) showToast('Offline — actions will fail until reconnected');
   });
 </script>
