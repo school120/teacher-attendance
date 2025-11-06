@@ -5,7 +5,7 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup. Students post to Veracross automatically." />
+<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup. Students hand off to Veracross automatically." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -18,17 +18,21 @@
     --ring:0 0 0 6px rgba(59,130,246,.16);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
+
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   html { overflow-x:hidden; }
   body{ min-height:100svh; overscroll-behavior-y:contain; overflow:auto; -webkit-overflow-scrolling:touch; }
+
   .wrap{
     margin:auto; width:min(1100px,96%); background:var(--card);
     border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
     min-height:100svh; padding:28px; overflow:visible; overflow-x:clip;
   }
+
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
+
   .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
@@ -68,8 +72,23 @@
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
-  .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
+  /* Admin drawer */
+  .drawer{
+    position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh;
+    border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2);
+    padding:16px; overflow:auto; display:none; z-index:40; color:var(--text);
+  }
+  .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
+  .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
+  .hint{ color:var(--muted); font-size:12px; margin:6px 0 8px; }
+  .kv { display:grid; grid-template-columns: 180px 1fr; gap:8px 12px; font-size:14px; }
+  .kv .k { color:var(--muted); }
+  .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+  .log .item { padding:4px 0; border-bottom:1px dashed var(--border); }
+  .log .item:last-child { border-bottom:0; }
+
+  .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
+  .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
 
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
@@ -80,11 +99,11 @@
       <div id="netBadge" class="badge">Online</div>
       <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
-      <a class="gear" href="sandbox:/mnt/data/veracross-kiosk-extension.zip" download>⬇️ Extension</a>
+      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe card or search. Students auto-sign into Veracross.</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students will be sent to Veracross automatically.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
@@ -92,17 +111,19 @@
     </div>
 
     <div class="grid">
+      <!-- LEFT -->
       <div class="card">
-        <h2>Cougar Card (Quick Pin / Legacy ID)</h2>
+        <h2>Cougar Card</h2>
         <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="Tap or swipe card…" aria-label="Cougar Card" />
+               placeholder="Tap or swipe…" aria-label="Cougar Card" />
         <div id="nfcBar" class="nfcBar" style="display:none;">
-          <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
-          <button id="nfcStop"  class="nfcBtn" style="background:transparent;color:#4f46e5;border-color:#4f46e5;">Stop</button>
+          <button id="nfcStart" class="btn primary">Scan with NFC</button>
+          <button id="nfcStop"  class="btn">Stop</button>
         </div>
         <div style="margin-top:auto;"></div>
       </div>
 
+      <!-- RIGHT -->
       <div class="card">
         <h2>Lookup by Name</h2>
         <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false"
@@ -114,22 +135,50 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
+  <!-- Admin / Settings -->
+  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
+    <h3 id="adminTitle"><span>⚙️</span><span>Settings</span></h3>
+
+    <section>
+      <strong>Keyboard wedge</strong>
+      <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevents double submit)</label></div>
+      <div class="opt"><label for="dedupeSec" class="k">De-dupe window (sec):</label><input id="dedupeSec" type="number" min="1" max="30" value="5" style="width:80px;"></div>
+    </section>
+
+    <section style="margin-top:12px;">
+      <strong>Student handoff</strong>
+      <div class="hint">Pure GitHub Pages can’t read/fill Veracross cross-origin. Choose the client-only approach you prefer:</div>
+      <div class="opt"><input type="radio" name="handoff" id="ho1" value="popup" checked><label for="ho1">Open kiosk popup with <code>#legacy=##########&amp;auto=1</code> (requires kiosk to auto-handle hash)</label></div>
+      <div class="opt"><input type="radio" name="handoff" id="ho2" value="iframe"><label for="ho2">Experimental hidden form POST (may fail if CSRF enforced)</label></div>
+    </section>
+
+    <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
+      <strong>Live log</strong>
+      <div class="log" id="liveLog" aria-label="Log"></div>
+    </section>
+
+    <footer style="display:flex; gap:8px; margin-top:14px;">
+      <button id="adminClose" class="btn">Close</button>
+      <button id="adminClearLog" class="btn">Clear Log</button>
+    </footer>
+  </div>
+
 <script>
-  // === Config ===
+  // ========= Config =========
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const KIOSK_URL = 'https://checkin.veracross.com/frisch/kiosk/entrance';
   const COOLDOWN_MS = 400;
-  const DEDUPE_WINDOW_MS = 5000;
 
-  // === DOM ===
+  // ========= DOM =========
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge');
-  const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
-  const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
+  const ckIgnoreEnter = $('#ckIgnoreEnter'), dedupeSec = $('#dedupeSec');
+  const hoPopup = $('#ho1'), hoIframe = $('#ho2'), liveLogEl = $('#liveLog');
 
-  // === Theme ===
+  // ========= Theme =========
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
@@ -145,7 +194,7 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // === Chimes ===
+  // ========= Audio (chimes) =========
   let audioCtx, master, comp, initialized=false;
   function initAudio(){ if(initialized) return; initialized=true;
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -153,7 +202,7 @@
     comp = audioCtx.createDynamicsCompressor();
     comp.threshold.setValueAtTime(-14, audioCtx.currentTime);
     comp.ratio.setValueAtTime(12, audioCtx.currentTime);
-    master = audioCtx.createGain(); master.gain.setValueAtTime(0.9, audioCtx.currentTime);
+    master = audioCtx.createGain(); master.gain.setValueAtTime(1.0, audioCtx.currentTime);
     master.connect(comp).connect(audioCtx.destination);
     const kick = () => audioCtx.resume?.().catch(()=>{});
     window.addEventListener('pointerdown', kick, { once:true });
@@ -166,22 +215,22 @@
     o.connect(gn).connect(master); o.start(t); o.stop(t+d+0.02);
   }
   function chimeOk(){ initAudio(); const t = audioCtx.currentTime + 0.01;
-    tone({f:659.25,d:0.14,t, g:0.9}); tone({f:830.61,d:0.14,t:t+0.12,g:0.9}); tone({f:987.77,d:0.16,t:t+0.24,g:0.9}); tone({f:1318.5,d:0.22,t:t+0.36,g:1.0});
+    tone({f:659.25,d:0.14,t, g:1.0}); tone({f:830.61,d:0.14,t:t+0.12,g:1.0}); tone({f:987.77,d:0.16,t:t+0.24,g:1.0}); tone({f:1318.5,d:0.22,t:t+0.36,g:1.0});
   }
   function chimeFail(){ initAudio(); const t = audioCtx.currentTime + 0.01;
-    tone({f:440,d:0.16,t, type:'square', g:0.9}); tone({f:369.99,d:0.16,t:t+0.12,type:'square', g:0.85}); tone({f:293.66,d:0.20,t:t+0.24,type:'square', g:0.8});
+    tone({f:440,d:0.16,t, type:'square', g:1.0}); tone({f:369.99,d:0.16,t:t+0.12,type:'square', g:0.95}); tone({f:293.66,d:0.22,t:t+0.24,type:'square', g:0.9});
   }
 
-  // === Toast ===
+  // ========= Toast =========
   let toastTimer=null;
   function showToast(text){
     toastEl.textContent = text;
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400);
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2600);
   }
 
-  // === Net badge ===
+  // ========= Net badge =========
   function updateNet(){
     const on = navigator.onLine;
     netBadge.textContent = on ? 'Online' : 'Offline';
@@ -192,13 +241,13 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  // === Focus ===
+  // ========= Focus =========
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
-  // === Action toggle ===
+  // ========= Action toggle =========
   function setAction(a){
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
@@ -208,67 +257,128 @@
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
 
-  // === Helpers ===
+  // ========= Admin =========
+  function logLine(t){ const div=document.createElement('div'); div.className='item'; div.textContent=t; liveLogEl.appendChild(div); liveLogEl.scrollTop = liveLogEl.scrollHeight; }
+  function showAdmin(show=true){ adminDrawer.style.display = show ? 'block' : 'none'; adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false'); }
+  adminBtn.addEventListener('click', () => showAdmin(true));
+  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
+  adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; });
+
+  // ========= Helpers =========
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   function normalizeToTenDigits(raw) {
     const d = digitsOnly(raw);
     if (!d) return '';
     return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10);
   }
-
-  // de-dupe
   const lastSeen = new Map(); // key -> timestamp
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key) {
     const now = Date.now(), last = lastSeen.get(key) || 0;
-    if (now - last < DEDUPE_WINDOW_MS) return false;
+    const windowMs = Math.max(1, parseInt(dedupeSec.value||'5',10)) * 1000;
+    if (now - last < windowMs) return false;
     lastSeen.set(key, now); return true;
   }
 
-  // === Faculty submit, student fallback ===
+  // ========= Faculty submit + Student fallback =========
   let lastSubmitAt = 0;
+
   async function postFacultyOrFallbackStudent({ pin, personId, studentLabel }){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); return; }
+    if (!canSendNow(key)) { showToast('Duplicate scan ignored'); return; }
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const text = await res.text(); let data = null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok) { showToast('Error ' + res.status); chimeFail(); return; }
+      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
+      if (!res.ok) { showToast('Error ' + res.status); chimeFail(); logLine(`[ERR] ${res.status}`); return; }
 
-      if (data && data.error) {
-        if (/Person not found/i.test(String(data.error)) && pin && pin.length === 10) {
-          openKioskWithLegacy(pin, studentLabel); // student auto
-          showToast(`${studentLabel || 'Student'} — sent to Veracross`);
-          chimeOk();
-          return;
+      // If faculty not found and pin is 10 digits → treat as student
+      if (data && data.error && /not found/i.test(String(data.error)) && pin && pin.length===10) {
+        // We want the student name for toast. Try a quick studentSearch exact match:
+        let label = studentLabel || 'Student';
+        try {
+          const r = await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(pin)}`);
+          const arr = await r.json();
+          const hit = Array.isArray(arr) ? arr.find(x => String(x.legacyId||'') === pin) : null;
+          if (hit) {
+            const { fullName } = hit;
+            // flip "Last, First" → "First Last" for toast
+            const m = String(fullName||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
+            label = m ? `${m[2].trim()} ${m[1].trim()}` : (fullName || label);
+          }
+        } catch {}
+
+        // Handoff according to settings
+        const mode = hoIframe.checked ? 'iframe' : 'popup';
+        if (mode === 'popup') {
+          openKioskPopup(pin);
+          showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU POPUP] ${label} (${pin})`);
+        } else {
+          tryHiddenFormPost(pin, label);
         }
-        showToast(String(data.error)); chimeFail(); return;
+        return;
       }
+
+      if (data && data.error) { showToast(String(data.error)); chimeFail(); logLine(`[ERR] ${data.error}`); return; }
 
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.'); chimeOk();
+      showToast(line || 'Done.'); chimeOk(); logLine(`[FAC ${verb}] ${firstName||''} ${lastName||''} @ ${time||''}`);
       try{ navigator.vibrate?.(30); }catch{}
-    }catch{
-      showToast('Network error'); chimeFail();
+    }catch(e){
+      showToast('Network error'); chimeFail(); logLine(`[NET ERR] ${e}`);
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
     }
   }
 
-  // === Student kiosk open (extension will submit & close)
-  function openKioskWithLegacy(legacyId, label){
+  // ========= Student kiosk handoff (no extension) =========
+  function openKioskPopup(legacyId){
     const url = KIOSK_URL + '#legacy=' + encodeURIComponent(String(legacyId)) + '&auto=1';
     const w = window.open(url, 'vc_kiosk', 'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
     if (!w) window.open(url, '_blank');
   }
 
-  // === USB wedge — auto submit when scanner stops typing
+  // Experimental hidden form POST (may fail with CSRF)
+  function tryHiddenFormPost(legacyId, label){
+    const form = document.createElement('form');
+    form.action = 'https://checkin.veracross.com/frisch/checkin/log';
+    form.method = 'POST';
+    form.target = 'vc_hidden_iframe';
+    form.style.display = 'none';
+
+    // Kiosk fields (best effort; CSRF likely required on their side)
+    const add = (n,v) => { const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
+    add('kiosk_type', '4');
+    add('check_in_method', '3');
+    // kiosk id unknown; often present as hidden. You may set your kiosk number if required:
+    // add('kiosk', '34');
+    add('legacy_id', String(legacyId));
+
+    let iframe = document.getElementById('vc_hidden_iframe');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.name = 'vc_hidden_iframe';
+      iframe.id = 'vc_hidden_iframe';
+      iframe.style.width='0'; iframe.style.height='0'; iframe.style.border='0';
+      document.body.appendChild(iframe);
+    }
+    document.body.appendChild(form);
+    try {
+      form.submit();
+      showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU POST] ${label} (${legacyId})`);
+    } catch (e) {
+      showToast('Veracross sign-in failed'); chimeFail(); logLine(`[STU POST ERR] ${e}`);
+    } finally {
+      setTimeout(()=>form.remove(), 1500);
+    }
+  }
+
+  // ========= USB wedge auto-submit =========
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120;
   pinEl.addEventListener('input', ()=>{
@@ -283,10 +393,11 @@
       focusPinSafely();
     }, WEDGE_QUIET_MS);
   });
-  pinEl.addEventListener('keydown',(e)=>{ if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } });
+  pinEl.addEventListener('keydown',(e)=>{ if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } });
 
-  // === Search (FACULTY first, then STUDENTS) — abortable, tokenized
+  // ========= Search (FACULTY first, then STUDENTS) =========
   let searchTimer = null, searchAbort = null, searchToken = 0;
+
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
@@ -366,7 +477,12 @@
         frag.appendChild(sectionHeader('STUDENTS'));
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
-          frag.appendChild(resultRow(label, 'Sign IN', ()=> openKioskWithLegacy(legacyId, label)));
+          frag.appendChild(resultRow(label, 'Sign IN', ()=> {
+            // direct student handoff (no faculty)
+            if (hoIframe.checked) tryHiddenFormPost(legacyId, label);
+            else openKioskPopup(legacyId);
+            showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU FROM SEARCH] ${label} (${legacyId})`);
+          }));
         });
       }
 
@@ -383,7 +499,7 @@
   }
 
   function sectionHeader(text){
-    const hdr = document.createElement('div'); hdr.className='row';
+    const hdr = document.createElement('div'); hdr.className='row'; hdr.style.background='#f8fafc';
     const name = document.createElement('div'); name.className='name'; name.textContent = text;
     const spacer = document.createElement('div');
     hdr.appendChild(name); hdr.appendChild(spacer);
@@ -398,21 +514,22 @@
     return row;
   }
 
-  // Optional Web NFC (Android Chrome)
+  // ========= Optional Web NFC (Android Chrome only) =========
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
   if (supportsWebNFC()) {
-    nfcBar.style.display = '';
-    nfcStopBtn.disabled = true;
-    nfcStartBtn.addEventListener('click', async ()=>{
+    $('#nfcBadge').style.display = '';
+    $('#nfcBar').style.display = '';
+    $('#nfcStop').disabled = true;
+
+    $('#nfcStart').addEventListener('click', async ()=>{
       if (nfcStarted) return;
       try {
         ndef = new NDEFReader();
         await ndef.scan(); nfcStarted = true;
-        document.getElementById('nfcBadge').style.display = '';
-        nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
+        $('#nfcStart').disabled = true; $('#nfcStop').disabled = false;
         showToast('NFC scanning started'); focusPinSafely();
-        ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
+        ndef.onreadingerror = () => { showToast('NFC read error'); };
         ndef.onreading = (event) => {
           const { serialNumber } = event;
           const ten = normalizeToTenDigits(serialNumber);
@@ -422,16 +539,24 @@
         };
       } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
     });
-    nfcStopBtn.addEventListener('click', ()=>{
+    $('#nfcStop').addEventListener('click', ()=>{
       if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
-      nfcStarted = false; nfcStartBtn.disabled = false; nfcStopBtn.disabled = true; showToast('NFC stopped');
+      nfcStarted = false; $('#nfcStart').disabled = false; $('#nfcStop').disabled = true; showToast('NFC stopped');
     });
   }
 
-  // Init
-  function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-  function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
-  document.addEventListener('DOMContentLoaded', ()=>{ initTheme(); setAction('in'); focusPinSafely(); });
+  // ========= Init =========
+  document.addEventListener('DOMContentLoaded', ()=>{
+    initTheme();
+    setAction('in');
+    focusPinSafely();
+    // Load saved dedupe if any
+    const savedD = localStorage.getItem('dedupeSec'); if (savedD) dedupeSec.value = savedD;
+    dedupeSec.addEventListener('change', ()=> localStorage.setItem('dedupeSec', String(Math.max(1, parseInt(dedupeSec.value||'5',10)))));
+  });
+
+  // Close drawer by clicking outside
+  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
 </html>
