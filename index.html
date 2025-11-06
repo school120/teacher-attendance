@@ -5,16 +5,24 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="IN/OUT for faculty; students handed off to Veracross (popup with #legacy for extension).">
+<meta name="description" content="IN/OUT for faculty; student handoff to Veracross (extension auto-submits).">
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
+
 <style>
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
     --in:#16a34a; --out:#dc2626; --blue:#2563eb;
     --radius-xl:18px; --shadow-1:0 10px 30px rgba(0,0,0,.08); --ring:0 0 0 6px rgba(59,130,246,.16);
+    /* Section header tokens (auto mix for themes) */
+    --section-bg: color-mix(in oklab, var(--card) 88%, var(--text) 12%);
+    --section-fg: color-mix(in oklab, var(--text) 94%, var(--card) 6%);
   }
-  body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
+  body.dark{
+    --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151;
+    --section-bg: color-mix(in oklab, var(--card) 75%, var(--text) 25%);
+    --section-fg: color-mix(in oklab, var(--text) 96%, var(--card) 4%);
+  }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   .wrap{ margin:auto; width:min(1100px,96%); background:var(--card); border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; min-height:100svh; padding:28px; overflow-x:clip; }
@@ -60,6 +68,13 @@
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
   .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
 
+  /* Section headers look good in both themes */
+  .sectionHeader{
+    display:grid; grid-template-columns:1fr auto; align-items:center;
+    padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+    background: var(--section-bg); color: var(--section-fg); font-weight:900; letter-spacing:.4px;
+  }
+
   .drawer{ position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:0 14px 40px rgba(0,0,0,.18); padding:16px; overflow:auto; display:none; z-index:40; color:var(--text); }
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
   .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
@@ -77,7 +92,7 @@
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students open the Veracross kiosk and your extension auto-submits.</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students open Veracross; your extension submits automatically.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
@@ -268,7 +283,7 @@
       if (data && data.error) { showToast(String(data.error)); chimeFail(); logLine(`[ERR] ${data.error}`); return; }
 
       const { status, firstName, lastName, time } = data || {};
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
+      const verb = (status === 'in') ? 'IN' : 'OUT';
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.'); chimeOk(); logLine(`[FAC ${verb}] ${firstName||''} ${lastName||''} @ ${time||''}`);
       try{ navigator.vibrate?.(30); }catch{}
@@ -308,16 +323,39 @@
       try { searchAbort?.abort(); } catch(_) {}
       searchAbort = null; searchToken++; box.innerHTML = ''; return;
     }
-    searchTimer = setTimeout(()=>doSearch(q), 180);
+    searchTimer = setTimeout(()=>doSearch(q), 160);
   });
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
       if (!q) { try { searchAbort?.abort(); } catch(_) {} searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
+      // If user enters a 10-digit number → open kiosk immediately (student)
+      const digits = q.replace(/\D+/g,'');
+      if (digits.length === 10) {
+        const url = `${KIOSK_URL}#legacy=${encodeURIComponent(digits)}&auto=1`;
+        const pop = window.open(url, 'vc_kiosk', 'popup=yes,width=520,height=800,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
+        if (!pop) window.open(url, '_blank');
+        showToast(`ID ${digits} — sent to Veracross`); chimeOk(); e.preventDefault(); return;
+      }
       doSearch(q); e.preventDefault();
     }
   });
+
+  function sectionHeader(text){
+    const hdr = document.createElement('div'); hdr.className='sectionHeader';
+    const name = document.createElement('div'); name.textContent = text;
+    hdr.appendChild(name); hdr.appendChild(document.createElement('div'));
+    return hdr;
+  }
+  function resultRow(label, btnText, onClick){
+    const row = document.createElement('div'); row.className='row';
+    const name = document.createElement('div'); name.className='name'; name.textContent = label;
+    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
+    btn.addEventListener('click', onClick);
+    row.appendChild(name); row.appendChild(btn);
+    return row;
+  }
 
   function flipLF(full){ const m=String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
@@ -351,7 +389,7 @@
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
-      // de-dupe & score faculty
+      // FACULTY: de-dupe + score
       const facMap = new Map();
       facRes.forEach(r=>{
         const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||'');
@@ -359,7 +397,7 @@
       });
       const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      // de-dupe & score students
+      // STUDENTS: normalize "Last, First" to "First Last"; de-dupe + score
       const stuMap = new Map();
       stuRes.forEach(r=>{
         const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||'');
@@ -402,33 +440,20 @@
     }
   }
 
-  function sectionHeader(text){
-    const hdr = document.createElement('div'); hdr.className='row'; hdr.style.background='#f8fafc';
-    const name = document.createElement('div'); name.className='name'; name.textContent = text;
-    hdr.appendChild(name); hdr.appendChild(document.createElement('div'));
-    return hdr;
-  }
-  function resultRow(label, btnText, onClick){
-    const row = document.createElement('div'); row.className='row';
-    const name = document.createElement('div'); name.className='name'; name.textContent = label;
-    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
-    btn.addEventListener('click', onClick);
-    row.appendChild(name); row.appendChild(btn);
-    return row;
-  }
-
   /* ===== Init ===== */
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
-    focusPinSafely();
+    // Restore dedupe setting
     const savedD = localStorage.getItem('dedupeSec'); if (savedD) dedupeSec.value = savedD;
     dedupeSec.addEventListener('change', ()=> localStorage.setItem('dedupeSec', String(Math.max(1, parseInt(dedupeSec.value||'5',10)))));
+    // Focus pin at start
+    (function focusPinSafely(){ if (document.activeElement !== qEl) { try{ pinEl.focus(); pinEl.select?.(); }catch{} } })();
   });
 
-  /* Keep focus when returning to tab */
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
-  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
+  // Keep focus returning to tab
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && document.activeElement !== qEl) { try{ pinEl.focus(); pinEl.select?.(); }catch{} } });
+  window.addEventListener('pageshow', (e) => { if (e.persisted && document.activeElement !== qEl) { try{ pinEl.focus(); pinEl.select?.(); }catch{} } });
 </script>
 </body>
 </html>
