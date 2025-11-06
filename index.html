@@ -5,7 +5,7 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="IN/OUT for faculty; students handed off to Veracross via extension v1.">
+<meta name="description" content="IN/OUT for faculty; students handed off to Veracross (popup).">
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -64,8 +64,6 @@
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
   .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
   .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
-  .btn{ padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:800; cursor:pointer; }
-  .btn.primary{ border-color:#3b82f6; background:#3b82f6; color:#fff; }
 
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
@@ -79,7 +77,7 @@
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students are sent to Veracross by the extension.</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students open the Veracross kiosk.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
@@ -111,15 +109,16 @@
     <section>
       <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevents double submit)</label></div>
       <div class="opt"><label for="dedupeSec">De-dupe window (sec)</label><input id="dedupeSec" type="number" min="1" max="30" value="5" style="width:80px;"></div>
-      <div class="opt"><input type="checkbox" id="ckUsePopup"><label for="ckUsePopup">If extension not detected, open kiosk popup (fallback)</label></div>
+      <div class="opt"><input type="checkbox" id="ckPopup" checked><label for="ckPopup">Open kiosk popup for students</label></div>
+      <div class="opt"><button id="testOk" class="gear" type="button">🔊 Test success chime</button><button id="testFail" class="gear" type="button">🔊 Test error chime</button></div>
     </section>
     <section style="margin-top:10px;">
       <strong>Live log</strong>
       <div class="log" id="liveLog"></div>
     </section>
     <footer style="display:flex; gap:8px; margin-top:12px;">
-      <button id="adminClose" class="btn">Close</button>
-      <button id="adminClearLog" class="btn">Clear Log</button>
+      <button id="adminClose" class="gear">Close</button>
+      <button id="adminClearLog" class="gear">Clear Log</button>
     </footer>
   </div>
 
@@ -135,7 +134,8 @@
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
-  const ckIgnoreEnter = $('#ckIgnoreEnter'), dedupeSec = $('#dedupeSec'), ckUsePopup = $('#ckUsePopup');
+  const ckIgnoreEnter = $('#ckIgnoreEnter'), dedupeSec = $('#dedupeSec'), ckPopup = $('#ckPopup');
+  const testOk = $('#testOk'), testFail = $('#testFail');
   const liveLogEl = $('#liveLog');
 
   /* ===== Theme ===== */
@@ -143,7 +143,7 @@
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
     themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
-    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
+    metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }
   function initTheme(){
@@ -154,28 +154,30 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  /* ===== Chimes ===== */
+  /* ===== Chimes (only on submit/handoff) ===== */
   let audioCtx, comp, master, audioReady=false;
   function initAudio(){ if(audioReady) return; audioReady=true;
     const AC = window.AudioContext || window.webkitAudioContext;
     audioCtx = new AC();
-    comp = audioCtx.createDynamicsCompressor(); comp.threshold.setValueAtTime(-14, audioCtx.currentTime); comp.ratio.setValueAtTime(12, audioCtx.currentTime);
+    comp = audioCtx.createDynamicsCompressor(); comp.threshold.setValueAtTime(-12, audioCtx.currentTime); comp.ratio.setValueAtTime(12, audioCtx.currentTime);
     master = audioCtx.createGain(); master.gain.setValueAtTime(1.0, audioCtx.currentTime);
     comp.connect(audioCtx.destination); master.connect(comp);
     const kick=()=>audioCtx.resume?.().catch(()=>{}); window.addEventListener('pointerdown',kick,{once:true}); window.addEventListener('keydown',kick,{once:true});
   }
-  function tone({ f=880, d=0.18, t=audioCtx.currentTime, type='sine', g=1.0 }) {
+  function tone({ f=880, d=0.2, t=audioCtx.currentTime, type='sine', g=1.0 }) {
     const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
     o.type = type; o.frequency.setValueAtTime(f, t);
-    gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(g, t+0.012); gn.gain.exponentialRampToValueAtTime(0.0001, t+d);
-    o.connect(gn).connect(master); o.start(t); o.stop(t+d+0.02);
+    gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(g, t+0.015); gn.gain.exponentialRampToValueAtTime(0.0001, t+d);
+    o.connect(gn).connect(master); o.start(t); o.stop(t+d+0.03);
   }
   function chimeOk(){ initAudio(); const t = audioCtx.currentTime + 0.01;
-    tone({f:659.25,d:0.14,t}); tone({f:830.61,d:0.14,t:t+0.12}); tone({f:987.77,d:0.16,t:t+0.24}); tone({f:1318.5,d:0.22,t:t+0.36});
+    tone({f:659.25,d:0.16,t}); tone({f:830.61,d:0.16,t:t+0.12}); tone({f:987.77,d:0.18,t:t+0.24}); tone({f:1318.5,d:0.24,t:t+0.36});
   }
   function chimeFail(){ initAudio(); const t = audioCtx.currentTime + 0.01;
-    tone({f:440,d:0.16,t, type:'square'}); tone({f:369.99,d:0.16,t:t+0.12,type:'square'}); tone({f:293.66,d:0.22,t:t+0.24,type:'square'});
+    tone({f:440,d:0.18,t, type:'square'}); tone({f:369.99,d:0.18,t:t+0.14,type:'square'}); tone({f:293.66,d:0.24,t:t+0.28,type:'square'});
   }
+  testOk.addEventListener('click', chimeOk);
+  testFail.addEventListener('click', chimeFail);
 
   /* ===== Toast ===== */
   let toastTimer=null;
@@ -218,49 +220,20 @@
 
   /* ===== Helpers ===== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-  function normalizeToTenDigits(raw) { const d = digitsOnly(raw); if (!d) return ''; return d.length <= 10 ? d.padStart(10,'0') : d.slice(-10); }
+  function normalizeToTenDigits(raw) { const d = digitsOnly(raw); if (!d) return ''; return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10); }
   const lastSeen = new Map(); // key -> timestamp
-  function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
-  function canSendNow(key) {
-    const now = Date.now(), last = lastSeen.get(key) || 0;
+  function canSendNow(k) {
+    const now = Date.now(), last = lastSeen.get(k) || 0;
     const windowMs = Math.max(1, parseInt(dedupeSec.value||'5',10)) * 1000;
-    if (now - last < windowMs) return false; lastSeen.set(key, now); return true;
+    if (now - last < windowMs) return false; lastSeen.set(k, now); return true;
   }
   function logLine(t){ const div=document.createElement('div'); div.textContent=t; liveLogEl.appendChild(div); liveLogEl.scrollTop=liveLogEl.scrollHeight; }
 
-  /* ===== Extension detection ===== */
-  function extensionPresent(){
-    // v1 content script can respond to a ping via postMessage echo.
-    let ok=false;
-    try{
-      const uid = 'ping_'+Math.random().toString(36).slice(2);
-      const handler = (evt)=>{ if (evt && evt.data && evt.data.type==='VCX_V1_PONG' && evt.data.uid===uid){ ok=true; window.removeEventListener('message', handler); } };
-      window.addEventListener('message', handler);
-      window.postMessage({ type:'VCX_V1_PING', uid }, '*');
-      setTimeout(()=>window.removeEventListener('message', handler), 400);
-    }catch{}
-    return ok; // best-effort
-  }
-
-  /* ===== Student handoff (v1 extension) ===== */
-  function sendToExtension(legacyId, fullName){
-    // Fire multiple hooks for v1 compatibility
-    try { window.postMessage({ type:'VCX_V1_SIGNIN', legacyId, fullName }, '*'); } catch {}
-    try { window.postMessage({ type:'VC_SIGNIN', legacyId, fullName }, '*'); } catch {}
-    try { document.dispatchEvent(new CustomEvent('veracross-signin', { detail:{ legacyId, fullName }})); } catch {}
-  }
-  function openKioskPopup(legacyId){
-    const url = KIOSK_URL + '#legacy=' + encodeURIComponent(String(legacyId)) + '&auto=1';
-    const w = window.open(url, 'vc_kiosk', 'popup=yes,width=520,height=800,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
-    if (!w) window.open(url, '_blank');
-  }
-
-  /* ===== Faculty submit + Student fallback ===== */
+  /* ===== Faculty submit + Student popup fallback ===== */
   let lastSubmitAt = 0;
-
-  async function postFacultyOrStudent({ pin, personId, studentLabel }){
+  async function postFacultyOrStudent({ pin, personId }){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId });
+    const key = pin ? `pin:${pin}` : `pid:${personId}`;
     if (!canSendNow(key)) { showToast('Duplicate scan ignored'); return; }
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
@@ -269,9 +242,9 @@
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
       if (!res.ok) { showToast('Error ' + res.status); chimeFail(); logLine(`[ERR] ${res.status}`); return; }
 
-      // If faculty not found and pin looks like a student ID → hand off to extension
       if (data && data.error && /not found/i.test(String(data.error)) && pin && pin.length===10) {
-        let label = studentLabel || 'Student';
+        // Try to get student name for toast
+        let label = 'Student';
         try {
           const r = await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(pin)}`);
           const arr = await r.json();
@@ -282,11 +255,14 @@
             label = m ? `${m[2].trim()} ${m[1].trim()}` : (full || label);
           }
         } catch {}
-        // Try extension; fall back to popup if enabled
-        sendToExtension(pin, label);
-        const usedPopup = !extensionPresent() && ckUsePopup.checked;
-        if (usedPopup) openKioskPopup(pin);
-        showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU] ${label} (${pin}) via ${usedPopup?'popup':'extension'}`);
+
+        // Open kiosk popup (cannot auto-type due to cross-origin rules)
+        if (ckPopup.checked) {
+          const url = KIOSK_URL + '#legacy=' + encodeURIComponent(pin) + '&auto=1';
+          const pop = window.open(url, 'vc_kiosk', 'popup=yes,width=520,height=800,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
+          if (!pop) window.open(url, '_blank');
+        }
+        showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU] ${label} (${pin}) → kiosk`);
         return;
       }
 
@@ -305,7 +281,7 @@
     }
   }
 
-  /* ===== USB wedge auto-submit ===== */
+  /* ===== USB wedge auto-submit (no chimes while typing search) ===== */
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120;
   pinEl.addEventListener('input', ()=>{
@@ -344,6 +320,7 @@
     }
   });
 
+  function flipLF(full){ const m=String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
   function scoreName(q, first, last, fullLF){
     const nq = norm(q), nf = norm(first), nl = norm(last);
@@ -356,7 +333,6 @@
     if (nfl.includes(nq)) s+=26; if (nlf.includes(nq)) s+=24;
     return s;
   }
-  function flipLF(full){ const m=String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
 
   async function doSearch(q){
     try { searchAbort?.abort(); } catch(_){}
@@ -376,6 +352,7 @@
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
+      // de-dupe & score faculty
       const facMap = new Map();
       facRes.forEach(r=>{
         const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||'');
@@ -383,6 +360,7 @@
       });
       const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
+      // de-dupe & score students
       const stuMap = new Map();
       stuRes.forEach(r=>{
         const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||'');
@@ -404,10 +382,10 @@
         frag.appendChild(sectionHeader('STUDENTS'));
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
-          frag.appendChild(resultRow(label, 'Sign IN', ()=> {
-            // Send to extension v1; fallback popup if enabled
-            sendToExtension(legacyId, label);
-            if (ckUsePopup.checked) openKioskPopup(legacyId);
+          frag.appendChild(resultRow(label, 'Open Kiosk', ()=> {
+            const url = KIOSK_URL + '#legacy=' + encodeURIComponent(legacyId) + '&auto=1';
+            const pop = window.open(url, 'vc_kiosk', 'popup=yes,width=520,height=800,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
+            if (!pop) window.open(url, '_blank');
             showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU FROM SEARCH] ${label} (${legacyId})`);
           }));
         });
@@ -453,7 +431,6 @@
   /* Keep focus when returning to tab */
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
-
 </script>
 </body>
 </html>
