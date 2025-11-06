@@ -68,6 +68,8 @@
   .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
   .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
+  /* hidden form/iframe for Veracross */
+  #vcFrame, form.vcForm { position:absolute; width:0; height:0; overflow:hidden; opacity:0; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -139,21 +141,36 @@
     </footer>
   </div>
 
+  <!-- Hidden Veracross submit frame + form -->
+  <iframe id="vcFrame" name="vcFrame" title="Veracross submit frame"></iframe>
+  <form id="vcForm" class="vcForm" target="vcFrame" method="post"></form>
+
 <script>
   // ===== Config =====
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-  const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 400;
 
-  // De-dupe: block same code/person for 5 seconds
+  // Veracross kiosk POST (no extension, no XHR): hidden form → /frisch/checkin/log
+  const VC_ACTION = 'https://checkin.veracross.com/frisch/checkin/log';
+  // These are the hidden inputs seen in your kiosk markup; change if your site shows different values.
+  const VC_FIELDS = {
+    kiosk_type: '4',
+    check_in_method: '3',
+    kiosk: '34'
+  };
+
+  const VC_SUCCESS_ASSUME_MS = 900; // small delay before we toast success (we can’t read cross-origin response)
+
+  const VC_BASE_VIEW = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy='; // used only for opening a visible tab if you want
+
+  const COOLDOWN_MS = 400;
   const DEDUPE_WINDOW_MS = 5000;
-  const lastSeenMap = new Map(); // key -> timestamp
+  const lastSeenMap = new Map();
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key) {
     const now = Date.now();
     const last = lastSeenMap.get(key) || 0;
     if (now - last < DEDUPE_WINDOW_MS) return false;
-    lastSeenMap.set(key, now); // reserve immediately
+    lastSeenMap.set(key, now);
     return true;
   }
 
@@ -167,7 +184,24 @@
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug'), ckSound = $('#ckSound');
   const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
+  const vcForm = $('#vcForm');
+
   let lastSubmitAt = 0;
+
+  // Build VC hidden form structure once
+  function buildVcForm() {
+    vcForm.action = VC_ACTION;
+    vcForm.innerHTML = '';
+    // static hidden fields
+    Object.entries(VC_FIELDS).forEach(([k,v])=>{
+      const i = document.createElement('input');
+      i.type = 'hidden'; i.name = k; i.value = v; vcForm.appendChild(i);
+    });
+    // legacy_id placeholder (we will update value per student)
+    const legacy = document.createElement('input');
+    legacy.type = 'hidden'; legacy.name = 'legacy_id'; legacy.value = '';
+    vcForm.appendChild(legacy);
+  }
 
   // ===== Theme =====
   function setTheme(mode){
@@ -185,7 +219,7 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Chimes (LOUD + DISTINCT) — play ONLY on submissions, never on typing/search
+  // ===== Chimes (submission only)
   let audioCtx = null, master = null, comp = null, dist = null, initialized = false;
   function initAudio() {
     if (initialized) return;
@@ -201,20 +235,12 @@
     master = audioCtx.createGain();
     master.gain.setValueAtTime(0.9, audioCtx.currentTime);
     dist = audioCtx.createWaveShaper();
-    dist.curve = makeDistortionCurve(60);
+    dist.curve = (function(amount=60){const n=44100,c=new Float32Array(n),d=Math.PI/180;for(let i=0;i<n;i++){const x=(i*2)/n-1;c[i]=(3+amount)*x*20*d/(Math.PI+amount*Math.abs(x));}return c;}());
     dist.oversample = '4x';
     master.connect(comp).connect(audioCtx.destination);
     const kick = () => audioCtx.resume?.().catch(()=>{});
     window.addEventListener('pointerdown', kick, { once: true });
     window.addEventListener('keydown', kick, { once: true });
-  }
-  function makeDistortionCurve(amount = 50) {
-    const n_samples = 44100, curve = new Float32Array(n_samples), deg = Math.PI / 180;
-    for (let i = 0; i < n_samples; ++i) {
-      const x = (i * 2) / n_samples - 1;
-      curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
-    }
-    return curve;
   }
   function gate(){ return !ckSound || ckSound.checked; }
   function tone({ freq = 880, dur = 0.18, t = audioCtx.currentTime, type = 'sine', gain = 0.5, toDist = false, detune = 0 }) {
@@ -232,11 +258,8 @@
     if (!gate()) return; initAudio();
     const t0 = audioCtx.currentTime + 0.01;
     tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.9 });
-    tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.5, detune: +8 });
     tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.9 });
-    tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.5, detune: -8 });
     tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.9 });
-    tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.5, detune: +6 });
     tone({ freq: 1318.51, dur: 0.22, t: t0+0.36, type: 'sine', gain: 1.0 });
   }
   function chimeFail(){
@@ -310,36 +333,40 @@
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
 
-  // ===== Submit API (faculty) + student kiosk handoff
+  // ===== Student → Veracross (hidden form POST, extension-free)
+  function postStudentToVeracross(legacyId) {
+    // update value
+    const input = vcForm.querySelector('input[name="legacy_id"]');
+    if (input) input.value = legacyId;
+
+    // Submit to hidden iframe. Even if the response is blocked by X-Frame-Options,
+    // the POST still reaches the server; we assume success and chime after a short delay.
+    try { vcForm.submit(); } catch(_) {}
+
+    // UX: show toast shortly after fire-and-forget
+    setTimeout(()=>{ showToast('Student sent to Veracross'); chimeOk(); }, VC_SUCCESS_ASSUME_MS);
+  }
+
+  // ===== Submit API (faculty via Apps Script) + student handoff via hidden POST
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
 
-    // 5s de-dupe gate — no sound while typing / accidental double scan
-    if (!canSendNow(key)) {
-      showToast('Duplicate scan ignored (5s)');
-      focusPinSafely();
-      return;
-    }
+    // 5s de-dupe
+    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); focusPinSafely(); return; }
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok || (data && data.error)) {
-        showToast((data && data.error) || ('Error ' + res.status));
-        chimeFail(); // play only on submission failure
-        return;
-      }
+      if (!res.ok || (data && data.error)) { showToast((data && data.error) || ('Error ' + res.status)); chimeFail(); return; }
 
-      // Student flow: server replies with {status:'student_in', legacyId, student}
+      // Student flow from backend: {status:'student_in', legacyId, student}
       if (data.status === 'student_in' && data.legacyId) {
-        const legacy = data.legacyId;
-        const name = data.student || 'Student';
-        const kioskURL = VC_BASE + encodeURIComponent(legacy);
-        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+        const legacy = String(data.legacyId);
+        const name = String(data.student || 'Student');
+        postStudentToVeracross(legacy);
         showToast(`${name} — sent to Veracross`);
-        chimeOk(); // actual action
         try{ navigator.vibrate?.(30); }catch{}
         return;
       }
@@ -348,12 +375,9 @@
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.');
-      chimeOk();
-      try{ navigator.vibrate?.(30); }catch{}
+      showToast(line || 'Done.'); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
     }catch{
-      showToast('Network error');
-      chimeFail(); // submission network error
+      showToast('Network error'); chimeFail();
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
@@ -381,42 +405,24 @@
     if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
   });
 
-  // ===== Search (FACULTY first, then STUDENTS) — silent, abortable, tokenized
-  let searchTimer = null;
-  let searchAbort = null;
-  let searchToken = 0;   // increments for every request to ignore stale responses
-
+  // ===== Search (faculty first, then students), abortable + tokenized
+  let searchTimer = null, searchAbort = null, searchToken = 0;
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
     const box = $('#results');
-
-    // Empty input: abort in-flight search, clear results now, invalidate late responses
     if (!q) {
-      try { searchAbort?.abort(); } catch(_) {}
-      searchAbort = null;
-      searchToken++;    // bump token, ignoring late responses
-      box.innerHTML = '';
-      return;
+      try { searchAbort?.abort(); } catch(_){}
+      searchAbort = null; searchToken++; box.innerHTML = ''; return;
     }
-
     searchTimer = setTimeout(()=>doSearch(q), 180);
   });
-
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (!q) {
-        try { searchAbort?.abort(); } catch(_) {}
-        searchAbort = null;
-        searchToken++;
-        $('#results').innerHTML = '';
-        e.preventDefault();
-        return;
-      }
-      doSearch(q);
-      e.preventDefault();
+      if (!q) { try { searchAbort?.abort(); } catch(_){ } searchAbort = null; searchToken++; $('#results').innerHTML = ''; e.preventDefault(); return; }
+      doSearch(q); e.preventDefault();
     }
   });
 
@@ -442,10 +448,9 @@
   function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
 
   async function doSearch(q){
-    // Start a new token and abort any previous request
     try { searchAbort?.abort(); } catch(_){}
     searchAbort = new AbortController();
-    const myToken = ++searchToken;       // capture token for this call
+    const myToken = ++searchToken;
     const sig = searchAbort.signal;
 
     const box = $('#results');
@@ -456,13 +461,11 @@
       const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       let [facRes, stuRes] = await Promise.allSettled([facP, stuP]);
 
-      // If another search started meanwhile or input is empty, ignore this response
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
-      // --- dedupe + sort ---
       const facDedup = new Map();
       facRes.forEach(r=>{
         const pid = String(r.personId||'');
@@ -483,7 +486,6 @@
       });
       const stuSorted = Array.from(stuDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      // Re-check token and input before render
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
       const frag = document.createDocumentFragment();
@@ -498,8 +500,9 @@
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
           frag.appendChild(resultRow(label, 'Sign IN', ()=>{
-            const kioskURL = VC_BASE + encodeURIComponent(legacyId);
-            window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+            // Option A (visible): window.open(VC_BASE_VIEW + encodeURIComponent(legacyId), '_blank', 'width=480,height=820,noopener,noreferrer');
+            // Option B (silent): hidden form post:
+            postStudentToVeracross(legacyId);
             showToast(`${label} — sent to Veracross`);
           }));
         });
@@ -512,7 +515,7 @@
         box.appendChild(frag);
       }
     } catch (e){
-      if (e && e.name === 'AbortError') return; // intentionally canceled
+      if (e && e.name === 'AbortError') return;
       if (myToken === searchToken) $('#results').innerHTML = '<div class="muted">Search failed.</div>';
     }
   }
@@ -533,13 +536,12 @@
     return row;
   }
 
-  // ===== Optional Web NFC (Android Chrome)
+  // Optional Web NFC (Android Chrome) — unchanged from before
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
   if (supportsWebNFC()) {
-    document.getElementById('nfcBar').style.display = '';
+    nfcBar.style.display = '';
     nfcStopBtn.disabled = true;
-
     nfcStartBtn.addEventListener('click', async ()=>{
       if (nfcStarted) return;
       try {
@@ -549,7 +551,6 @@
         nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
         showToast('NFC scanning started');
         focusPinSafely();
-
         ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
         ndef.onreading = (event) => {
           const { serialNumber } = event;
@@ -561,7 +562,6 @@
         };
       } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
     });
-
     nfcStopBtn.addEventListener('click', ()=>{
       if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
       nfcStarted = false; nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
@@ -571,8 +571,7 @@
 
   // ===== Init =====
   document.addEventListener('DOMContentLoaded', ()=>{
-    initTheme();
-    setAction('in');
+    initTheme(); setAction('in'); buildVcForm();
     const savedSound = localStorage.getItem('soundOn');
     if (savedSound !== null && ckSound) ckSound.checked = savedSound === '1';
     if (ckSound) ckSound.addEventListener('change', () => localStorage.setItem('soundOn', ckSound.checked ? '1' : '0'));
