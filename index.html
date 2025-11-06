@@ -5,7 +5,7 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup." />
+<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup. Students post to Veracross automatically." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -29,12 +29,18 @@
   }
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
+
+  /* header badges */
   .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
+
+  /* toast */
   .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* IN/OUT big buttons */
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
     flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
@@ -49,27 +55,40 @@
   .segment.segment-xl button.active#actOut{
     background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
+
+  /* layout */
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
   .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box; }
   .card h2{ margin:0 0 12px; font-size:20px; }
+
+  /* inputs */
   input[type=text], input[type=password], input[type=search]{
     width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
   }
   input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); outline:none; }
-  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background: var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
+
+  /* results list */
+  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
   .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* action button */
   .actionBtn{ --c: var(--blue); background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end; }
+  .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
+  .actionBtn:active{ transform:scale(.985); box-shadow:inset 0 3px 8px rgba(0,0,0,.25); }
+
+  /* NFC bar (Android Chrome) */
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
   .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
+
+  /* admin drawer */
   .drawer{ position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2); padding:16px; overflow:auto; display:none; z-index:40; color:var(--text); }
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
   .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
   .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
   .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
-  /* hidden form/iframe for Veracross */
-  #vcFrame, form.vcForm { position:absolute; width:0; height:0; overflow:hidden; opacity:0; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -82,7 +101,7 @@
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then <b>swipe/tap card</b> or search by name (faculty first, then students).</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe card or search by name. Students are sent to Veracross automatically.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
@@ -97,7 +116,7 @@
                placeholder="Tap or swipe card…" aria-label="Cougar Card" />
         <div id="nfcBar" class="nfcBar" style="display:none;">
           <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
-          <button id="nfcStop"  class="nfcBtn" style="background:transparent;color:#4f46e5;">Stop</button>
+          <button id="nfcStop"  class="nfcBtn" style="background:transparent;color:#4f46e5;border-color:#4f46e5;">Stop</button>
         </div>
         <div style="margin-top:auto;"></div>
       </div>
@@ -105,8 +124,7 @@
       <!-- RIGHT: Lookup -->
       <div class="card">
         <h2>Lookup by Name</h2>
-        <input id="q" type="search" inputmode="search" enterkeyhint="search"
-               autocapitalize="words" autocorrect="off" spellcheck="false"
+        <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false"
                placeholder="Search faculty or students" aria-label="Search name" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
@@ -141,30 +159,14 @@
     </footer>
   </div>
 
-  <!-- Hidden Veracross submit frame + form -->
-  <iframe id="vcFrame" name="vcFrame" title="Veracross submit frame"></iframe>
-  <form id="vcForm" class="vcForm" target="vcFrame" method="post"></form>
-
 <script>
   // ===== Config =====
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-
-  // Veracross kiosk POST (no extension, no XHR): hidden form → /frisch/checkin/log
-  const VC_ACTION = 'https://checkin.veracross.com/frisch/checkin/log';
-  // These are the hidden inputs seen in your kiosk markup; change if your site shows different values.
-  const VC_FIELDS = {
-    kiosk_type: '4',
-    check_in_method: '3',
-    kiosk: '34'
-  };
-
-  const VC_SUCCESS_ASSUME_MS = 900; // small delay before we toast success (we can’t read cross-origin response)
-
-  const VC_BASE_VIEW = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy='; // used only for opening a visible tab if you want
-
   const COOLDOWN_MS = 400;
+
+  // 5s de-dupe (per code/person) to avoid accidental double scans
   const DEDUPE_WINDOW_MS = 5000;
-  const lastSeenMap = new Map();
+  const lastSeenMap = new Map(); // key -> timestamp
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key) {
     const now = Date.now();
@@ -184,30 +186,13 @@
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug'), ckSound = $('#ckSound');
   const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
-  const vcForm = $('#vcForm');
-
   let lastSubmitAt = 0;
-
-  // Build VC hidden form structure once
-  function buildVcForm() {
-    vcForm.action = VC_ACTION;
-    vcForm.innerHTML = '';
-    // static hidden fields
-    Object.entries(VC_FIELDS).forEach(([k,v])=>{
-      const i = document.createElement('input');
-      i.type = 'hidden'; i.name = k; i.value = v; vcForm.appendChild(i);
-    });
-    // legacy_id placeholder (we will update value per student)
-    const legacy = document.createElement('input');
-    legacy.type = 'hidden'; legacy.name = 'legacy_id'; legacy.value = '';
-    vcForm.appendChild(legacy);
-  }
 
   // ===== Theme =====
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
-    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
+    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark'; // show the action you'll get
     if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }
@@ -219,7 +204,7 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Chimes (submission only)
+  // ===== Chimes (LOUD + DISTINCT) — only on real submissions (never on typing/search)
   let audioCtx = null, master = null, comp = null, dist = null, initialized = false;
   function initAudio() {
     if (initialized) return;
@@ -235,7 +220,7 @@
     master = audioCtx.createGain();
     master.gain.setValueAtTime(0.9, audioCtx.currentTime);
     dist = audioCtx.createWaveShaper();
-    dist.curve = (function(amount=60){const n=44100,c=new Float32Array(n),d=Math.PI/180;for(let i=0;i<n;i++){const x=(i*2)/n-1;c[i]=(3+amount)*x*20*d/(Math.PI+amount*Math.abs(x));}return c;}());
+    dist.curve = (function(amount=60){const n=44100,c=new Float32Array(n),deg=Math.PI/180;for(let i=0;i<n;++i){const x=(i*2)/n-1;c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));}return c;})();
     dist.oversample = '4x';
     master.connect(comp).connect(audioCtx.destination);
     const kick = () => audioCtx.resume?.().catch(()=>{});
@@ -243,31 +228,29 @@
     window.addEventListener('keydown', kick, { once: true });
   }
   function gate(){ return !ckSound || ckSound.checked; }
-  function tone({ freq = 880, dur = 0.18, t = audioCtx.currentTime, type = 'sine', gain = 0.5, toDist = false, detune = 0 }) {
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = type; o.frequency.setValueAtTime(freq, t);
-    if (detune) o.detune.setValueAtTime(detune, t);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(gain, t + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    (toDist ? o.connect(g).connect(dist).connect(master) : o.connect(g).connect(master));
-    o.start(t); o.stop(t + dur + 0.02);
+  function tone({ f=880, d=0.18, t=audioCtx.currentTime, type='sine', g=0.5, toDist=false, det=0 }) {
+    const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (det) o.detune.setValueAtTime(det, t);
+    gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(g, t+0.012); gn.gain.exponentialRampToValueAtTime(0.0001, t+d);
+    (toDist ? o.connect(gn).connect(dist).connect(master) : o.connect(gn).connect(master)); o.start(t); o.stop(t+d+0.02);
   }
   function chimeOk(){
     if (!gate()) return; initAudio();
     const t0 = audioCtx.currentTime + 0.01;
-    tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.9 });
-    tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.9 });
-    tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.9 });
-    tone({ freq: 1318.51, dur: 0.22, t: t0+0.36, type: 'sine', gain: 1.0 });
+    tone({ f:659.25, d:0.14, t:t0,      g:0.9 });
+    tone({ f:659.25, d:0.14, t:t0,      g:0.5, det:+8 });
+    tone({ f:830.61, d:0.14, t:t0+0.12, g:0.9 });
+    tone({ f:830.61, d:0.14, t:t0+0.12, g:0.5, det:-8 });
+    tone({ f:987.77, d:0.16, t:t0+0.24, g:0.9 });
+    tone({ f:987.77, d:0.16, t:t0+0.24, g:0.5, det:+6 });
+    tone({ f:1318.5, d:0.22, t:t0+0.36, g:1.0 });
   }
   function chimeFail(){
     if (!gate()) return; initAudio();
     const t0 = audioCtx.currentTime + 0.01;
-    tone({ freq: 440.00, dur: 0.16, t: t0,      type: 'square', gain: 0.9, toDist: true });
-    tone({ freq: 369.99, dur: 0.16, t: t0+0.12, type: 'square', gain: 0.85, toDist: true });
-    tone({ freq: 293.66, dur: 0.20, t: t0+0.24, type: 'square', gain: 0.8, toDist: true });
+    tone({ f:440.00, d:0.16, t:t0,      type:'square', g:0.9, toDist:true });
+    tone({ f:369.99, d:0.16, t:t0+0.12, type:'square', g:0.85, toDist:true });
+    tone({ f:293.66, d:0.20, t:t0+0.24, type:'square', g:0.8, toDist:true });
   }
 
   // ===== Toast =====
@@ -290,7 +273,7 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  // ===== Focus =====
+  // ===== Focus helpers =====
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
@@ -333,41 +316,32 @@
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
 
-  // ===== Student → Veracross (hidden form POST, extension-free)
-  function postStudentToVeracross(legacyId) {
-    // update value
-    const input = vcForm.querySelector('input[name="legacy_id"]');
-    if (input) input.value = legacyId;
-
-    // Submit to hidden iframe. Even if the response is blocked by X-Frame-Options,
-    // the POST still reaches the server; we assume success and chime after a short delay.
-    try { vcForm.submit(); } catch(_) {}
-
-    // UX: show toast shortly after fire-and-forget
-    setTimeout(()=>{ showToast('Student sent to Veracross'); chimeOk(); }, VC_SUCCESS_ASSUME_MS);
-  }
-
-  // ===== Submit API (faculty via Apps Script) + student handoff via hidden POST
-  async function submitPinOrId({ pin, personId }) {
+  // ===== Submit API (faculty) with automatic student fallback
+  async function postFacultyOrFallbackStudent({ pin, personId, labelIfStudent }){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
 
     // 5s de-dupe
-    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); focusPinSafely(); return; }
+    if (!canSendNow(key)) {
+      showToast('Duplicate scan ignored (5s)');
+      focusPinSafely();
+      return;
+    }
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok || (data && data.error)) { showToast((data && data.error) || ('Error ' + res.status)); chimeFail(); return; }
+      const text = await res.text(); let data = null; try{ data = JSON.parse(text); }catch{}
+      if (!res.ok) { showToast('Error ' + res.status); chimeFail(); return; }
 
-      // Student flow from backend: {status:'student_in', legacyId, student}
-      if (data.status === 'student_in' && data.legacyId) {
-        const legacy = String(data.legacyId);
-        const name = String(data.student || 'Student');
-        postStudentToVeracross(legacy);
-        showToast(`${name} — sent to Veracross`);
-        try{ navigator.vibrate?.(30); }catch{}
+      if (data && data.error) {
+        // If faculty not found → try student kiosk submit automatically
+        if (/Person not found/i.test(String(data.error)) && pin && pin.length === 10) {
+          await submitStudentLegacy(pin, labelIfStudent);
+          return;
+        }
+        showToast(String(data.error));
+        chimeFail();
         return;
       }
 
@@ -375,16 +349,43 @@
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.'); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
+      showToast(line || 'Done.');
+      chimeOk();
+      try{ navigator.vibrate?.(30); }catch{}
     }catch{
-      showToast('Network error'); chimeFail();
+      showToast('Network error');
+      chimeFail();
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
     }
   }
 
-  // ===== USB wedge — auto submit on quiet
+  // ===== Student Veracross handoff via Apps Script
+  async function submitStudentLegacy(legacyId, labelFromSearch){
+    const body = new URLSearchParams({ action: 'studentKiosk', legacyId }).toString();
+    try{
+      const res  = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      const data = await res.json();
+      if (data && data.ok) {
+        const label = data.student || labelFromSearch || 'Student';
+        showToast(`${label} — sent to Veracross`);
+        chimeOk();
+        try{ navigator.vibrate?.(30); }catch{}
+      } else {
+        showToast((data && data.error) || 'Veracross sign-in failed');
+        chimeFail();
+      }
+    }catch{
+      showToast('Veracross network error');
+      chimeFail();
+    }finally{
+      lastSubmitAt = Date.now();
+      focusPinSafely();
+    }
+  }
+
+  // ===== USB wedge — auto submit when reader stops typing
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120;
   pinEl.addEventListener('input', ()=>{
@@ -392,10 +393,11 @@
     wedgeTimer = setTimeout(()=>{
       const nowDigits = digitsOnly(pinEl.value);
       if (nowDigits.length < 10) return;
-      const ten = nowDigits.slice(-10);
-      if (ckDebug.checked) showToast('Code: ' + ten); // visual only
+      const ten = nowDigits.slice(-10);           // 10-digit code
+      if (ckDebug.checked) showToast('Code: ' + ten);
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten });
+      // Try faculty first; if not found, backend error triggers student fallback
+      postFacultyOrFallbackStudent({ pin: ten });
       pushLive(ten);
       pinEl.value = '';
       focusPinSafely();
@@ -405,15 +407,18 @@
     if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
   });
 
-  // ===== Search (faculty first, then students), abortable + tokenized
+  // ===== Search (FACULTY first, then STUDENTS) — abortable, tokenized, empty clears
   let searchTimer = null, searchAbort = null, searchToken = 0;
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
     const box = $('#results');
     if (!q) {
-      try { searchAbort?.abort(); } catch(_){}
-      searchAbort = null; searchToken++; box.innerHTML = ''; return;
+      try { searchAbort?.abort(); } catch(_) {}
+      searchAbort = null;
+      searchToken++;
+      box.innerHTML = '';
+      return;
     }
     searchTimer = setTimeout(()=>doSearch(q), 180);
   });
@@ -421,28 +426,24 @@
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (!q) { try { searchAbort?.abort(); } catch(_){ } searchAbort = null; searchToken++; $('#results').innerHTML = ''; e.preventDefault(); return; }
+      if (!q) {
+        try { searchAbort?.abort(); } catch(_) {}
+        searchAbort = null; searchToken++; $('#results').innerHTML = ''; e.preventDefault(); return;
+      }
       doSearch(q); e.preventDefault();
     }
   });
 
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
   function scoreName(q, first, last, fullLF){
-    const nq = norm(q);
-    const nf = norm(first), nl = norm(last);
-    const nfl = nf + ' ' + nl;
-    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
+    const nq = norm(q), nf = norm(first), nl = norm(last);
+    const nfl = nf + ' ' + nl, nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
     if (nfl === nq || nlf === nq) return 1000;
     if (nf === nq || nl === nq) return 900;
-    let s = 0;
-    if (nf.startsWith(nq)) s += 120;
-    if (nl.startsWith(nq)) s += 110;
-    if (nfl.startsWith(nq)) s += 100;
-    if (nlf.startsWith(nq)) s += 95;
-    if (nf.includes(nq)) s += 30;
-    if (nl.includes(nq)) s += 28;
-    if (nfl.includes(nq)) s += 26;
-    if (nlf.includes(nq)) s += 24;
+    let s = 0; if (nf.startsWith(nq)) s += 120; if (nl.startsWith(nq)) s += 110;
+    if (nfl.startsWith(nq)) s += 100; if (nlf.startsWith(nq)) s += 95;
+    if (nf.includes(nq)) s += 30; if (nl.includes(nq)) s += 28;
+    if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24;
     return s;
   }
   function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
@@ -466,25 +467,20 @@
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
-      const facDedup = new Map();
+      const facMap = new Map();
       facRes.forEach(r=>{
-        const pid = String(r.personId||'');
-        const s = scoreName(q, r.firstName||'', r.lastName||'');
-        const cur = facDedup.get(pid);
-        if (!cur || s > cur._score) facDedup.set(pid, {...r, _score:s});
+        const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||'');
+        const cur = facMap.get(pid); if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
       });
-      const facSorted = Array.from(facDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
+      const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      const stuDedup = new Map();
+      const stuMap = new Map();
       stuRes.forEach(r=>{
-        const lf = String(r.fullName||'');
-        const flip = flipLF(lf);
-        const legacy = String(r.legacyId||'');
+        const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||'');
         const s = scoreName(q, flip.first||'', flip.last||'', lf);
-        const cur = stuDedup.get(legacy);
-        if (!cur || s > cur._score) stuDedup.set(legacy, {...r, _flip:flip, _score:s});
+        const cur = stuMap.get(legacy); if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
       });
-      const stuSorted = Array.from(stuDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
+      const stuSorted = Array.from(stuMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
@@ -492,19 +488,14 @@
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
         facSorted.forEach(({ firstName, lastName, personId })=>{
-          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId })));
+          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> postFacultyOrFallbackStudent({ personId })));
         });
       }
       if (stuSorted.length) {
         frag.appendChild(sectionHeader('STUDENTS'));
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
-          frag.appendChild(resultRow(label, 'Sign IN', ()=>{
-            // Option A (visible): window.open(VC_BASE_VIEW + encodeURIComponent(legacyId), '_blank', 'width=480,height=820,noopener,noreferrer');
-            // Option B (silent): hidden form post:
-            postStudentToVeracross(legacyId);
-            showToast(`${label} — sent to Veracross`);
-          }));
+          frag.appendChild(resultRow(label, 'Sign IN', ()=> submitStudentLegacy(legacyId, label)));
         });
       }
 
@@ -536,12 +527,13 @@
     return row;
   }
 
-  // Optional Web NFC (Android Chrome) — unchanged from before
+  // ===== Optional Web NFC (Android Chrome)
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
   if (supportsWebNFC()) {
-    nfcBar.style.display = '';
+    document.getElementById('nfcBar').style.display = '';
     nfcStopBtn.disabled = true;
+
     nfcStartBtn.addEventListener('click', async ()=>{
       if (nfcStarted) return;
       try {
@@ -551,17 +543,19 @@
         nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
         showToast('NFC scanning started');
         focusPinSafely();
+
         ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
         ndef.onreading = (event) => {
           const { serialNumber } = event;
           const ten = normalizeToTenDigits(serialNumber);
           if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); return; }
-          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten });
+          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) postFacultyOrFallbackStudent({ pin: ten });
           pushLive(ten);
           focusPinSafely();
         };
       } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
     });
+
     nfcStopBtn.addEventListener('click', ()=>{
       if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
       nfcStarted = false; nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
@@ -571,14 +565,15 @@
 
   // ===== Init =====
   document.addEventListener('DOMContentLoaded', ()=>{
-    initTheme(); setAction('in'); buildVcForm();
+    initTheme();
+    setAction('in');
     const savedSound = localStorage.getItem('soundOn');
     if (savedSound !== null && ckSound) ckSound.checked = savedSound === '1';
     if (ckSound) ckSound.addEventListener('change', () => localStorage.setItem('soundOn', ckSound.checked ? '1' : '0'));
-    focusPinSafely();
+    focusPinSafely(); // focus quick pin on load
   });
 
-  // Close drawer by clicking background
+  // close admin drawer when clicking backdrop
   adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
