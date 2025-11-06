@@ -385,13 +385,28 @@
     }
   }
 
-  // ========= Student kiosk handoff =========
+  // ========= Student kiosk handoff (popup only; no new tab fallback) =========
   function openKioskPopup(legacyId){
     const url = KIOSK_URL + '#legacy=' + encodeURIComponent(String(legacyId)) + '&auto=1';
-    const w = window.open(url, 'vc_kiosk', 'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no,noopener,noreferrer');
-    if (!w) window.open(url, '_blank', 'noopener,noreferrer');
+
+    // Always reuse same named window so repeated scans don't spawn more
+    const features = [
+      'width=480','height=720',
+      'resizable=yes','menubar=no','toolbar=no','location=no','status=no',
+      'noopener','noreferrer'
+    ].join(',');
+
+    // IMPORTANT: No _blank fallback — prevents the extra tab.
+    const win = window.open(url, 'vc_kiosk', features);
+    if (win && typeof win.focus === 'function') {
+      try { win.focus(); } catch {}
+    } else {
+      showToast('Pop-up blocked — allow pop-ups to continue');
+      logLine('[POPUP BLOCKED] Please enable pop-ups for this site.');
+    }
   }
 
+  // Experimental hidden form POST (may fail with CSRF)
   function tryHiddenFormPost(legacyId, label){
     const form = document.createElement('form');
     form.action = 'https://checkin.veracross.com/frisch/checkin/log';
@@ -521,18 +536,21 @@
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
         facSorted.forEach(({ firstName, lastName, personId })=>{
-          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> postFacultyOrFallbackStudent({ personId })));
+          const btn = makeResultButton('Submit', ()=> postFacultyOrFallbackStudent({ personId }));
+          frag.appendChild(resultRow(`${firstName} ${lastName}`, btn));
         });
       }
       if (stuSorted.length) {
         frag.appendChild(sectionHeader('STUDENTS'));
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
-          frag.appendChild(resultRow(label, 'Sign IN', ()=> {
+          const btn = makeResultButton('Sign IN', (e)=>{
+            e.preventDefault(); e.stopPropagation();
             if (hoIframe.checked) tryHiddenFormPost(legacyId, label);
             else openKioskPopup(legacyId);
             showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU FROM SEARCH] ${label} (${legacyId})`);
-          }));
+          });
+          frag.appendChild(resultRow(label, btn));
         });
       }
 
@@ -560,12 +578,15 @@
     hdr.appendChild(name); hdr.appendChild(spacer);
     return hdr;
   }
-  function resultRow(label, btnText, onClick){
+  function makeResultButton(text, onClick){
+    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = text;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+  function resultRow(label, btn){
     const row = document.createElement('div'); row.className='row'; row.setAttribute('role','option'); row.tabIndex = 0;
     row.setAttribute('aria-label', label);
     const name = document.createElement('div'); name.className='name'; name.textContent = label;
-    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
-    btn.addEventListener('click', onClick);
     row.addEventListener('keydown', (e)=>{
       if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
       if (e.key === 'ArrowRight') { btn.focus(); e.preventDefault(); }
