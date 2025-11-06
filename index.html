@@ -185,7 +185,7 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Chimes (LOUD + DISTINCT) =====
+  // ===== Chimes (LOUD + DISTINCT) — play ONLY on submissions, never on typing/search
   let audioCtx = null, master = null, comp = null, dist = null, initialized = false;
   function initAudio() {
     if (initialized) return;
@@ -328,7 +328,7 @@
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
       if (!res.ok || (data && data.error)) {
         showToast((data && data.error) || ('Error ' + res.status));
-        chimeFail(); // submission failure only
+        chimeFail(); // play only on submission failure
         return;
       }
 
@@ -339,12 +339,12 @@
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
-        chimeOk(); // actual handoff action
+        chimeOk(); // actual action
         try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
-      // Faculty success (actual submission)
+      // Faculty success
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -381,21 +381,41 @@
     if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
   });
 
-  // ===== Search (FACULTY first, then STUDENTS) — silent during typing/search
-  let searchTimer=null;
+  // ===== Search (FACULTY first, then STUDENTS) — silent, abortable, tokenized
+  let searchTimer = null;
   let searchAbort = null;
+  let searchToken = 0;   // increments for every request to ignore stale responses
+
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
     const box = $('#results');
-    if (!q) { box.innerHTML = ''; return; }
+
+    // Empty input: abort in-flight search, clear results now, invalidate late responses
+    if (!q) {
+      try { searchAbort?.abort(); } catch(_) {}
+      searchAbort = null;
+      searchToken++;    // bump token, ignoring late responses
+      box.innerHTML = '';
+      return;
+    }
+
     searchTimer = setTimeout(()=>doSearch(q), 180);
   });
+
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (q) doSearch(q);
+      if (!q) {
+        try { searchAbort?.abort(); } catch(_) {}
+        searchAbort = null;
+        searchToken++;
+        $('#results').innerHTML = '';
+        e.preventDefault();
+        return;
+      }
+      doSearch(q);
       e.preventDefault();
     }
   });
@@ -422,9 +442,12 @@
   function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
 
   async function doSearch(q){
-    try{ searchAbort?.abort(); }catch(_){}
+    // Start a new token and abort any previous request
+    try { searchAbort?.abort(); } catch(_){}
     searchAbort = new AbortController();
+    const myToken = ++searchToken;       // capture token for this call
     const sig = searchAbort.signal;
+
     const box = $('#results');
     box.innerHTML = '<div class="muted">Searching…</div>';
 
@@ -432,9 +455,14 @@
       const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       let [facRes, stuRes] = await Promise.allSettled([facP, stuP]);
+
+      // If another search started meanwhile or input is empty, ignore this response
+      if (myToken !== searchToken || !qEl.value.trim()) return;
+
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
+      // --- dedupe + sort ---
       const facDedup = new Map();
       facRes.forEach(r=>{
         const pid = String(r.personId||'');
@@ -455,6 +483,9 @@
       });
       const stuSorted = Array.from(stuDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
+      // Re-check token and input before render
+      if (myToken !== searchToken || !qEl.value.trim()) return;
+
       const frag = document.createDocumentFragment();
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
@@ -470,7 +501,6 @@
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`);
-            // No chime here to keep search interactions silent
           }));
         });
       }
@@ -482,8 +512,8 @@
         box.appendChild(frag);
       }
     } catch (e){
-      if (e && e.name === 'AbortError') return;
-      box.innerHTML = '<div class="muted">Search failed.</div>';
+      if (e && e.name === 'AbortError') return; // intentionally canceled
+      if (myToken === searchToken) $('#results').innerHTML = '<div class="muted">Search failed.</div>';
     }
   }
 
