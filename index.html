@@ -173,36 +173,110 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Simple Chimes (Web Audio API) =====
-  let audioCtx = null;
-  function getCtx(){ if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }
-  function gate(){ return ckSound?.checked !== false; }
+// ===== Simple Chimes (LOUD + DISTINCT) =====
+let audioCtx = null, master = null, comp = null, dist = null, initialized = false;
 
-  function tone(freq, dur=0.15, t0=getCtx().currentTime, type='sine', gain=0.06){
-    const ctx = getCtx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = type; o.frequency.setValueAtTime(freq, t0);
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(gain, t0 + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(ctx.destination);
-    o.start(t0); o.stop(t0 + dur + 0.02);
+function initAudio() {
+  if (initialized) return;
+  initialized = true;
+
+  const AC = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AC();
+
+  // Dynamics compressor to keep it punchy without clipping
+  comp = audioCtx.createDynamicsCompressor();
+  comp.threshold.setValueAtTime(-14, audioCtx.currentTime);
+  comp.knee.setValueAtTime(20, audioCtx.currentTime);
+  comp.ratio.setValueAtTime(12, audioCtx.currentTime);
+  comp.attack.setValueAtTime(0.003, audioCtx.currentTime);
+  comp.release.setValueAtTime(0.08, audioCtx.currentTime);
+
+  // Master gain (make it loud; browser will still cap)
+  master = audioCtx.createGain();
+  master.gain.setValueAtTime(0.9, audioCtx.currentTime);
+
+  // Soft distortion for the fail sound
+  dist = audioCtx.createWaveShaper();
+  dist.curve = makeDistortionCurve(60); // mild grit
+  dist.oversample = '4x';
+
+  // Route: (success) osc → master → comp → destination
+  //        (fail)    osc → dist  → master → comp → destination
+  master.connect(comp).connect(audioCtx.destination);
+
+  // Resume on first user gesture (required by iOS/Chrome)
+  const kick = () => audioCtx.resume?.().catch(()=>{});
+  window.addEventListener('pointerdown', kick, { once: true });
+  window.addEventListener('keydown', kick, { once: true });
+}
+
+function makeDistortionCurve(amount = 50) {
+  const n_samples = 44100, curve = new Float32Array(n_samples), deg = Math.PI / 180;
+  for (let i = 0; i < n_samples; ++i) {
+    const x = (i * 2) / n_samples - 1;
+    curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
+function gate() {
+  const ck = document.querySelector('#ckSound');
+  return !ck || ck.checked; // default ON
+}
+
+// Generic tone helper
+function tone({ freq = 880, dur = 0.18, t = audioCtx.currentTime, type = 'sine', gain = 0.5, toDist = false, detune = 0 }) {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (detune) o.detune.setValueAtTime(detune, t);
+
+  // Fast attack, smooth release (bell-ish)
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  if (toDist) {
+    o.connect(g).connect(dist).connect(master);
+  } else {
+    o.connect(g).connect(master);
   }
 
-  function chimeOk(){
-    if (!gate()) return;
-    const ctx = getCtx(), t = ctx.currentTime + 0.01;
-    tone(880, 0.12, t);         // A5
-    tone(1174.66, 0.12, t+0.12);// D6
-    tone(1318.51, 0.16, t+0.22);// E6 (slightly longer)
-  }
-  function chimeFail(){
-    if (!gate()) return;
-    const ctx = getCtx(), t = ctx.currentTime + 0.01;
-    tone(220, 0.18, t, 'square', 0.07);
-    tone(196, 0.22, t+0.12, 'square', 0.06);
-  }
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+// SUCCESS: bright “doorbell” arpeggio (loud & clear)
+function chimeOk() {
+  if (!gate()) return;
+  initAudio();
+  const t0 = audioCtx.currentTime + 0.01;
+
+  // E5, G#5, B5, E6 — quick steps up with slight detune for shimmer
+  tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.9 });
+  tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.5, detune: +8 }); // shimmer
+
+  tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.9 });
+  tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.5, detune: -8 });
+
+  tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.9 });
+  tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.5, detune: +6 });
+
+  tone({ freq: 1318.51, dur: 0.22, t: t0+0.36, type: 'sine', gain: 1.0 }); // E6 flourish
+}
+
+// FAIL: descending buzzer with grit (very distinct)
+function chimeFail() {
+  if (!gate()) return;
+  initAudio();
+  const t0 = audioCtx.currentTime + 0.01;
+
+  // A4 → F#4 → D4, short square-wave “buzzes” with distortion
+  tone({ freq: 440.00, dur: 0.16, t: t0,      type: 'square', gain: 0.9, toDist: true });
+  tone({ freq: 369.99, dur: 0.16, t: t0+0.12, type: 'square', gain: 0.85, toDist: true });
+  tone({ freq: 293.66, dur: 0.20, t: t0+0.24, type: 'square', gain: 0.8, toDist: true });
+}
 
   // ===== Toast =====
   let toastTimer=null;
