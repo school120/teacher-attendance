@@ -5,7 +5,7 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="IN/OUT for faculty; students handed off to Veracross (popup).">
+<meta name="description" content="IN/OUT for faculty; students handed off to Veracross (popup with #legacy for extension).">
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -77,7 +77,7 @@
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students open the Veracross kiosk.</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then tap/swipe a card or search. Students open the Veracross kiosk and your extension auto-submits.</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
@@ -229,7 +229,7 @@
   }
   function logLine(t){ const div=document.createElement('div'); div.textContent=t; liveLogEl.appendChild(div); liveLogEl.scrollTop=liveLogEl.scrollHeight; }
 
-  /* ===== Faculty submit + Student popup fallback ===== */
+  /* ===== Faculty submit + Student popup (extension reads #legacy) ===== */
   let lastSubmitAt = 0;
   async function postFacultyOrStudent({ pin, personId }){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
@@ -243,7 +243,7 @@
       if (!res.ok) { showToast('Error ' + res.status); chimeFail(); logLine(`[ERR] ${res.status}`); return; }
 
       if (data && data.error && /not found/i.test(String(data.error)) && pin && pin.length===10) {
-        // Try to get student name for toast
+        // Student path → open kiosk with #legacy & auto=1
         let label = 'Student';
         try {
           const r = await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(pin)}`);
@@ -256,9 +256,8 @@
           }
         } catch {}
 
-        // Open kiosk popup (cannot auto-type due to cross-origin rules)
-        if (ckPopup.checked) {
-          const url = KIOSK_URL + '#legacy=' + encodeURIComponent(pin) + '&auto=1';
+        if (document.visibilityState === 'visible' && ckPopup.checked) {
+          const url = `${KIOSK_URL}#legacy=${encodeURIComponent(pin)}&auto=1`;
           const pop = window.open(url, 'vc_kiosk', 'popup=yes,width=520,height=800,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
           if (!pop) window.open(url, '_blank');
         }
@@ -281,7 +280,7 @@
     }
   }
 
-  /* ===== USB wedge auto-submit (no chimes while typing search) ===== */
+  /* ===== USB wedge auto-submit ===== */
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120;
   pinEl.addEventListener('input', ()=>{
@@ -383,7 +382,7 @@
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
           frag.appendChild(resultRow(label, 'Open Kiosk', ()=> {
-            const url = KIOSK_URL + '#legacy=' + encodeURIComponent(legacyId) + '&auto=1';
+            const url = `${KIOSK_URL}#legacy=${encodeURIComponent(legacyId)}&auto=1`;
             const pop = window.open(url, 'vc_kiosk', 'popup=yes,width=520,height=800,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
             if (!pop) window.open(url, '_blank');
             showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU FROM SEARCH] ${label} (${legacyId})`);
@@ -406,8 +405,7 @@
   function sectionHeader(text){
     const hdr = document.createElement('div'); hdr.className='row'; hdr.style.background='#f8fafc';
     const name = document.createElement('div'); name.className='name'; name.textContent = text;
-    const spacer = document.createElement('div');
-    hdr.appendChild(name); hdr.appendChild(spacer);
+    hdr.appendChild(name); hdr.appendChild(document.createElement('div'));
     return hdr;
   }
   function resultRow(label, btnText, onClick){
