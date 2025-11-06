@@ -16,10 +16,6 @@
     --shadow-1:0 10px 30px rgba(0,0,0,.08);
     --shadow-2:0 14px 40px rgba(0,0,0,.18);
     --ring:0 0 0 6px rgba(59,130,246,.16);
-    --safe-top: env(safe-area-inset-top);
-    --safe-right: env(safe-area-inset-right);
-    --safe-bottom: env(safe-area-inset-bottom);
-    --safe-left: env(safe-area-inset-left);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -29,17 +25,15 @@
   .wrap{
     margin:auto; width:min(1100px,96%); background:var(--card);
     border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
-    min-height:calc(100svh - var(--safe-top) - var(--safe-bottom));
-    padding: calc(28px + var(--safe-top)) calc(28px + var(--safe-right)) calc(28px + var(--safe-bottom)) calc(28px + var(--safe-left));
-    overflow:visible; overflow-x:clip;
+    min-height:100svh; padding:28px; overflow:visible; overflow-x:clip;
   }
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
-  .badges{ position:absolute; right:calc(18px + var(--safe-right)); top:calc(18px + var(--safe-top)); display:flex; gap:8px; align-items:center; }
+  .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
-  .toast{ position:fixed; left:50%; bottom:calc(24px + var(--safe-bottom)); transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
@@ -68,10 +62,9 @@
   .actionBtn{ --c: var(--blue); background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end; }
   .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
   .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
-  .drawer{ position:fixed; right:calc(16px + var(--safe-right)); top:calc(64px + var(--safe-top)); width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:0 14px 40px rgba(0,0,0,.18); padding:16px; overflow:auto; display:none; z-index:40; color:var(--text); }
+  .drawer{ position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2); padding:16px; overflow:auto; display:none; z-index:40; color:var(--text); }
   .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
   .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
-  .hint{ color:var(--muted); font-size:12px; margin:6px 0 8px; }
   .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
   .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
@@ -87,7 +80,7 @@
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
-    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then <b>swipe/tap card</b> or search by name (faculty & students).</p>
+    <p class="muted">Choose <b>IN</b> or <b>OUT</b>, then <b>swipe/tap card</b> or search by name (faculty first, then students).</p>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
       <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
@@ -112,7 +105,7 @@
         <h2>Lookup by Name</h2>
         <input id="q" type="search" inputmode="search" enterkeyhint="search"
                autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search faculty or student" aria-label="Search name" />
+               placeholder="Search faculty or students" aria-label="Search name" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
@@ -131,7 +124,6 @@
     <section style="margin-top:12px;">
       <strong>Debug</strong>
       <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show last code in toast</label></div>
-      <div class="hint">Toggle with <b>Ctrl/⌘ + Shift + D</b>.</div>
     </section>
     <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
       <h3 style="margin-bottom:8px;">Live Reader</h3>
@@ -156,13 +148,12 @@
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), nfcBadge = $('#nfcBadge');
+  const netBadge = $('#netBadge');
   const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
   const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
   const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
-
   let lastSubmitAt = 0;
 
   // ===== Theme =====
@@ -201,7 +192,7 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  // ===== Focus helpers =====
+  // ===== Focus =====
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
@@ -244,7 +235,7 @@
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
 
-  // ===== Submit API (faculty) + student handoff to kiosk tab
+  // ===== Submit API (faculty) + student kiosk handoff
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
@@ -256,12 +247,11 @@
         return;
       }
 
-      // Student flow (server tells us it's a student and gives the legacy ID)
+      // Student flow: server marks it and returns legacyId + student name
       if (data.status === 'student_in' && data.legacyId) {
         const legacy = data.legacyId;
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
-        // Open kiosk (extension will fill/submit/close)
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
         try{ navigator.vibrate?.(30); }catch{}
@@ -303,8 +293,9 @@
     if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
   });
 
-  // ===== Name Search (faculty & students)
+  // ===== Smarter Search (FACULTY first, then STUDENTS, ranked, deduped, race-safe) =====
   let searchTimer=null;
+  let searchAbort = null; // AbortController for race-proofing
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
@@ -321,58 +312,123 @@
     }
   });
 
+  function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
+  function scoreName(q, first, last, fullLF){ // higher is better
+    const nq = norm(q);
+    const nf = norm(first), nl = norm(last);
+    const nfl = nf + ' ' + nl;
+    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
+
+    // exact starts-with / exact equals priority
+    if (nfl === nq || nlf === nq) return 1000;
+    if (nf === nq || nl === nq) return 900;
+
+    let s = 0;
+    // starts-with boosts
+    if (nf.startsWith(nq)) s += 120;
+    if (nl.startsWith(nq)) s += 110;
+    if (nfl.startsWith(nq)) s += 100;
+    if (nlf.startsWith(nq)) s += 95;
+    // contains
+    if (nf.includes(nq)) s += 30;
+    if (nl.includes(nq)) s += 28;
+    if (nfl.includes(nq)) s += 26;
+    if (nlf.includes(nq)) s += 24;
+    return s;
+  }
+  function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
+
   async function doSearch(q){
-    const box = $('#results'); box.innerHTML = '';
+    // cancel any in-flight
+    try{ searchAbort?.abort(); }catch(_){}
+    searchAbort = new AbortController();
+    const sig = searchAbort.signal;
+
+    const box = $('#results');
+    box.innerHTML = '<div class="muted">Searching…</div>';
+
     try{
-      const [facRes, stuRes] = await Promise.all([
-        fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[]),
-        fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>[])
-      ]);
+      const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
+      const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
+      let [facRes, stuRes] = await Promise.allSettled([facP, stuP]);
 
-      if ((!facRes || !facRes.length) && (!stuRes || !stuRes.length)) {
-        box.innerHTML = '<div class="muted">No matches found.</div>'; return;
+      facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
+      stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
+
+      // Rank & dedupe
+      const facDedup = new Map(); // personId => row
+      facRes.forEach(r=>{
+        const pid = String(r.personId||'');
+        const s = scoreName(q, r.firstName||'', r.lastName||'');
+        const cur = facDedup.get(pid);
+        if (!cur || s > cur._score) facDedup.set(pid, {...r, _score:s});
+      });
+      const facSorted = Array.from(facDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
+
+      const stuDedup = new Map(); // legacyId => row
+      stuRes.forEach(r=>{
+        const lf = String(r.fullName||'');
+        const flip = flipLF(lf);
+        const legacy = String(r.legacyId||'');
+        const s = scoreName(q, flip.first||'', flip.last||'', lf);
+        const cur = stuDedup.get(legacy);
+        if (!cur || s > cur._score) stuDedup.set(legacy, {...r, _flip:flip, _score:s});
+      });
+      const stuSorted = Array.from(stuDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
+
+      // Render once, FACULTY first
+      const frag = document.createDocumentFragment();
+      if (facSorted.length) {
+        frag.appendChild(sectionHeader('FACULTY'));
+        facSorted.forEach(({ firstName, lastName, personId })=>{
+          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId })));
+        });
       }
-
-      if (stuRes && stuRes.length) {
-        const hdr = document.createElement('div'); hdr.className='row'; hdr.innerHTML = '<div class="name">STUDENTS</div><div></div>';
-        box.appendChild(hdr);
-        stuRes.forEach(({ fullName, legacyId })=>{
-          const row = document.createElement('div'); row.className='row';
-          const name = document.createElement('div'); name.className='name'; name.textContent = lfToFl(fullName);
-          const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign IN';
-          btn.addEventListener('click', ()=>{
+      if (stuSorted.length) {
+        frag.appendChild(sectionHeader('STUDENTS'));
+        stuSorted.forEach(({ fullName, legacyId, _flip })=>{
+          const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
+          frag.appendChild(resultRow(label, 'Sign IN', ()=>{
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-            showToast(`${lfToFl(fullName)} — sent to Veracross`);
-          });
-          row.appendChild(name); row.appendChild(btn); box.appendChild(row);
+            showToast(`${label} — sent to Veracross`);
+          }));
         });
       }
 
-      if (facRes && facRes.length) {
-        const hdr = document.createElement('div'); hdr.className='row'; hdr.innerHTML = '<div class="name">FACULTY</div><div></div>';
-        box.appendChild(hdr);
-        facRes.forEach(({ firstName, lastName, personId })=>{
-          const row = document.createElement('div'); row.className='row';
-          const name = document.createElement('div'); name.className='name'; name.textContent = `${firstName} ${lastName}`;
-          const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
-          btn.addEventListener('click', ()=> submitPinOrId({ personId }) );
-          row.appendChild(name); row.appendChild(btn); box.appendChild(row);
-        });
+      box.innerHTML = '';
+      if (!facSorted.length && !stuSorted.length) {
+        box.innerHTML = '<div class="muted">No matches found.</div>';
+      } else {
+        box.appendChild(frag);
       }
-    }catch{
+    } catch (e){
+      if (e && e.name === 'AbortError') return; // a newer search started; ignore
       box.innerHTML = '<div class="muted">Search failed.</div>';
     }
   }
 
-  // Small helper for UI label flip of “Last, First” → “First Last”
-  function lfToFl(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? `${m[2]} ${m[1]}`.trim() : String(full||'').trim(); }
+  function sectionHeader(text){
+    const hdr = document.createElement('div'); hdr.className='row';
+    const name = document.createElement('div'); name.className='name'; name.textContent = text;
+    const spacer = document.createElement('div');
+    hdr.appendChild(name); hdr.appendChild(spacer);
+    return hdr;
+  }
+  function resultRow(label, btnText, onClick){
+    const row = document.createElement('div'); row.className='row';
+    const name = document.createElement('div'); name.className='name'; name.textContent = label;
+    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
+    btn.addEventListener('click', onClick);
+    row.appendChild(name); row.appendChild(btn);
+    return row;
+  }
 
   // ===== Optional Web NFC (Android Chrome)
   function supportsWebNFC(){ return 'NDEFReader' in window; }
   let ndef = null, nfcStarted = false;
   if (supportsWebNFC()) {
-    nfcBar.style.display = '';
+    document.getElementById('nfcBar').style.display = '';
     nfcStopBtn.disabled = true;
 
     nfcStartBtn.addEventListener('click', async ()=>{
@@ -380,7 +436,7 @@
       try {
         ndef = new NDEFReader();
         await ndef.scan(); nfcStarted = true;
-        nfcBadge.style.display = '';
+        document.getElementById('nfcBadge').style.display = '';
         nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
         showToast('NFC scanning started');
         focusPinSafely();
@@ -404,24 +460,14 @@
     });
   }
 
-  // ===== Debug hotkey — Ctrl/⌘ + Shift + D
-  function isTyping(el){ return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); }
-  window.addEventListener('keydown', (e) => {
-    const keyIsD = (e.key || '').toLowerCase() === 'd';
-    const combo = keyIsD && e.shiftKey && (e.ctrlKey || e.metaKey);
-    if (!combo) return;
-    if (isTyping(document.activeElement)) return;
-    e.preventDefault();
-    ckDebug.checked = !ckDebug.checked;
-    showToast('Debug ' + (ckDebug.checked ? 'ON' : 'OFF'));
-  });
-
   // ===== Init =====
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
     focusPinSafely();
   });
+
+  // Close drawer by clicking background
   adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
