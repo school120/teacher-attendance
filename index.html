@@ -16,8 +16,15 @@
     --shadow-1:0 10px 30px rgba(0,0,0,.08);
     --shadow-2:0 14px 40px rgba(0,0,0,.18);
     --ring:0 0 0 6px rgba(59,130,246,.16);
+    --section-h:#eef2f7;
   }
-  body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
+  @media (prefers-reduced-motion: reduce) {
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important; }
+  }
+  body.dark{
+    --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151;
+    --section-h:#1f2937;
+  }
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
@@ -50,10 +57,10 @@
     transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05);
   }
   .segment.segment-xl button.active#actIn{
-    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+    background:linear-gradient(180deg, var(--in) 0%, #15803d 100%); color:#fff; border-color:var(--in); box-shadow:0 0 0 4px rgba(22,163,74,.25);
   }
   .segment.segment-xl button.active#actOut{
-    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+    background:linear-gradient(180deg, var(--out) 0%, #991b1b 100%); color:#fff; border-color:var(--out); box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
 
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
@@ -67,6 +74,7 @@
 
   .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
   .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
+  .row.header{ background:var(--section-h); border-style:dashed; }
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .actionBtn{ --c: var(--blue); background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end; }
   .actionBtn:hover{ filter:brightness(.96); transform:translateY(-1px); }
@@ -128,7 +136,7 @@
         <h2>Lookup by Name</h2>
         <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false"
                placeholder="Search faculty or students" aria-label="Search name" />
-        <div id="results" class="list" role="list" aria-live="polite"></div>
+        <div id="results" class="list" role="listbox" aria-label="Search results" aria-live="polite"></div>
       </div>
     </div>
 
@@ -136,7 +144,7 @@
   </div>
 
   <!-- Admin / Settings -->
-  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
+  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle" aria-hidden="true">
     <h3 id="adminTitle"><span>⚙️</span><span>Settings</span></h3>
 
     <section>
@@ -243,7 +251,7 @@
 
   // ========= Focus =========
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-  function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
+  function focusPinSafely(){ if (document.activeElement !== qEl && !adminOpen) focusPin(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
@@ -252,17 +260,49 @@
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
     btnOut.classList.toggle('active', !inActive);
+    btnIn.setAttribute('aria-selected', String(inActive));
+    btnOut.setAttribute('aria-selected', String(!inActive));
     setTimeout(focusPinSafely, 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
 
-  // ========= Admin =========
-  function logLine(t){ const div=document.createElement('div'); div.className='item'; div.textContent=t; liveLogEl.appendChild(div); liveLogEl.scrollTop = liveLogEl.scrollHeight; }
-  function showAdmin(show=true){ adminDrawer.style.display = show ? 'block' : 'none'; adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false'); }
+  // ========= Admin (dialog with focus trap) =========
+  let adminOpen = false;
+  let lastFocus = null;
+
+  function firstFocusable(root){
+    return root.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  }
+  function focusTrap(e){
+    if (!adminOpen) return;
+    if (e.key !== 'Tab') return;
+    const focusables = adminDrawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!focusables.length) return;
+    const first = focusables[0], last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+  }
+
+  function showAdmin(show=true){
+    adminOpen = show;
+    adminDrawer.style.display = show ? 'block' : 'none';
+    adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
+    adminDrawer.setAttribute('aria-hidden', show ? 'false' : 'true');
+    if (show) {
+      lastFocus = document.activeElement;
+      (firstFocusable(adminDrawer) || adminClose).focus();
+      document.addEventListener('keydown', focusTrap);
+    } else {
+      document.removeEventListener('keydown', focusTrap);
+      (lastFocus || adminBtn).focus();
+    }
+  }
   adminBtn.addEventListener('click', () => showAdmin(true));
   adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
   adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; });
+  window.addEventListener('keydown', (e)=>{ if (adminOpen && e.key === 'Escape') { e.preventDefault(); showAdmin(false); }});
+  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 
   // ========= Helpers =========
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
@@ -280,6 +320,20 @@
     lastSeen.set(key, now); return true;
   }
 
+  // ========= Fetch utils =========
+  async function fetchJson(url, opts){
+    let res, text;
+    try {
+      res = await fetch(url, opts);
+      text = await res.text();
+    } catch (e) {
+      throw new Error('Network error');
+    }
+    let data;
+    try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    return { ok: res.ok, status: res.status, data, text };
+  }
+
   // ========= Faculty submit + Student fallback =========
   let lastSubmitAt = 0;
 
@@ -290,27 +344,24 @@
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
-      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok) { showToast('Error ' + res.status); chimeFail(); logLine(`[ERR] ${res.status}`); return; }
+      const { ok, status, data } = await fetchJson(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+
+      if (!ok) { showToast(`Error ${status}`); chimeFail(); logLine(`[ERR] ${status}`); return; }
 
       // If faculty not found and pin is 10 digits → treat as student
       if (data && data.error && /not found/i.test(String(data.error)) && pin && pin.length===10) {
-        // We want the student name for toast. Try a quick studentSearch exact match:
         let label = studentLabel || 'Student';
         try {
-          const r = await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(pin)}`);
-          const arr = await r.json();
-          const hit = Array.isArray(arr) ? arr.find(x => String(x.legacyId||'') === pin) : null;
+          const r = await fetchJson(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(pin)}`);
+          const arr = Array.isArray(r.data) ? r.data : [];
+          const hit = arr.find(x => String(x.legacyId||'') === pin);
           if (hit) {
-            const { fullName } = hit;
-            // flip "Last, First" → "First Last" for toast
-            const m = String(fullName||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
+            const fullName = String(hit.fullName||'');
+            const m = fullName.match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
             label = m ? `${m[2].trim()} ${m[1].trim()}` : (fullName || label);
           }
         } catch {}
 
-        // Handoff according to settings
         const mode = hoIframe.checked ? 'iframe' : 'popup';
         if (mode === 'popup') {
           openKioskPopup(pin);
@@ -323,13 +374,13 @@
 
       if (data && data.error) { showToast(String(data.error)); chimeFail(); logLine(`[ERR] ${data.error}`); return; }
 
-      const { status, firstName, lastName, time } = data || {};
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
+      const { status: s, firstName, lastName, time } = data || {};
+      const verb = (s === 'in') ? 'IN' : (s === 'out') ? 'OUT' : (s||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.'); chimeOk(); logLine(`[FAC ${verb}] ${firstName||''} ${lastName||''} @ ${time||''}`);
       try{ navigator.vibrate?.(30); }catch{}
     }catch(e){
-      showToast('Network error'); chimeFail(); logLine(`[NET ERR] ${e}`);
+      showToast(e.message || 'Network error'); chimeFail(); logLine(`[NET ERR] ${e}`);
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
@@ -339,8 +390,9 @@
   // ========= Student kiosk handoff (no extension) =========
   function openKioskPopup(legacyId){
     const url = KIOSK_URL + '#legacy=' + encodeURIComponent(String(legacyId)) + '&auto=1';
-    const w = window.open(url, 'vc_kiosk', 'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no');
-    if (!w) window.open(url, '_blank');
+    // safer popup: noopener,noreferrer
+    const w = window.open(url, 'vc_kiosk', 'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no,noopener,noreferrer');
+    if (!w) window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   // Experimental hidden form POST (may fail with CSRF)
@@ -351,12 +403,9 @@
     form.target = 'vc_hidden_iframe';
     form.style.display = 'none';
 
-    // Kiosk fields (best effort; CSRF likely required on their side)
     const add = (n,v) => { const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; form.appendChild(i); };
     add('kiosk_type', '4');
     add('check_in_method', '3');
-    // kiosk id unknown; often present as hidden. You may set your kiosk number if required:
-    // add('kiosk', '34');
     add('legacy_id', String(legacyId));
 
     let iframe = document.getElementById('vc_hidden_iframe');
@@ -365,6 +414,7 @@
       iframe.name = 'vc_hidden_iframe';
       iframe.id = 'vc_hidden_iframe';
       iframe.style.width='0'; iframe.style.height='0'; iframe.style.border='0';
+      iframe.setAttribute('title','Hidden Veracross handoff');
       document.body.appendChild(iframe);
     }
     document.body.appendChild(form);
@@ -397,13 +447,14 @@
 
   // ========= Search (FACULTY first, then STUDENTS) =========
   let searchTimer = null, searchAbort = null, searchToken = 0;
+  const Abort = window.AbortController ? AbortController : null;
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
     const box = $('#results');
     if (!q) {
-      try { searchAbort?.abort(); } catch(_) {}
+      try { searchAbort?.abort?.(); } catch(_) {}
       searchAbort = null; searchToken++; box.innerHTML = ''; return;
     }
     searchTimer = setTimeout(()=>doSearch(q), 180);
@@ -412,8 +463,13 @@
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (!q) { try { searchAbort?.abort(); } catch(_) {} searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
+      if (!q) { try { searchAbort?.abort?.(); } catch(_) {} searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
       doSearch(q); e.preventDefault();
+    }
+    // handle arrow navigation when focus on input
+    if ((e.key === 'ArrowDown' || e.key === 'Down') && $('#results [role="option"]')) {
+      const first = $('#results [role="option"]');
+      if (first) { first.focus(); e.preventDefault(); }
     }
   });
 
@@ -432,32 +488,32 @@
   function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
 
   async function doSearch(q){
-    try { searchAbort?.abort(); } catch(_){}
-    searchAbort = new AbortController();
+    try { searchAbort?.abort?.(); } catch(_){}
+    searchAbort = Abort ? new Abort() : { signal: undefined, abort: ()=>{} };
     const myToken = ++searchToken;
     const sig = searchAbort.signal;
     const box = $('#results');
     box.innerHTML = '<div class="muted">Searching…</div>';
 
     try{
-      const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
-      const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
+      const facP = fetchJson(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig});
+      const stuP = fetchJson(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig});
       let [facRes, stuRes] = await Promise.allSettled([facP, stuP]);
 
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
-      facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
-      stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
+      const facArr = (facRes.status==='fulfilled' && facRes.value.ok && Array.isArray(facRes.value.data)) ? facRes.value.data : [];
+      const stuArr = (stuRes.status==='fulfilled' && stuRes.value.ok && Array.isArray(stuRes.value.data)) ? stuRes.value.data : [];
 
       const facMap = new Map();
-      facRes.forEach(r=>{
+      facArr.forEach(r=>{
         const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||'');
         const cur = facMap.get(pid); if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
       });
       const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
       const stuMap = new Map();
-      stuRes.forEach(r=>{
+      stuArr.forEach(r=>{
         const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||'');
         const s = scoreName(q, flip.first||'', flip.last||'', lf);
         const cur = stuMap.get(legacy); if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
@@ -478,7 +534,6 @@
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
           frag.appendChild(resultRow(label, 'Sign IN', ()=> {
-            // direct student handoff (no faculty)
             if (hoIframe.checked) tryHiddenFormPost(legacyId, label);
             else openKioskPopup(legacyId);
             showToast(`${label} — sent to Veracross`); chimeOk(); logLine(`[STU FROM SEARCH] ${label} (${legacyId})`);
@@ -491,6 +546,7 @@
         box.innerHTML = '<div class="muted">No matches found.</div>';
       } else {
         box.appendChild(frag);
+        wireResultKeyboardNav();
       }
     } catch (e){
       if (e && e.name === 'AbortError') return;
@@ -499,19 +555,40 @@
   }
 
   function sectionHeader(text){
-    const hdr = document.createElement('div'); hdr.className='row'; hdr.style.background='#f8fafc';
+    const hdr = document.createElement('div'); hdr.className='row header'; hdr.setAttribute('role','presentation');
     const name = document.createElement('div'); name.className='name'; name.textContent = text;
     const spacer = document.createElement('div');
     hdr.appendChild(name); hdr.appendChild(spacer);
     return hdr;
   }
   function resultRow(label, btnText, onClick){
-    const row = document.createElement('div'); row.className='row';
+    const row = document.createElement('div'); row.className='row'; row.setAttribute('role','option'); row.tabIndex = 0;
+    row.setAttribute('aria-label', label);
     const name = document.createElement('div'); name.className='name'; name.textContent = label;
     const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
     btn.addEventListener('click', onClick);
+    row.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
+      if (e.key === 'ArrowRight') { btn.focus(); e.preventDefault(); }
+    });
     row.appendChild(name); row.appendChild(btn);
     return row;
+  }
+
+  // Keyboard navigation within results list
+  function wireResultKeyboardNav(){
+    const options = Array.from(document.querySelectorAll('#results [role="option"]'));
+    options.forEach((opt, idx)=>{
+      opt.addEventListener('keydown', (e)=>{
+        if (e.key === 'ArrowDown') {
+          const next = options[idx+1] || options[0]; next.focus(); e.preventDefault();
+        } else if (e.key === 'ArrowUp') {
+          const prev = options[idx-1] || options[options.length-1]; prev.focus(); e.preventDefault();
+        } else if (e.key === 'Escape') {
+          qEl.focus(); e.preventDefault();
+        }
+      });
+    });
   }
 
   // ========= Optional Web NFC (Android Chrome only) =========
@@ -545,18 +622,24 @@
     });
   }
 
+  // ========= Live log =========
+  function logLine(t){ const div=document.createElement('div'); div.className='item'; div.textContent=t; liveLogEl.appendChild(div); liveLogEl.scrollTop = liveLogEl.scrollHeight; }
+
   // ========= Init =========
-  document.addEventListener('DOMContentLoaded', ()=>{
+  document.addEventListener('DOMContentLoaded', async ()=>{
     initTheme();
     setAction('in');
     focusPinSafely();
     // Load saved dedupe if any
     const savedD = localStorage.getItem('dedupeSec'); if (savedD) dedupeSec.value = savedD;
     dedupeSec.addEventListener('change', ()=> localStorage.setItem('dedupeSec', String(Math.max(1, parseInt(dedupeSec.value||'5',10)))));
-  });
 
-  // Close drawer by clicking outside
-  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
+    // Warm up Apps Script endpoint (optional; improves first-search latency)
+    try { await fetchJson(`${ENDPOINT}?action=selftest&selftest=1`); } catch {}
+
+    // If offline at boot, prompt user
+    if (!navigator.onLine) showToast('Offline — actions will fail until reconnected');
+  });
 </script>
 </body>
 </html>
