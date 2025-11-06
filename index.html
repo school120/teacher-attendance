@@ -36,7 +36,6 @@
   .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
-  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
   .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
@@ -60,12 +59,12 @@
   .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box; }
   .card h2{ margin:0 0 12px; font-size:20px; }
 
-  input[type=text], input[type=password], input[type=search]{
+  input[type=password], input[type=search]{
     width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
   }
-  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); outline:none; }
+  input:focus-visible{ border-color:#3b82f6; outline:none; box-shadow:0 0 0 6px rgba(59,130,246,.16); }
 
-  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
+  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); padding-right:16px; scrollbar-gutter: stable both-edges; }
   .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .actionBtn{ --c: var(--blue); background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end; }
@@ -79,7 +78,7 @@
   <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
     <div class="badges" aria-live="polite" aria-atomic="true">
       <div id="netBadge" class="badge">Online</div>
-      <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
+      <button id="themeBtn" class="gear" title="Toggle theme">🌙 Dark</button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
@@ -112,7 +111,6 @@
 
 <script>
   // ====== CONFIG ======
-  // Replace with your Apps Script web app URL:
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const KIOSK_URL = 'https://checkin.veracross.com/frisch/kiosk/entrance';
   const COOLDOWN_MS = 400;
@@ -123,7 +121,7 @@
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
 
-  // ====== Theme ======
+  // ====== Theme / Toast / Net ======
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
@@ -139,7 +137,6 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ====== Toast ======
   let toastTimer=null;
   function showToast(text){
     toastEl.textContent = text;
@@ -148,7 +145,6 @@
     toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2600);
   }
 
-  // ====== Net badge ======
   function updateNet(){
     const on = navigator.onLine;
     netBadge.textContent = on ? 'Online' : 'Offline';
@@ -172,7 +168,8 @@
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
 
-  // ====== Helpers for names ======
+  // ====== Helpers ======
+  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
   function scoreName(q, first, last, fullLF){
     const nq = norm(q), nf = norm(first), nl = norm(last);
@@ -185,10 +182,8 @@
     if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24;
     return s;
   }
-  function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
-  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
 
-  // ====== Deduping (prevents duplicate submits) ======
+  // ====== Submit (faculty or student fallback) ======
   const lastSeen = new Map();
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key, windowMs=5000) {
@@ -196,8 +191,6 @@
     if (now - last < windowMs) return false;
     lastSeen.set(key, now); return true;
   }
-
-  // ====== Faculty submit + Student fallback ======
   let lastSubmitAt = 0;
 
   async function postFacultyOrStudent({ pin, personId }){
@@ -211,19 +204,20 @@
 
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() });
-      const data = await res.json();
+      if (!res.ok) { showToast(`HTTP ${res.status}`); return; }
+      const data = await res.json().catch(()=> null);
+      if (!data) { showToast('Bad JSON from server'); return; }
 
-      // Student fallback: resolve name → toast → kiosk popup
-      if (data && data.error && /not found/i.test(String(data.error)) && pin && /^\d{10}$/.test(pin)) {
+      // Student fallback: resolve name by digits-only, then popup
+      if (data.error && /not found/i.test(String(data.error)) && pin && /^\d{10}$/.test(pin)) {
         let label = 'Student';
         try {
           const r = await fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(pin)}`);
-          const arr = await r.json();
-          const hit = Array.isArray(arr) ? arr.find(x => String(x.legacyId||'') === pin) : null;
-          if (hit) {
-            const fullName = String(hit.fullName||'');
-            const m = fullName.match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
-            label = m ? `${m[2].trim()} ${m[1].trim()}` : (fullName || label);
+          if (r.ok) {
+            const arr = await r.json();
+            const pinDigits = String(pin).replace(/\D+/g,'');
+            const hit = Array.isArray(arr) ? arr.find(x => String(x.legacyId||'').replace(/\D+/g,'') === pinDigits) : null;
+            if (hit) label = String(hit.displayName || (hit.firstName + ' ' + hit.lastName)).trim() || label;
           }
         } catch {}
         openStudentPopup(pin);
@@ -231,30 +225,31 @@
         return;
       }
 
-      if (data && data.error) { showToast(String(data.error)); return; }
+      if (data.error) { showToast(String(data.error)); return; }
 
-      const status = data && data.status ? String(data.status) : '';
-      const firstName = data && data.firstName || '';
-      const lastName  = data && data.lastName  || '';
-      const time      = data && data.time      || '';
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status || '').toUpperCase();
+      const status = data.status || '';
+      const firstName = data.firstName || '';
+      const lastName  = data.lastName  || '';
+      const time      = data.time      || '';
+      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : status.toUpperCase();
       showToast(`${firstName} ${lastName} signed ${verb} — ${time}`.trim());
       try{ navigator.vibrate?.(30); }catch{}
     }catch(e){
       showToast('Network error');
+      console.error('Fetch error:', e);
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
     }
   }
 
-  // ====== Student kiosk handoff (popup only; no _blank fallback) ======
+  // ====== Student kiosk popup ======
   function openStudentPopup(legacyId){
     const url = KIOSK_URL + '#legacy=' + encodeURIComponent(String(legacyId)) + '&auto=1';
     const w = window.open(
       url,
-      'vc_kiosk',
-      'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no,noopener,noreferrer'
+      'vc_kiosk', // named window so subsequent opens reuse it
+      'popup=yes,width=480,height=720,resizable=yes,menubar=no,toolbar=no,location=no,status=no'
     );
     if (!w) alert('Pop-up blocked. Please allow pop-ups for this site.');
   }
@@ -275,20 +270,22 @@
     }, WEDGE_QUIET_MS);
   });
 
-  // ====== Search (FACULTY first, then STUDENTS) ======
+  // ====== Search (FACULTY + STUDENTS) ======
   let searchTimer = null, searchAbort = null, searchToken = 0;
 
   async function doSearch(q){
     try { searchAbort && searchAbort.abort && searchAbort.abort(); } catch(_){}
     searchAbort = new AbortController();
-    const myToken = ++searchToken;
     const sig = searchAbort.signal;
+    const myToken = ++searchToken;
     const box = $('#results');
     box.innerHTML = '<div class="muted">Searching…</div>';
 
     try{
-      const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json()).catch(()=>[]);
-      const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json()).catch(()=>[]);
+      const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig})
+        .then(async r => r.ok ? r.json() : []);
+      const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig})
+        .then(async r => r.ok ? r.json() : []);
       let [facRes, stuRes] = await Promise.all([facP, stuP]);
 
       if (myToken !== searchToken || !qEl.value.trim()) return;
@@ -301,43 +298,43 @@
       });
       const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      // STUDENTS de-dupe + score
+      // STUDENTS already flipped by backend -> displayName
       const stuMap = new Map();
       (Array.isArray(stuRes)?stuRes:[]).forEach(r=>{
-        const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||'');
-        const s = scoreName(q, flip.first||'', flip.last||'', lf);
-        const cur = stuMap.get(legacy); if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
+        const key = String(r.legacyId||'');
+        const s = scoreName(q, r.firstName||'', r.lastName||'', r.fullName||'');
+        const cur = stuMap.get(key); if (!cur || s > cur._score) stuMap.set(key, {...r, _score:s});
       });
       const stuSorted = Array.from(stuMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
+      // Render
       const frag = document.createDocumentFragment();
-      function sectionHeader(text){
-        const hdr = document.createElement('div'); hdr.className='row'; hdr.style.background='#f8fafc';
-        const name = document.createElement('div'); name.className='name'; name.textContent = text;
-        const spacer = document.createElement('div'); hdr.append(name, spacer); return hdr;
-      }
-      function resultRow(label, btnText, onClick){
-        const row = document.createElement('div'); row.className='row';
-        const name = document.createElement('div'); name.className='name'; name.textContent = label;
-        const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
+      const sectionHeader = (text)=>{
+        const div=document.createElement('div');
+        div.className='row'; div.style.background='#f8fafc';
+        const name=document.createElement('div'); name.className='name'; name.textContent=text;
+        const spacer=document.createElement('div'); div.append(name, spacer); return div;
+      };
+      const resultRow = (label, btnText, onClick)=>{
+        const row=document.createElement('div'); row.className='row';
+        const name=document.createElement('div'); name.className='name'; name.textContent=label;
+        const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent=btnText;
         btn.addEventListener('click', onClick); row.append(name, btn); return row;
-      }
+      };
 
       box.innerHTML = '';
-      if (!facSorted.length && !stuSorted.length) {
-        box.innerHTML = '<div class="muted">No matches found.</div>'; return;
-      }
+      if (!facSorted.length && !stuSorted.length) { box.innerHTML = '<div class="muted">No matches found.</div>'; return; }
 
-      if (facSorted.length) {
+      if (facSorted.length){
         frag.append(sectionHeader('FACULTY'));
         facSorted.forEach(({ firstName, lastName, personId })=>{
           frag.append(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> postFacultyOrStudent({ personId })));
         });
       }
-      if (stuSorted.length) {
+      if (stuSorted.length){
         frag.append(sectionHeader('STUDENTS'));
-        stuSorted.forEach(({ fullName, legacyId, _flip })=>{
-          const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
+        stuSorted.forEach(({ displayName, legacyId })=>{
+          const label = String(displayName||'').trim();
           frag.append(resultRow(label, 'Sign IN', ()=>{
             openStudentPopup(legacyId);
             showToast(`${label} — sent to Veracross`);
@@ -347,17 +344,17 @@
       box.appendChild(frag);
     } catch (e){
       if (e && e.name === 'AbortError') return;
-      if (myToken === searchToken) $('#results').innerHTML = '<div class="muted">Search failed.</div>';
+      $('#results').innerHTML = '<div class="muted">Search failed.</div>';
+      console.error('Search error:', e);
     }
   }
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
-    const box = $('#results');
     if (!q) {
       try { searchAbort && searchAbort.abort && searchAbort.abort(); } catch(_) {}
-      searchAbort = null; searchToken++; box.innerHTML = ''; return;
+      searchAbort = null; searchToken++; $('#results').innerHTML = ''; return;
     }
     searchTimer = setTimeout(()=>doSearch(q), 180);
   });
