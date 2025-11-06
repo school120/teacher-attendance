@@ -149,6 +149,7 @@
 <script>
   // ===== Config =====
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 400;
 
   // ===== DOM =====
@@ -243,7 +244,7 @@
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
 
-  // ===== Submit API =====
+  // ===== Submit API (faculty) + student handoff to kiosk tab
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
@@ -254,22 +255,20 @@
         showToast((data && data.error) || ('Error ' + res.status));
         return;
       }
-      // Faculty success OR student redirect
+
+      // Student flow (server tells us it's a student and gives the legacy ID)
       if (data.status === 'student_in' && data.legacyId) {
-        // Server-side student submit
-        const sb = new URLSearchParams({ action:'student_sign', legacy: data.legacyId }).toString();
-        const sr = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: sb });
-        const st = await sr.text(); let sd=null; try{ sd = JSON.parse(st); }catch{}
-        if (!sr.ok || (sd && sd.error)) {
-          showToast((sd && sd.error) || 'Veracross sign-in failed');
-          return;
-        }
-        const name = (sd && sd.student) ? sd.student : '';
-        showToast((name ? (name + ' — sent to Veracross') : 'Sent to Veracross'));
+        const legacy = data.legacyId;
+        const name = data.student || 'Student';
+        const kioskURL = VC_BASE + encodeURIComponent(legacy);
+        // Open kiosk (extension will fill/submit/close)
+        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+        showToast(`${name} — sent to Veracross`);
         try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
+      // Faculty success
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -341,13 +340,10 @@
           const row = document.createElement('div'); row.className='row';
           const name = document.createElement('div'); name.className='name'; name.textContent = lfToFl(fullName);
           const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent='Sign IN';
-          btn.addEventListener('click', async ()=>{
-            const sb = new URLSearchParams({ action:'student_sign', legacy: legacyId }).toString();
-            const sr = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: sb });
-            const st = await sr.text(); let sd=null; try{ sd = JSON.parse(st); }catch{}
-            if (!sr.ok || (sd && sd.error)) { showToast((sd && sd.error) || 'Veracross sign-in failed'); return; }
-            const nice = lfToFl(fullName);
-            showToast(`${nice} — sent to Veracross`);
+          btn.addEventListener('click', ()=>{
+            const kioskURL = VC_BASE + encodeURIComponent(legacyId);
+            window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+            showToast(`${lfToFl(fullName)} — sent to Veracross`);
           });
           row.appendChild(name); row.appendChild(btn); box.appendChild(row);
         });
