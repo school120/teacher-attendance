@@ -120,6 +120,7 @@
       <strong>Keyboard wedge</strong>
       <div class="opt"><input type="checkbox" id="ckTrim" checked><label for="ckTrim">Trim to digits & pad to 10</label></div>
       <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevent double submit)</label></div>
+      <div class="opt"><input type="checkbox" id="ckSound" checked><label for="ckSound">Sound on (chimes)</label></div>
     </section>
     <section style="margin-top:12px;">
       <strong>Debug</strong>
@@ -152,7 +153,7 @@
   const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
   const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
-  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug');
+  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug'), ckSound = $('#ckSound');
   const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
   let lastSubmitAt = 0;
 
@@ -171,6 +172,37 @@
     setTheme(prefersDark ? 'dark' : 'light');
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
+
+  // ===== Simple Chimes (Web Audio API) =====
+  let audioCtx = null;
+  function getCtx(){ if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }
+  function gate(){ return ckSound?.checked !== false; }
+
+  function tone(freq, dur=0.15, t0=getCtx().currentTime, type='sine', gain=0.06){
+    const ctx = getCtx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(ctx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+
+  function chimeOk(){
+    if (!gate()) return;
+    const ctx = getCtx(), t = ctx.currentTime + 0.01;
+    tone(880, 0.12, t);         // A5
+    tone(1174.66, 0.12, t+0.12);// D6
+    tone(1318.51, 0.16, t+0.22);// E6 (slightly longer)
+  }
+  function chimeFail(){
+    if (!gate()) return;
+    const ctx = getCtx(), t = ctx.currentTime + 0.01;
+    tone(220, 0.18, t, 'square', 0.07);
+    tone(196, 0.22, t+0.12, 'square', 0.06);
+  }
 
   // ===== Toast =====
   let toastTimer=null;
@@ -244,6 +276,7 @@
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
       if (!res.ok || (data && data.error)) {
         showToast((data && data.error) || ('Error ' + res.status));
+        chimeFail();
         return;
       }
 
@@ -254,6 +287,7 @@
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
+        chimeOk();
         try{ navigator.vibrate?.(30); }catch{}
         return;
       }
@@ -263,9 +297,11 @@
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.');
+      chimeOk();
       try{ navigator.vibrate?.(30); }catch{}
     }catch{
       showToast('Network error');
+      chimeFail();
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
@@ -313,23 +349,18 @@
   });
 
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
-  function scoreName(q, first, last, fullLF){ // higher is better
+  function scoreName(q, first, last, fullLF){
     const nq = norm(q);
     const nf = norm(first), nl = norm(last);
     const nfl = nf + ' ' + nl;
     const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
-
-    // exact starts-with / exact equals priority
     if (nfl === nq || nlf === nq) return 1000;
     if (nf === nq || nl === nq) return 900;
-
     let s = 0;
-    // starts-with boosts
     if (nf.startsWith(nq)) s += 120;
     if (nl.startsWith(nq)) s += 110;
     if (nfl.startsWith(nq)) s += 100;
     if (nlf.startsWith(nq)) s += 95;
-    // contains
     if (nf.includes(nq)) s += 30;
     if (nl.includes(nq)) s += 28;
     if (nfl.includes(nq)) s += 26;
@@ -339,11 +370,9 @@
   function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
 
   async function doSearch(q){
-    // cancel any in-flight
     try{ searchAbort?.abort(); }catch(_){}
     searchAbort = new AbortController();
     const sig = searchAbort.signal;
-
     const box = $('#results');
     box.innerHTML = '<div class="muted">Searching…</div>';
 
@@ -355,8 +384,7 @@
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
-      // Rank & dedupe
-      const facDedup = new Map(); // personId => row
+      const facDedup = new Map();
       facRes.forEach(r=>{
         const pid = String(r.personId||'');
         const s = scoreName(q, r.firstName||'', r.lastName||'');
@@ -365,7 +393,7 @@
       });
       const facSorted = Array.from(facDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      const stuDedup = new Map(); // legacyId => row
+      const stuDedup = new Map();
       stuRes.forEach(r=>{
         const lf = String(r.fullName||'');
         const flip = flipLF(lf);
@@ -376,7 +404,6 @@
       });
       const stuSorted = Array.from(stuDedup.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      // Render once, FACULTY first
       const frag = document.createDocumentFragment();
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
@@ -392,6 +419,7 @@
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`);
+            chimeOk();
           }));
         });
       }
@@ -399,12 +427,14 @@
       box.innerHTML = '';
       if (!facSorted.length && !stuSorted.length) {
         box.innerHTML = '<div class="muted">No matches found.</div>';
+        chimeFail();
       } else {
         box.appendChild(frag);
       }
     } catch (e){
-      if (e && e.name === 'AbortError') return; // a newer search started; ignore
+      if (e && e.name === 'AbortError') return;
       box.innerHTML = '<div class="muted">Search failed.</div>';
+      chimeFail();
     }
   }
 
@@ -441,16 +471,16 @@
         showToast('NFC scanning started');
         focusPinSafely();
 
-        ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
+        ndef.onreadingerror = () => { showToast('NFC read error — try again'); chimeFail(); };
         ndef.onreading = (event) => {
           const { serialNumber } = event;
           const ten = normalizeToTenDigits(serialNumber);
-          if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); return; }
+          if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); chimeFail(); return; }
           if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten });
           pushLive(ten);
           focusPinSafely();
         };
-      } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
+      } catch { showToast('NFC not permitted or unavailable'); chimeFail(); focusPinSafely(); }
     });
 
     nfcStopBtn.addEventListener('click', ()=>{
@@ -464,6 +494,10 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
+    // restore sound toggle from localStorage
+    const savedSound = localStorage.getItem('soundOn');
+    if (savedSound !== null) ckSound.checked = savedSound === '1';
+    ckSound.addEventListener('change', () => localStorage.setItem('soundOn', ckSound.checked ? '1' : '0'));
     focusPinSafely();
   });
 
