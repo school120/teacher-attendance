@@ -145,6 +145,18 @@
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 400;
 
+  // De-dupe: block same code/person for 5 seconds
+  const DEDUPE_WINDOW_MS = 5000;
+  const lastSeenMap = new Map(); // key -> timestamp
+  function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
+  function canSendNow(key) {
+    const now = Date.now();
+    const last = lastSeenMap.get(key) || 0;
+    if (now - last < DEDUPE_WINDOW_MS) return false;
+    lastSeenMap.set(key, now); // reserve immediately
+    return true;
+  }
+
   // ===== DOM =====
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
@@ -173,110 +185,67 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-// ===== Simple Chimes (LOUD + DISTINCT) =====
-let audioCtx = null, master = null, comp = null, dist = null, initialized = false;
-
-function initAudio() {
-  if (initialized) return;
-  initialized = true;
-
-  const AC = window.AudioContext || window.webkitAudioContext;
-  audioCtx = new AC();
-
-  // Dynamics compressor to keep it punchy without clipping
-  comp = audioCtx.createDynamicsCompressor();
-  comp.threshold.setValueAtTime(-14, audioCtx.currentTime);
-  comp.knee.setValueAtTime(20, audioCtx.currentTime);
-  comp.ratio.setValueAtTime(12, audioCtx.currentTime);
-  comp.attack.setValueAtTime(0.003, audioCtx.currentTime);
-  comp.release.setValueAtTime(0.08, audioCtx.currentTime);
-
-  // Master gain (make it loud; browser will still cap)
-  master = audioCtx.createGain();
-  master.gain.setValueAtTime(0.9, audioCtx.currentTime);
-
-  // Soft distortion for the fail sound
-  dist = audioCtx.createWaveShaper();
-  dist.curve = makeDistortionCurve(60); // mild grit
-  dist.oversample = '4x';
-
-  // Route: (success) osc → master → comp → destination
-  //        (fail)    osc → dist  → master → comp → destination
-  master.connect(comp).connect(audioCtx.destination);
-
-  // Resume on first user gesture (required by iOS/Chrome)
-  const kick = () => audioCtx.resume?.().catch(()=>{});
-  window.addEventListener('pointerdown', kick, { once: true });
-  window.addEventListener('keydown', kick, { once: true });
-}
-
-function makeDistortionCurve(amount = 50) {
-  const n_samples = 44100, curve = new Float32Array(n_samples), deg = Math.PI / 180;
-  for (let i = 0; i < n_samples; ++i) {
-    const x = (i * 2) / n_samples - 1;
-    curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
+  // ===== Chimes (LOUD + DISTINCT) =====
+  let audioCtx = null, master = null, comp = null, dist = null, initialized = false;
+  function initAudio() {
+    if (initialized) return;
+    initialized = true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+    comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.setValueAtTime(-14, audioCtx.currentTime);
+    comp.knee.setValueAtTime(20, audioCtx.currentTime);
+    comp.ratio.setValueAtTime(12, audioCtx.currentTime);
+    comp.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    comp.release.setValueAtTime(0.08, audioCtx.currentTime);
+    master = audioCtx.createGain();
+    master.gain.setValueAtTime(0.9, audioCtx.currentTime);
+    dist = audioCtx.createWaveShaper();
+    dist.curve = makeDistortionCurve(60);
+    dist.oversample = '4x';
+    master.connect(comp).connect(audioCtx.destination);
+    const kick = () => audioCtx.resume?.().catch(()=>{});
+    window.addEventListener('pointerdown', kick, { once: true });
+    window.addEventListener('keydown', kick, { once: true });
   }
-  return curve;
-}
-
-function gate() {
-  const ck = document.querySelector('#ckSound');
-  return !ck || ck.checked; // default ON
-}
-
-// Generic tone helper
-function tone({ freq = 880, dur = 0.18, t = audioCtx.currentTime, type = 'sine', gain = 0.5, toDist = false, detune = 0 }) {
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, t);
-  if (detune) o.detune.setValueAtTime(detune, t);
-
-  // Fast attack, smooth release (bell-ish)
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain, t + 0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-  if (toDist) {
-    o.connect(g).connect(dist).connect(master);
-  } else {
-    o.connect(g).connect(master);
+  function makeDistortionCurve(amount = 50) {
+    const n_samples = 44100, curve = new Float32Array(n_samples), deg = Math.PI / 180;
+    for (let i = 0; i < n_samples; ++i) {
+      const x = (i * 2) / n_samples - 1;
+      curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
   }
-
-  o.start(t);
-  o.stop(t + dur + 0.02);
-}
-
-// SUCCESS: bright “doorbell” arpeggio (loud & clear)
-function chimeOk() {
-  if (!gate()) return;
-  initAudio();
-  const t0 = audioCtx.currentTime + 0.01;
-
-  // E5, G#5, B5, E6 — quick steps up with slight detune for shimmer
-  tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.9 });
-  tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.5, detune: +8 }); // shimmer
-
-  tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.9 });
-  tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.5, detune: -8 });
-
-  tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.9 });
-  tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.5, detune: +6 });
-
-  tone({ freq: 1318.51, dur: 0.22, t: t0+0.36, type: 'sine', gain: 1.0 }); // E6 flourish
-}
-
-// FAIL: descending buzzer with grit (very distinct)
-function chimeFail() {
-  if (!gate()) return;
-  initAudio();
-  const t0 = audioCtx.currentTime + 0.01;
-
-  // A4 → F#4 → D4, short square-wave “buzzes” with distortion
-  tone({ freq: 440.00, dur: 0.16, t: t0,      type: 'square', gain: 0.9, toDist: true });
-  tone({ freq: 369.99, dur: 0.16, t: t0+0.12, type: 'square', gain: 0.85, toDist: true });
-  tone({ freq: 293.66, dur: 0.20, t: t0+0.24, type: 'square', gain: 0.8, toDist: true });
-}
+  function gate(){ return !ckSound || ckSound.checked; }
+  function tone({ freq = 880, dur = 0.18, t = audioCtx.currentTime, type = 'sine', gain = 0.5, toDist = false, detune = 0 }) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (detune) o.detune.setValueAtTime(detune, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    (toDist ? o.connect(g).connect(dist).connect(master) : o.connect(g).connect(master));
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function chimeOk(){
+    if (!gate()) return; initAudio();
+    const t0 = audioCtx.currentTime + 0.01;
+    tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.9 });
+    tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.5, detune: +8 });
+    tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.9 });
+    tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.5, detune: -8 });
+    tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.9 });
+    tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 0.5, detune: +6 });
+    tone({ freq: 1318.51, dur: 0.22, t: t0+0.36, type: 'sine', gain: 1.0 });
+  }
+  function chimeFail(){
+    if (!gate()) return; initAudio();
+    const t0 = audioCtx.currentTime + 0.01;
+    tone({ freq: 440.00, dur: 0.16, t: t0,      type: 'square', gain: 0.9, toDist: true });
+    tone({ freq: 369.99, dur: 0.16, t: t0+0.12, type: 'square', gain: 0.85, toDist: true });
+    tone({ freq: 293.66, dur: 0.20, t: t0+0.24, type: 'square', gain: 0.8, toDist: true });
+  }
 
   // ===== Toast =====
   let toastTimer=null;
@@ -344,29 +313,38 @@ function chimeFail() {
   // ===== Submit API (faculty) + student kiosk handoff
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
+    const key = makeKey({ pin, personId });
+
+    // 5s de-dupe gate — no sound while typing / accidental double scan
+    if (!canSendNow(key)) {
+      showToast('Duplicate scan ignored (5s)');
+      focusPinSafely();
+      return;
+    }
+
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
       if (!res.ok || (data && data.error)) {
         showToast((data && data.error) || ('Error ' + res.status));
-        chimeFail();
+        chimeFail(); // submission failure only
         return;
       }
 
-      // Student flow: server marks it and returns legacyId + student name
+      // Student flow: server replies with {status:'student_in', legacyId, student}
       if (data.status === 'student_in' && data.legacyId) {
         const legacy = data.legacyId;
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
-        chimeOk();
+        chimeOk(); // actual handoff action
         try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
-      // Faculty success
+      // Faculty success (actual submission)
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -375,7 +353,7 @@ function chimeFail() {
       try{ navigator.vibrate?.(30); }catch{}
     }catch{
       showToast('Network error');
-      chimeFail();
+      chimeFail(); // submission network error
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
@@ -391,7 +369,7 @@ function chimeFail() {
       const nowDigits = digitsOnly(pinEl.value);
       if (nowDigits.length < 10) return;
       const ten = nowDigits.slice(-10);
-      if (ckDebug.checked) showToast('Code: ' + ten);
+      if (ckDebug.checked) showToast('Code: ' + ten); // visual only
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
       submitPinOrId({ pin: ten });
       pushLive(ten);
@@ -403,9 +381,9 @@ function chimeFail() {
     if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
   });
 
-  // ===== Smarter Search (FACULTY first, then STUDENTS, ranked, deduped, race-safe) =====
+  // ===== Search (FACULTY first, then STUDENTS) — silent during typing/search
   let searchTimer=null;
-  let searchAbort = null; // AbortController for race-proofing
+  let searchAbort = null;
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
@@ -454,7 +432,6 @@ function chimeFail() {
       const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       let [facRes, stuRes] = await Promise.allSettled([facP, stuP]);
-
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
@@ -493,7 +470,7 @@ function chimeFail() {
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`);
-            chimeOk();
+            // No chime here to keep search interactions silent
           }));
         });
       }
@@ -501,14 +478,12 @@ function chimeFail() {
       box.innerHTML = '';
       if (!facSorted.length && !stuSorted.length) {
         box.innerHTML = '<div class="muted">No matches found.</div>';
-        chimeFail();
       } else {
         box.appendChild(frag);
       }
     } catch (e){
       if (e && e.name === 'AbortError') return;
       box.innerHTML = '<div class="muted">Search failed.</div>';
-      chimeFail();
     }
   }
 
@@ -545,16 +520,16 @@ function chimeFail() {
         showToast('NFC scanning started');
         focusPinSafely();
 
-        ndef.onreadingerror = () => { showToast('NFC read error — try again'); chimeFail(); };
+        ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
         ndef.onreading = (event) => {
           const { serialNumber } = event;
           const ten = normalizeToTenDigits(serialNumber);
-          if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); chimeFail(); return; }
+          if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); return; }
           if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten });
           pushLive(ten);
           focusPinSafely();
         };
-      } catch { showToast('NFC not permitted or unavailable'); chimeFail(); focusPinSafely(); }
+      } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
     });
 
     nfcStopBtn.addEventListener('click', ()=>{
@@ -568,10 +543,9 @@ function chimeFail() {
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
-    // restore sound toggle from localStorage
     const savedSound = localStorage.getItem('soundOn');
-    if (savedSound !== null) ckSound.checked = savedSound === '1';
-    ckSound.addEventListener('change', () => localStorage.setItem('soundOn', ckSound.checked ? '1' : '0'));
+    if (savedSound !== null && ckSound) ckSound.checked = savedSound === '1';
+    if (ckSound) ckSound.addEventListener('change', () => localStorage.setItem('soundOn', ckSound.checked ? '1' : '0'));
     focusPinSafely();
   });
 
