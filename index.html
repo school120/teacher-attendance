@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Teacher Attendance — Guard Console</title>
-<meta name="description" content="Guard console for IN/OUT with Cougar Card swipe/tap or name lookup." />
+<title>Teacher Attendance — Guard Console (Safe Mode)</title>
+<meta name="description" content="Guard console for IN/OUT with card swipe/tap or name lookup. Safe mode: no audio/vibrate/NFC." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -14,14 +14,11 @@
     --in:#16a34a; --out:#dc2626; --blue:#2563eb;
     --radius-lg:14px; --radius-xl:18px;
     --shadow-1:0 10px 30px rgba(0,0,0,.08);
-    --shadow-2:0 14px 40px rgba(0,0,0,.18);
     --ring:0 0 0 6px rgba(59,130,246,.16);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
-  html { overflow-x:hidden; }
-  body{ min-height:100svh; overscroll-behavior-y:contain; overflow:auto; -webkit-overflow-scrolling:touch; }
   .wrap{
     margin:auto; width:min(1100px,96%); background:var(--card);
     border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
@@ -33,7 +30,11 @@
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
-  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease; pointer-events:none; font-size:18px; z-index:50; }
+
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12);
+    border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease;
+    pointer-events:none; font-size:18px; z-index:50; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
@@ -52,17 +53,18 @@
   }
 
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
-  .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box; }
-  .card h2{ margin:0 0 12px; font-size:20px; }
+  .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h2{ margin:0 0 2px; font-size:20px; }
 
   input[type=text], input[type=password], input[type=search]{
     width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
   }
   input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); outline:none; }
 
-  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
-  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
+  .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:4px; padding-right:8px; }
+  .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
   .sectionTag{
     font-weight:900; letter-spacing:.12em; font-size:12px; opacity:.85;
     color:#0b1220; background:#e6eefb; padding:6px 10px; border-radius:999px; border:1px solid #c6d3f2;
@@ -72,26 +74,25 @@
   .actionBtn{
     --c: var(--blue);
     background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
-    color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end;
+    color:#fff; font-size:20px; padding:12px 16px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
   }
 
-  .nfcBar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:10px; }
-  .nfcBtn{ padding:14px 18px; border-radius:12px; border:2px solid #4f46e5; color:#fff; background:#4f46e5; font-weight:800; cursor:pointer; font-size:18px; }
-
-  .drawer{ position:fixed; right:16px; top:64px; width:min(560px,92%); max-height:80vh; border:1px solid var(--border); background:var(--card); border-radius:16px; box-shadow:var(--shadow-2); padding:16px; overflow:auto; display:none; z-index:40; color:var(--text); }
-  .drawer h3{ margin:0 0 12px; font-size:18px; display:flex; align-items:center; gap:8px; }
-  .opt{ display:flex; gap:10px; align-items:center; margin:8px 0; }
-  .kv { display:grid; grid-template-columns: 160px 1fr; gap:8px 12px; font-size:14px; }
-  .log { margin-top:10px; max-height:220px; overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
-
+  /* Error trap banner */
+  #errTrap{
+    position:fixed; top:0; left:0; right:0; z-index:9999;
+    display:none; background:#7f1d1d; color:#fff; padding:10px 14px; font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    box-shadow:0 6px 16px rgba(0,0,0,.25);
+  }
+  #errTrap pre{ margin:6px 0 0; white-space:pre-wrap; word-break:break-word; }
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
 </head>
 <body>
+  <div id="errTrap" role="alert" aria-live="assertive"></div>
+
   <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
     <div class="badges" aria-live="polite" aria-atomic="true">
       <div id="netBadge" class="badge">Online</div>
-      <div id="nfcBadge" class="badge" style="display:none;">NFC Ready</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
       <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
     </div>
@@ -110,11 +111,6 @@
         <h2>Cougar Card (Quick Pin / Legacy ID)</h2>
         <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
                placeholder="Tap or swipe card…" aria-label="Cougar Card" />
-        <div id="nfcBar" class="nfcBar" style="display:none;">
-          <button id="nfcStart" class="nfcBtn">Scan with NFC</button>
-          <button id="nfcStop"  class="nfcBtn" style="background:transparent;color:#4f46e5;">Stop</button>
-        </div>
-        <div style="margin-top:auto;"></div>
       </div>
 
       <!-- RIGHT: Lookup -->
@@ -137,11 +133,6 @@
       <strong>Keyboard wedge</strong>
       <div class="opt"><input type="checkbox" id="ckTrim" checked><label for="ckTrim">Trim to digits & pad to 10</label></div>
       <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevent double submit)</label></div>
-      <div class="opt"><input type="checkbox" id="ckSound" checked><label for="ckSound">Sound on (chimes)</label></div>
-    </section>
-    <section style="margin-top:12px;">
-      <strong>Debug</strong>
-      <div class="opt"><input type="checkbox" id="ckDebug"><label for="ckDebug">Show last code in toast</label></div>
     </section>
     <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
       <h3 style="margin-bottom:8px;">Live Reader</h3>
@@ -156,48 +147,54 @@
     </footer>
   </div>
 
-  <!-- Audio chimes (no WebAudio; tiny inline WAVs) -->
-  <!-- Success tone (2 short beeps) -->
-  <audio id="sndOk" preload="auto">
-    <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAAAAABkAAAAAAAAPwAAAP///wAAAP8AAAD/AAAA/wAAAP///wAA" type="audio/wav">
-  </audio>
-  <!-- Failure tone (short descending) -->
-  <audio id="sndFail" preload="auto">
-    <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAAAAABkAAAAAAAAPwAAAP8AAAD/AAAA/wAAAP///wAAAP8AAAA=" type="audio/wav">
-  </audio>
-
 <script>
-  // ===== Config =====
+  /* ========= Error Trap (shows first error on page) ========= */
+  (function(){
+    const box = document.getElementById('errTrap');
+    function showErr(title, detail){
+      if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = '<b>⚠️ Runtime Error:</b> ' + title +
+        (detail ? '<pre>'+detail+'</pre>' : '');
+      console.error('[ErrorTrap]', title, '\n', detail || '');
+    }
+    window.addEventListener('error', (e)=>{
+      const msg = e?.message || 'Unknown error';
+      const st  = (e?.error && e.error.stack) ? e.error.stack : (e?.filename ? (e.filename+':'+e.lineno+':'+e.colno) : '');
+      showErr(msg, st);
+    });
+    window.addEventListener('unhandledrejection', (e)=>{
+      let msg = 'Unhandled promise rejection';
+      let st  = '';
+      try{
+        if (e && e.reason) {
+          msg = String(e.reason.message || e.reason);
+          st  = String(e.reason.stack || '');
+        }
+      }catch(_){}
+      showErr(msg, st);
+    });
+  })();
+
+  /* ==================== Config ==================== */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 400;
+  const COOLDOWN_MS = 300;         // submit throttle
+  const DEDUPE_WINDOW_MS = 5000;   // block repeats for 5s
 
-  // De-dupe: block same code/person for 5 seconds
-  const DEDUPE_WINDOW_MS = 5000;
-  const lastSeenMap = new Map(); // key -> timestamp
-  function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
-  function canSendNow(key) {
-    const now = Date.now();
-    const last = lastSeenMap.get(key) || 0;
-    if (now - last < DEDUPE_WINDOW_MS) return false;
-    lastSeenMap.set(key, now);
-    return true;
-  }
-
-  // ===== DOM =====
+  /* ==================== DOM ==================== */
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge');
-  const nfcBar = $('#nfcBar'), nfcStartBtn = $('#nfcStart'), nfcStopBtn = $('#nfcStop');
-  const themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
-  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug'), ckSound = $('#ckSound');
+  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter');
   const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
-  const sndOk = $('#sndOk'), sndFail = $('#sndFail');
-  let lastSubmitAt = 0;
 
-  // ===== Theme =====
+  let lastSubmitAt = 0;
+  const lastSeenMap = new Map(); // de-dupe
+
+  /* ==================== Theme ==================== */
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
@@ -213,20 +210,16 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Sounds (HTMLAudio; safe on Chrome/iOS) =====
-  function playOk(){ if (ckSound && ckSound.checked) { try{ sndOk.currentTime = 0; sndOk.play(); }catch(_){} } }
-  function playFail(){ if (ckSound && ckSound.checked) { try{ sndFail.currentTime = 0; sndFail.play(); }catch(_){} } }
-
-  // ===== Toast =====
+  /* ==================== Toast ==================== */
   let toastTimer=null;
   function showToast(text){
     toastEl.textContent = text;
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2400);
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2000);
   }
 
-  // ===== Network badge =====
+  /* ==================== Net badge ==================== */
   function updateNet(){
     const on = navigator.onLine;
     netBadge.textContent = on ? 'Online' : 'Offline';
@@ -237,13 +230,13 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  // ===== Focus =====
+  /* ==================== Focus ==================== */
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
-  // ===== Action toggle =====
+  /* ==================== Action toggle ==================== */
   function setAction(a){
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
@@ -254,16 +247,16 @@
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  // ===== Admin drawer =====
+  /* ==================== Admin drawer ==================== */
   function showAdmin(show=true){
     adminDrawer.style.display = show ? 'block' : 'none';
     adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
   }
   adminBtn.addEventListener('click', () => showAdmin(true));
   adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
-  adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; liveTenEl.textContent='—'; });
+  adminClearLog?.addEventListener('click', () => { liveLogEl.innerHTML=''; liveTenEl.textContent='—'; });
 
-  // ===== Helpers =====
+  /* ==================== Helpers ==================== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   function normalizeToTenDigits(raw) {
     if (!ckTrim.checked) return String(raw || '');
@@ -272,6 +265,7 @@
     return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10);
   }
   function pushLive(ten) {
+    if (!liveTenEl || !liveLogEl) return;
     liveTenEl.textContent = ten || '—';
     const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
     const div = document.createElement('div');
@@ -279,39 +273,38 @@
     liveLogEl.appendChild(div);
     liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
+  function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
+  function canSendNow(key) {
+    const now = Date.now();
+    const last = lastSeenMap.get(key) || 0;
+    if (now - last < 5000) return false;
+    lastSeenMap.set(key, now);
+    return true;
+  }
 
-  // ===== Submit API (faculty) + student kiosk handoff
+  /* ==================== Submit (faculty) + student kiosk handoff ==================== */
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
-
-    // 5s de-dupe
-    if (!canSendNow(key)) {
-      showToast('Duplicate scan ignored (5s)');
-      focusPinSafely();
-      return;
-    }
+    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); focusPinSafely(); return; }
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
+      const txt = await res.text(); let data=null; try{ data = JSON.parse(txt); }catch{}
 
-      // Student: open kiosk ONLY when backend declares student_in
+      // Student path (backend decides): open kiosk only if verified student
       if (data && data.status === 'student_in' && data.legacyId) {
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
-        playOk();
-        try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
       if (!res.ok || (data && data.error)) {
         showToast((data && data.error) || ('Error ' + res.status));
-        playFail();
         return;
       }
 
@@ -320,27 +313,24 @@
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.');
-      playOk();
-      try{ navigator.vibrate?.(30); }catch{}
-    }catch{
+    }catch(err){
       showToast('Network error');
-      playFail();
+      console.error('submitPinOrId error', err);
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
     }
   }
 
-  // ===== USB wedge — auto submit on quiet
+  /* ==================== USB wedge — auto submit on quiet ==================== */
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 120;
+  const WEDGE_QUIET_MS = 100;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
       const nowDigits = digitsOnly(pinEl.value);
       if (nowDigits.length < 10) return;
       const ten = nowDigits.slice(-10);
-      if (ckDebug.checked) showToast('Code: ' + ten); // visual only
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
       submitPinOrId({ pin: ten });
       pushLive(ten);
@@ -352,10 +342,8 @@
     if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
   });
 
-  // ===== Search (FACULTY first, then STUDENTS) — clears on empty, aborts stale
-  let searchTimer = null;
-  let searchAbort = null;
-  let searchToken = 0;
+  /* ==================== Search (faculty first, then students) ==================== */
+  let searchTimer = null, searchAbort = null, searchToken = 0;
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
@@ -367,8 +355,7 @@
       searchAbort = null; searchToken++;
       box.innerHTML = ''; return;
     }
-
-    searchTimer = setTimeout(()=>doSearch(q), 150);
+    searchTimer = setTimeout(()=>doSearch(q), 120);
   });
 
   qEl.addEventListener('keydown', (e)=>{
@@ -473,7 +460,6 @@
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`);
-            playOk();
           }));
         });
       }
@@ -490,51 +476,13 @@
     }
   }
 
-  // ===== Optional Web NFC (Android Chrome)
-  function supportsWebNFC(){ return 'NDEFReader' in window; }
-  let ndef = null, nfcStarted = false;
-  if (supportsWebNFC()) {
-    document.getElementById('nfcBar').style.display = '';
-    nfcStopBtn.disabled = true;
-
-    nfcStartBtn.addEventListener('click', async ()=>{
-      if (nfcStarted) return;
-      try {
-        ndef = new NDEFReader();
-        await ndef.scan(); nfcStarted = true;
-        document.getElementById('nfcBadge').style.display = '';
-        nfcStartBtn.disabled = true; nfcStopBtn.disabled = false;
-        showToast('NFC scanning started');
-        focusPinSafely();
-
-        ndef.onreadingerror = () => { showToast('NFC read error — try again'); };
-        ndef.onreading = (event) => {
-          const { serialNumber } = event;
-          const ten = normalizeToTenDigits(serialNumber);
-          if (!ten || ten.length !== 10) { showToast('Card must resolve to 10 digits'); return; }
-          if (Date.now() - lastSubmitAt >= COOLDOWN_MS) submitPinOrId({ pin: ten });
-          pushLive(ten);
-          focusPinSafely();
-        };
-      } catch { showToast('NFC not permitted or unavailable'); focusPinSafely(); }
-    });
-
-    nfcStopBtn.addEventListener('click', ()=>{
-      if (ndef) { ndef.onreading = null; ndef.onreadingerror = null; }
-      nfcStarted = false; nfcStartBtn.disabled = false; nfcStopBtn.disabled = true;
-      showToast('NFC stopped'); focusPinSafely();
-    });
-  }
-
-  // ===== Init =====
+  /* ==================== Init ==================== */
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
     focusPinSafely();
   });
 
-  // Close drawer by clicking background
-  adminDrawer.addEventListener('click', (e)=>{ if (e.target === adminDrawer) { showAdmin(false); focusPinSafely(); } });
 </script>
 </body>
 </html>
