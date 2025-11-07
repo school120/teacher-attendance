@@ -28,12 +28,6 @@
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
 
-  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0;
-    background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12);
-    border-radius:14px; padding:16px 20px; font-weight:800; transition:all .25s ease;
-    pointer-events:none; font-size:18px; z-index:50; }
-  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
-
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
     flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
@@ -72,6 +66,45 @@
     background:#2563eb; color:#fff; font-size:20px; padding:12px 16px; border:2px solid #2563eb; border-radius:14px; font-weight:900; cursor:pointer;
   }
 
+  /* ===== BIG, HIGH-VIS TOAST (Top-center) ===== */
+  .toast{
+    position:fixed; left:50%; top:14px;
+    transform:translateX(-50%) translateY(-10px) scale(.98);
+    opacity:0;
+    min-width:min(92vw, 860px);
+    max-width:92vw;
+    padding:18px 22px;
+    border-radius:16px;
+    font-weight:900;
+    font-size: clamp(20px, 3.1vw, 28px);
+    line-height:1.2;
+    background:#ffffff;
+    color:#0b1220;
+    border:2px solid #d1d5db;
+    box-shadow:0 14px 36px rgba(0,0,0,.22);
+    pointer-events:none;
+    z-index:1000;
+    display:flex; align-items:center; gap:14px;
+    transition: transform .12s ease-out, opacity .12s ease-out;
+  }
+  .toast::before{
+    content:"";
+    display:block;
+    width:10px; height:100%;
+    border-radius:10px;
+    background:#2563eb;
+  }
+  .toast.show{
+    opacity:1;
+    transform:translateX(-50%) translateY(0) scale(1);
+  }
+  .toast.ok{ border-color:#16a34a; }
+  .toast.ok::before{ background:#16a34a; }
+  .toast.fail{ border-color:#dc2626; }
+  .toast.fail::before{ background:#dc2626; }
+  .toast.info{ border-color:#2563eb; }
+  .toast.info::before{ background:#2563eb; }
+
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
 </head>
@@ -108,14 +141,14 @@
       </div>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="toast" class="toast info" role="status" aria-live="assertive"></div>
   </div>
 
 <script>
   /* ==================== Config ==================== */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 250;          // submit throttle
+  const COOLDOWN_MS = 200;          // quick throttle
   const DEDUPE_WINDOW_MS = 5000;    // block repeats for 5s
 
   /* ==================== DOM ==================== */
@@ -143,13 +176,64 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  /* ==================== Toast ==================== */
+  /* ==================== BIG Toast ==================== */
   let toastTimer=null;
-  function showToast(text){
+  function showToast(text, type='info'){
     toastEl.textContent = text;
+    toastEl.classList.remove('ok','fail','info');
+    toastEl.classList.add(type);
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2100);
+    // slightly longer so guards always catch it; disappears on next toast anyway
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2600);
+  }
+
+  /* ==================== Chimes (submission only) ==================== */
+  let audioCtx=null, master=null, compressor=null, audioReady=false;
+  function initAudioOnce(){
+    if (audioReady) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-14, audioCtx.currentTime);
+    compressor.knee.setValueAtTime(20, audioCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    compressor.release.setValueAtTime(0.08, audioCtx.currentTime);
+    master = audioCtx.createGain();
+    master.gain.setValueAtTime(0.95, audioCtx.currentTime);
+    master.connect(compressor).connect(audioCtx.destination);
+    audioReady = true;
+  }
+  // Unlock on first interaction (required by browsers)
+  window.addEventListener('pointerdown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
+  window.addEventListener('keydown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
+
+  function beep({ f=880, d=0.18, t, type='sine', g=0.85 }){
+    if (!audioReady) return;
+    const o = audioCtx.createOscillator();
+    const gnode = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    gnode.gain.setValueAtTime(0, t);
+    gnode.gain.linearRampToValueAtTime(g, t+0.012);
+    gnode.gain.exponentialRampToValueAtTime(0.0001, t+d);
+    o.connect(gnode).connect(master);
+    o.start(t); o.stop(t+d+0.02);
+  }
+  function chimeOK(){
+    if (!audioReady) return;
+    const t0 = audioCtx.currentTime + 0.01;
+    beep({ f:740, d:0.11, t:t0,     type:'sine', g:1.0 });
+    beep({ f:980, d:0.13, t:t0+.12, type:'sine', g:1.0 });
+    beep({ f:1240,d:0.15, t:t0+.25, type:'sine', g:1.0 });
+  }
+  function chimeFAIL(){
+    if (!audioReady) return;
+    const t0 = audioCtx.currentTime + 0.01;
+    beep({ f:440, d:0.15, t:t0,     type:'square', g:1.0 });
+    beep({ f:330, d:0.17, t:t0+.14, type:'square', g:0.95 });
+    beep({ f:262, d:0.19, t:t0+.28, type:'square', g:0.9 });
   }
 
   /* ==================== Net badge ==================== */
@@ -180,55 +264,6 @@
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  /* ==================== Simple chimes (only on submission results) ==================== */
-  let audioCtx=null, master=null, compressor=null, audioReady=false;
-  function initAudioOnce(){
-    if (audioReady) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    audioCtx = new AC();
-    compressor = audioCtx.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-14, audioCtx.currentTime);
-    compressor.knee.setValueAtTime(20, audioCtx.currentTime);
-    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
-    compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
-    compressor.release.setValueAtTime(0.08, audioCtx.currentTime);
-    master = audioCtx.createGain();
-    master.gain.setValueAtTime(0.9, audioCtx.currentTime);
-    master.connect(compressor).connect(audioCtx.destination);
-    audioReady = true;
-  }
-  // Unlock audio on first user gesture
-  window.addEventListener('pointerdown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
-  window.addEventListener('keydown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
-
-  function beep({ f=880, d=0.18, t, type='sine', g=0.6 }){
-    if (!audioReady) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(f, t);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(g, t+0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t+d);
-    osc.connect(gain).connect(master);
-    osc.start(t); osc.stop(t+d+0.02);
-  }
-  function chimeOK(){
-    if (!audioReady) return;
-    const t0 = audioCtx.currentTime + 0.01;
-    beep({ f:700, d:0.12, t:t0,   type:'sine', g:1.0 });
-    beep({ f:940, d:0.14, t:t0+.12,type:'sine', g:1.0 });
-    beep({ f:1200,d:0.16, t:t0+.26,type:'sine', g:1.0 });
-  }
-  function chimeFAIL(){
-    if (!audioReady) return;
-    const t0 = audioCtx.currentTime + 0.01;
-    beep({ f:440, d:0.16, t:t0,    type:'square', g:1.0 });
-    beep({ f:360, d:0.16, t:t0+.14,type:'square', g:0.9 });
-    beep({ f:300, d:0.18, t:t0+.28,type:'square', g:0.85 });
-  }
-
   /* ==================== Helpers ==================== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   function normalizeToTenDigits(raw) {
@@ -245,30 +280,30 @@
     return true;
   }
 
-  /* ==================== Submit (faculty) + student kiosk handoff ==================== */
+  /* ==================== Submit + student handoff ==================== */
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); focusPinSafely(); return; }
+    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)','info'); focusPinSafely(); return; }
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const txt = await res.text(); let data=null; try{ data = JSON.parse(txt); }catch{}
 
-      // Student path (backend confirms student & provides legacyId)
+      // Student path
       if (data && data.status === 'student_in' && data.legacyId) {
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        showToast(`${name} — sent to Veracross`);
+        showToast(`${name} — sent to Veracross`, 'ok');
         chimeOK();
         return;
       }
 
       if (!res.ok || (data && data.error)) {
-        showToast((data && data.error) || ('Error ' + res.status));
+        showToast((data && data.error) || ('Error ' + res.status), 'fail');
         chimeFAIL();
         return;
       }
@@ -277,10 +312,10 @@
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.');
+      showToast(line || 'Done.', 'ok');
       chimeOK();
     }catch(err){
-      showToast('Network error');
+      showToast('Network error', 'fail');
       console.error('submitPinOrId error', err);
       chimeFAIL();
     }finally{
@@ -291,7 +326,7 @@
 
   /* ==================== USB wedge — auto submit on quiet ==================== */
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 90;
+  const WEDGE_QUIET_MS = 80; // faster so toast appears quicker
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
@@ -358,12 +393,13 @@
     const q = qEl.value.trim();
     const box = $('#results');
 
-    if (!q) { // clear immediately and cancel in-flight work
+    if (!q) {
       try { searchAbort?.abort(); } catch(_) {}
       searchAbort = null; searchToken++;
-      box.innerHTML = ''; return;
+      box.innerHTML = '';
+      return;
     }
-    searchTimer = setTimeout(()=>doSearch(q), 100);
+    searchTimer = setTimeout(()=>doSearch(q), 80); // faster
   });
 
   qEl.addEventListener('keydown', (e)=>{
@@ -432,7 +468,7 @@
           frag.appendChild(resultRow(label, 'Sign IN', ()=>{
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-            showToast(`${label} — sent to Veracross`);
+            showToast(`${label} — sent to Veracross`, 'ok');
             chimeOK();
           }));
         });
@@ -454,6 +490,8 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
+    // show a quick ready banner on first load so guard knows it’s live
+    showToast('Ready — scan card or search', 'info');
     focusPinSafely();
   });
 </script>
