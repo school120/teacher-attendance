@@ -4,32 +4,29 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Teacher Attendance — Guard Console (Safe Mode)</title>
-<meta name="description" content="Guard console for IN/OUT with card swipe/tap or name lookup. Safe mode: no audio/vibrate/NFC." />
+<title>Teacher Attendance — Guard Console</title>
+<meta name="description" content="Guard console for IN/OUT with card swipe/tap or name lookup." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
     --in:#16a34a; --out:#dc2626; --blue:#2563eb;
-    --radius-lg:14px; --radius-xl:18px;
-    --shadow-1:0 10px 30px rgba(0,0,0,.08);
-    --ring:0 0 0 6px rgba(59,130,246,.16);
+    --radius-xl:18px; --ring:0 0 0 6px rgba(59,130,246,.16);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   .wrap{
     margin:auto; width:min(1100px,96%); background:var(--card);
-    border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
-    min-height:100svh; padding:28px; overflow:visible; overflow-x:clip;
+    border-radius:var(--radius-xl); box-shadow:0 10px 30px rgba(0,0,0,.08);
+    min-height:100svh; padding:28px; position:relative;
   }
   h1{ margin:0 0 8px; font-weight:800; font-size:28px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
   .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
-  .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
-  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
+  .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
 
   .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0;
     background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12);
@@ -42,14 +39,14 @@
     flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
     font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
     padding:22px 24px; cursor:pointer; color:#111;
-    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    background:#f8fafc;
     transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05);
   }
   .segment.segment-xl button.active#actIn{
-    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+    background:#16a34a; color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
   }
   .segment.segment-xl button.active#actOut{
-    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+    background:#dc2626; color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
 
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
@@ -66,35 +63,23 @@
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .sectionTag{
-    font-weight:900; letter-spacing:.12em; font-size:12px; opacity:.85;
+    font-weight:900; letter-spacing:.12em; font-size:12px; opacity:.9;
     color:#0b1220; background:#e6eefb; padding:6px 10px; border-radius:999px; border:1px solid #c6d3f2;
   }
   body.dark .sectionTag{ color:#e8eefc; background:#16243c; border-color:#2a4a7d; }
 
   .actionBtn{
-    --c: var(--blue);
-    background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%);
-    color:#fff; font-size:20px; padding:12px 16px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer;
+    background:#2563eb; color:#fff; font-size:20px; padding:12px 16px; border:2px solid #2563eb; border-radius:14px; font-weight:900; cursor:pointer;
   }
 
-  /* Error trap banner */
-  #errTrap{
-    position:fixed; top:0; left:0; right:0; z-index:9999;
-    display:none; background:#7f1d1d; color:#fff; padding:10px 14px; font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    box-shadow:0 6px 16px rgba(0,0,0,.25);
-  }
-  #errTrap pre{ margin:6px 0 0; white-space:pre-wrap; word-break:break-word; }
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
 </head>
 <body>
-  <div id="errTrap" role="alert" aria-live="assertive"></div>
-
   <div class="wrap" role="application" aria-label="Teacher Attendance Guard Console">
     <div class="badges" aria-live="polite" aria-atomic="true">
       <div id="netBadge" class="badge">Online</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
-      <button id="adminBtn" class="gear" title="Admin" aria-haspopup="dialog" aria-controls="admin"><span>⚙️</span><span>Admin</span></button>
     </div>
 
     <h1>Teacher Attendance — Guard Console</h1>
@@ -126,70 +111,18 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <!-- Admin Drawer -->
-  <div id="admin" class="drawer" role="dialog" aria-modal="false" aria-labelledby="adminTitle">
-    <h3 id="adminTitle"><span>⚙️</span><span>Admin Settings</span></h3>
-    <section>
-      <strong>Keyboard wedge</strong>
-      <div class="opt"><input type="checkbox" id="ckTrim" checked><label for="ckTrim">Trim to digits & pad to 10</label></div>
-      <div class="opt"><input type="checkbox" id="ckIgnoreEnter" checked><label for="ckIgnoreEnter">Ignore Enter key (prevent double submit)</label></div>
-    </section>
-    <section class="live" style="margin-top:14px; border-top:1px dashed var(--border); padding-top:12px;">
-      <h3 style="margin-bottom:8px;">Live Reader</h3>
-      <div class="kv">
-        <div class="k">Last 10-digit</div><div id="liveTen">—</div>
-      </div>
-      <div class="log" id="liveLog" aria-label="Reader log"></div>
-    </section>
-    <footer style="display:flex;gap:8px;margin-top:12px;">
-      <button id="adminClose" class="gear">Close</button>
-      <button id="adminClearLog" class="gear">Clear Log</button>
-    </footer>
-  </div>
-
 <script>
-  /* ========= Error Trap (shows first error on page) ========= */
-  (function(){
-    const box = document.getElementById('errTrap');
-    function showErr(title, detail){
-      if (!box) return;
-      box.style.display = 'block';
-      box.innerHTML = '<b>⚠️ Runtime Error:</b> ' + title +
-        (detail ? '<pre>'+detail+'</pre>' : '');
-      console.error('[ErrorTrap]', title, '\n', detail || '');
-    }
-    window.addEventListener('error', (e)=>{
-      const msg = e?.message || 'Unknown error';
-      const st  = (e?.error && e.error.stack) ? e.error.stack : (e?.filename ? (e.filename+':'+e.lineno+':'+e.colno) : '');
-      showErr(msg, st);
-    });
-    window.addEventListener('unhandledrejection', (e)=>{
-      let msg = 'Unhandled promise rejection';
-      let st  = '';
-      try{
-        if (e && e.reason) {
-          msg = String(e.reason.message || e.reason);
-          st  = String(e.reason.stack || '');
-        }
-      }catch(_){}
-      showErr(msg, st);
-    });
-  })();
-
   /* ==================== Config ==================== */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 300;         // submit throttle
-  const DEDUPE_WINDOW_MS = 5000;   // block repeats for 5s
+  const COOLDOWN_MS = 250;          // submit throttle
+  const DEDUPE_WINDOW_MS = 5000;    // block repeats for 5s
 
   /* ==================== DOM ==================== */
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
-  const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
-  const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter');
-  const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
 
   let lastSubmitAt = 0;
   const lastSeenMap = new Map(); // de-dupe
@@ -247,37 +180,18 @@
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  /* ==================== Admin drawer ==================== */
-  function showAdmin(show=true){
-    adminDrawer.style.display = show ? 'block' : 'none';
-    adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
-  }
-  adminBtn.addEventListener('click', () => showAdmin(true));
-  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
-  adminClearLog?.addEventListener('click', () => { liveLogEl.innerHTML=''; liveTenEl.textContent='—'; });
-
   /* ==================== Helpers ==================== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   function normalizeToTenDigits(raw) {
-    if (!ckTrim.checked) return String(raw || '');
     const d = digitsOnly(raw);
     if (!d) return '';
     return d.length <= 10 ? d.padStart(10, '0') : d.slice(-10);
-  }
-  function pushLive(ten) {
-    if (!liveTenEl || !liveLogEl) return;
-    liveTenEl.textContent = ten || '—';
-    const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    const div = document.createElement('div');
-    div.textContent = `[${ts}] ${ten || '—'}`;
-    liveLogEl.appendChild(div);
-    liveLogEl.scrollTop = liveLogEl.scrollHeight;
   }
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key) {
     const now = Date.now();
     const last = lastSeenMap.get(key) || 0;
-    if (now - last < 5000) return false;
+    if (now - last < DEDUPE_WINDOW_MS) return false;
     lastSeenMap.set(key, now);
     return true;
   }
@@ -293,11 +207,12 @@
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const txt = await res.text(); let data=null; try{ data = JSON.parse(txt); }catch{}
 
-      // Student path (backend decides): open kiosk only if verified student
+      // Student path (backend confirms student & provides legacyId)
       if (data && data.status === 'student_in' && data.legacyId) {
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
+        // user gesture: this runs after a key input event so popups shouldn't be blocked
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
         return;
@@ -324,7 +239,7 @@
 
   /* ==================== USB wedge — auto submit on quiet ==================== */
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 100;
+  const WEDGE_QUIET_MS = 90;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
@@ -333,13 +248,12 @@
       const ten = nowDigits.slice(-10);
       if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
       submitPinOrId({ pin: ten });
-      pushLive(ten);
       pinEl.value = '';
       focusPinSafely();
     }, WEDGE_QUIET_MS);
   });
   pinEl.addEventListener('keydown',(e)=>{
-    if (ckIgnoreEnter.checked && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } // ignore Enter to avoid double submit
   });
 
   /* ==================== Search (faculty first, then students) ==================== */
@@ -355,7 +269,7 @@
       searchAbort = null; searchToken++;
       box.innerHTML = ''; return;
     }
-    searchTimer = setTimeout(()=>doSearch(q), 120);
+    searchTimer = setTimeout(()=>doSearch(q), 100);
   });
 
   qEl.addEventListener('keydown', (e)=>{
@@ -385,12 +299,15 @@
     row.appendChild(name); row.appendChild(btn);
     return row;
   }
-  function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
+
+  // extremely simple ASCII-only matcher to avoid heavy Unicode ops
+  const norm = s => String(s||'').toLowerCase();
+
   function scoreName(q, first, last, fullLF){
     const nq = norm(q);
     const nf = norm(first), nl = norm(last);
-    const nfl = nf + ' ' + nl;
-    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
+    const nfl = (nf + ' ' + nl).trim();
+    const nlf = fullLF ? norm(fullLF) : (nl ? (nl + ', ' + nf) : nf);
     if (nfl === nq || nlf === nq) return 1000;
     if (nf === nq || nl === nq) return 900;
     let s = 0;
@@ -404,7 +321,15 @@
     if (nlf.includes(nq)) s += 24;
     return s;
   }
-  function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
+
+  function flipLF(full){
+    const i = String(full||'').indexOf(',');
+    if (i >= 0) {
+      const last = full.slice(0, i).trim(), first = full.slice(i+1).trim();
+      return { first, last };
+    }
+    return { first: String(full||'').trim(), last: '' };
+  }
 
   async function doSearch(q){
     try { searchAbort?.abort(); } catch(_){}
@@ -480,9 +405,9 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
+    // focus Quick Pin on load
     focusPinSafely();
   });
-
 </script>
 </body>
 </html>
