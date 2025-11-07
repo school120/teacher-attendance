@@ -149,7 +149,7 @@
     toastEl.textContent = text;
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2000);
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2100);
   }
 
   /* ==================== Net badge ==================== */
@@ -179,6 +179,55 @@
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+
+  /* ==================== Simple chimes (only on submission results) ==================== */
+  let audioCtx=null, master=null, compressor=null, audioReady=false;
+  function initAudioOnce(){
+    if (audioReady) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-14, audioCtx.currentTime);
+    compressor.knee.setValueAtTime(20, audioCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    compressor.release.setValueAtTime(0.08, audioCtx.currentTime);
+    master = audioCtx.createGain();
+    master.gain.setValueAtTime(0.9, audioCtx.currentTime);
+    master.connect(compressor).connect(audioCtx.destination);
+    audioReady = true;
+  }
+  // Unlock audio on first user gesture
+  window.addEventListener('pointerdown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
+  window.addEventListener('keydown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
+
+  function beep({ f=880, d=0.18, t, type='sine', g=0.6 }){
+    if (!audioReady) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(g, t+0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t+d);
+    osc.connect(gain).connect(master);
+    osc.start(t); osc.stop(t+d+0.02);
+  }
+  function chimeOK(){
+    if (!audioReady) return;
+    const t0 = audioCtx.currentTime + 0.01;
+    beep({ f:700, d:0.12, t:t0,   type:'sine', g:1.0 });
+    beep({ f:940, d:0.14, t:t0+.12,type:'sine', g:1.0 });
+    beep({ f:1200,d:0.16, t:t0+.26,type:'sine', g:1.0 });
+  }
+  function chimeFAIL(){
+    if (!audioReady) return;
+    const t0 = audioCtx.currentTime + 0.01;
+    beep({ f:440, d:0.16, t:t0,    type:'square', g:1.0 });
+    beep({ f:360, d:0.16, t:t0+.14,type:'square', g:0.9 });
+    beep({ f:300, d:0.18, t:t0+.28,type:'square', g:0.85 });
+  }
 
   /* ==================== Helpers ==================== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
@@ -212,14 +261,15 @@
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
-        // user gesture: this runs after a key input event so popups shouldn't be blocked
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
+        chimeOK();
         return;
       }
 
       if (!res.ok || (data && data.error)) {
         showToast((data && data.error) || ('Error ' + res.status));
+        chimeFAIL();
         return;
       }
 
@@ -228,9 +278,11 @@
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.');
+      chimeOK();
     }catch(err){
       showToast('Network error');
       console.error('submitPinOrId error', err);
+      chimeFAIL();
     }finally{
       lastSubmitAt = Date.now();
       focusPinSafely();
@@ -253,18 +305,60 @@
     }, WEDGE_QUIET_MS);
   });
   pinEl.addEventListener('keydown',(e)=>{
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } // ignore Enter to avoid double submit
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } // avoid double submit
   });
 
   /* ==================== Search (faculty first, then students) ==================== */
   let searchTimer = null, searchAbort = null, searchToken = 0;
+  const norm = s => String(s||'').toLowerCase();
+
+  function sectionHeader(text){
+    const row = document.createElement('div'); row.className='row';
+    const tag = document.createElement('span'); tag.className='sectionTag'; tag.textContent = text;
+    row.appendChild(tag); row.appendChild(document.createElement('div'));
+    return row;
+  }
+  function resultRow(label, btnText, onClick){
+    const row = document.createElement('div'); row.className='row';
+    const name = document.createElement('div'); name.className='name'; name.textContent = label;
+    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
+    btn.addEventListener('click', onClick);
+    row.appendChild(name); row.appendChild(btn);
+    return row;
+  }
+
+  function scoreName(q, first, last, fullLF){
+    const nq = norm(q), nf = norm(first), nl = norm(last);
+    const nfl = (nf + ' ' + nl).trim();
+    const nlf = fullLF ? norm(fullLF) : (nl ? (nl + ', ' + nf) : nf);
+    if (nfl === nq || nlf === nq) return 1000;
+    if (nf === nq || nl === nq) return 900;
+    let s = 0;
+    if (nf.startsWith(nq)) s += 120;
+    if (nl.startsWith(nq)) s += 110;
+    if (nfl.startsWith(nq)) s += 100;
+    if (nlf.startsWith(nq)) s += 95;
+    if (nf.includes(nq)) s += 30;
+    if (nl.includes(nq)) s += 28;
+    if (nfl.includes(nq)) s += 26;
+    if (nlf.includes(nq)) s += 24;
+    return s;
+  }
+  function flipLF(full){
+    const i = String(full||'').indexOf(',');
+    if (i >= 0) {
+      const last = full.slice(0, i).trim(), first = full.slice(i+1).trim();
+      return { first, last };
+    }
+    return { first: String(full||'').trim(), last: '' };
+  }
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim();
     const box = $('#results');
 
-    if (!q) {
+    if (!q) { // clear immediately and cancel in-flight work
       try { searchAbort?.abort(); } catch(_) {}
       searchAbort = null; searchToken++;
       box.innerHTML = ''; return;
@@ -284,52 +378,6 @@
       doSearch(q); e.preventDefault();
     }
   });
-
-  function sectionHeader(text){
-    const row = document.createElement('div'); row.className='row';
-    const tag = document.createElement('span'); tag.className='sectionTag'; tag.textContent = text;
-    row.appendChild(tag); row.appendChild(document.createElement('div'));
-    return row;
-  }
-  function resultRow(label, btnText, onClick){
-    const row = document.createElement('div'); row.className='row';
-    const name = document.createElement('div'); name.className='name'; name.textContent = label;
-    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
-    btn.addEventListener('click', onClick);
-    row.appendChild(name); row.appendChild(btn);
-    return row;
-  }
-
-  // extremely simple ASCII-only matcher to avoid heavy Unicode ops
-  const norm = s => String(s||'').toLowerCase();
-
-  function scoreName(q, first, last, fullLF){
-    const nq = norm(q);
-    const nf = norm(first), nl = norm(last);
-    const nfl = (nf + ' ' + nl).trim();
-    const nlf = fullLF ? norm(fullLF) : (nl ? (nl + ', ' + nf) : nf);
-    if (nfl === nq || nlf === nq) return 1000;
-    if (nf === nq || nl === nq) return 900;
-    let s = 0;
-    if (nf.startsWith(nq)) s += 120;
-    if (nl.startsWith(nq)) s += 110;
-    if (nfl.startsWith(nq)) s += 100;
-    if (nlf.startsWith(nq)) s += 95;
-    if (nf.includes(nq)) s += 30;
-    if (nl.includes(nq)) s += 28;
-    if (nfl.includes(nq)) s += 26;
-    if (nlf.includes(nq)) s += 24;
-    return s;
-  }
-
-  function flipLF(full){
-    const i = String(full||'').indexOf(',');
-    if (i >= 0) {
-      const last = full.slice(0, i).trim(), first = full.slice(i+1).trim();
-      return { first, last };
-    }
-    return { first: String(full||'').trim(), last: '' };
-  }
 
   async function doSearch(q){
     try { searchAbort?.abort(); } catch(_){}
@@ -385,6 +433,7 @@
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`);
+            chimeOK();
           }));
         });
       }
@@ -405,7 +454,6 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
-    // focus Quick Pin on load
     focusPinSafely();
   });
 </script>
