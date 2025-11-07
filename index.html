@@ -11,10 +11,10 @@
 <style>
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
-    --in:#16a34a; --out:#dc2626; --blue:#2563eb;
+    --in:#16a34a; --out:#dc2626; --blue:#2563eb; --ink:#0b1220;
     --radius-xl:18px; --ring:0 0 0 6px rgba(59,130,246,.16);
   }
-  body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
+  body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; --ink:#f3f4f6; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   .wrap{
@@ -27,20 +27,21 @@
   .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; }
+  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
   .segment{ display:flex; gap:14px; width:100%; margin:20px 0; }
   .segment.segment-xl button{
     flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
     font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
     padding:22px 24px; cursor:pointer; color:#111;
-    background:#f8fafc;
+    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
     transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05);
   }
   .segment.segment-xl button.active#actIn{
-    background:#16a34a; color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
+    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
   }
   .segment.segment-xl button.active#actOut{
-    background:#dc2626; color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
+    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
   }
 
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
@@ -66,44 +67,33 @@
     background:#2563eb; color:#fff; font-size:20px; padding:12px 16px; border:2px solid #2563eb; border-radius:14px; font-weight:900; cursor:pointer;
   }
 
-  /* ===== BIG, HIGH-VIS TOAST (Top-center) ===== */
+  /* ===== Sophisticated toast (bottom center, icon + color variants) ===== */
   .toast{
-    position:fixed; left:50%; top:14px;
-    transform:translateX(-50%) translateY(-10px) scale(.98);
-    opacity:0;
-    min-width:min(92vw, 860px);
-    max-width:92vw;
-    padding:18px 22px;
-    border-radius:16px;
-    font-weight:900;
-    font-size: clamp(20px, 3.1vw, 28px);
-    line-height:1.2;
-    background:#ffffff;
-    color:#0b1220;
-    border:2px solid #d1d5db;
-    box-shadow:0 14px 36px rgba(0,0,0,.22);
+    position:fixed; left:50%; bottom:20px;
+    transform:translateX(-50%) translateY(10px); opacity:0;
+    min-width:min(92vw, 780px);
+    padding:16px 18px;
+    border-radius:14px;
+    background:var(--card);
+    color:var(--ink);
+    border:1px solid var(--border);
+    box-shadow:0 12px 34px rgba(0,0,0,.18);
     pointer-events:none;
     z-index:1000;
-    display:flex; align-items:center; gap:14px;
-    transition: transform .12s ease-out, opacity .12s ease-out;
+    display:flex; align-items:center; gap:12px;
+    font-weight:900; font-size: clamp(18px, 2.6vw, 22px);
+    transition: transform .18s ease-out, opacity .18s ease-out;
   }
-  .toast::before{
-    content:"";
-    display:block;
-    width:10px; height:100%;
-    border-radius:10px;
-    background:#2563eb;
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast .dot{
+    width:14px; height:14px; border-radius:50%;
+    background:#2563eb; box-shadow:0 0 0 4px color-mix(in srgb, #2563eb 30%, transparent);
+    flex:none;
   }
-  .toast.show{
-    opacity:1;
-    transform:translateX(-50%) translateY(0) scale(1);
-  }
-  .toast.ok{ border-color:#16a34a; }
-  .toast.ok::before{ background:#16a34a; }
-  .toast.fail{ border-color:#dc2626; }
-  .toast.fail::before{ background:#dc2626; }
-  .toast.info{ border-color:#2563eb; }
-  .toast.info::before{ background:#2563eb; }
+  .toast.ok .dot{ background:#16a34a; box-shadow:0 0 0 4px color-mix(in srgb, #16a34a 30%, transparent); }
+  .toast.fail .dot{ background:#dc2626; box-shadow:0 0 0 4px color-mix(in srgb, #dc2626 30%, transparent); }
+  .toast .label{ font-weight:900; }
+  .toast .sub{ font-weight:700; color:var(--muted); margin-left:auto; font-size: .88em; }
 
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
@@ -141,7 +131,11 @@
       </div>
     </div>
 
-    <div id="toast" class="toast info" role="status" aria-live="assertive"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="toastLabel" class="label">Ready.</span>
+      <span id="toastSub" class="sub"></span>
+    </div>
   </div>
 
 <script>
@@ -153,7 +147,8 @@
 
   /* ==================== DOM ==================== */
   const $ = s => document.querySelector(s);
-  const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
+  const pinEl = $('#pin'), qEl = $('#q');
+  const toastEl = $('#toast'), toastLabel = $('#toastLabel'), toastSub = $('#toastSub');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
 
@@ -176,15 +171,16 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  /* ==================== BIG Toast ==================== */
+  /* ==================== Toast (polished) ==================== */
   let toastTimer=null;
-  function showToast(text, type='info'){
-    toastEl.textContent = text;
-    toastEl.classList.remove('ok','fail','info');
-    toastEl.classList.add(type);
+  function showToast(label, kind='info', sub=''){
+    toastLabel.textContent = label || '';
+    toastSub.textContent = sub || '';
+    toastEl.classList.remove('ok','fail');
+    if (kind === 'ok') toastEl.classList.add('ok');
+    if (kind === 'fail') toastEl.classList.add('fail');
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    // slightly longer so guards always catch it; disappears on next toast anyway
     toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2600);
   }
 
@@ -206,7 +202,7 @@
     master.connect(compressor).connect(audioCtx.destination);
     audioReady = true;
   }
-  // Unlock on first interaction (required by browsers)
+  // Unlock once
   window.addEventListener('pointerdown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
   window.addEventListener('keydown', () => { initAudioOnce(); audioCtx?.resume?.(); }, { once:true });
 
@@ -291,13 +287,13 @@
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const txt = await res.text(); let data=null; try{ data = JSON.parse(txt); }catch{}
 
-      // Student path
+      // Student path (backend confirms & returns legacyId + name)
       if (data && data.status === 'student_in' && data.legacyId) {
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        showToast(`${name} — sent to Veracross`, 'ok');
+        showToast(`${name} — sent to Veracross`, 'ok', 'student');
         chimeOK();
         return;
       }
@@ -312,7 +308,7 @@
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.', 'ok');
+      showToast(line || 'Done.', 'ok', 'faculty');
       chimeOK();
     }catch(err){
       showToast('Network error', 'fail');
@@ -326,7 +322,7 @@
 
   /* ==================== USB wedge — auto submit on quiet ==================== */
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 80; // faster so toast appears quicker
+  const WEDGE_QUIET_MS = 90;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
@@ -340,7 +336,7 @@
     }, WEDGE_QUIET_MS);
   });
   pinEl.addEventListener('keydown',(e)=>{
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } // avoid double submit
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } // stop double-submit
   });
 
   /* ==================== Search (faculty first, then students) ==================== */
@@ -381,10 +377,7 @@
   }
   function flipLF(full){
     const i = String(full||'').indexOf(',');
-    if (i >= 0) {
-      const last = full.slice(0, i).trim(), first = full.slice(i+1).trim();
-      return { first, last };
-    }
+    if (i >= 0) { return { first: full.slice(i+1).trim(), last: full.slice(0,i).trim() }; }
     return { first: String(full||'').trim(), last: '' };
   }
 
@@ -399,7 +392,7 @@
       box.innerHTML = '';
       return;
     }
-    searchTimer = setTimeout(()=>doSearch(q), 80); // faster
+    searchTimer = setTimeout(()=>doSearch(q), 100);
   });
 
   qEl.addEventListener('keydown', (e)=>{
@@ -468,7 +461,7 @@
           frag.appendChild(resultRow(label, 'Sign IN', ()=>{
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-            showToast(`${label} — sent to Veracross`, 'ok');
+            showToast(`${label} — sent to Veracross`, 'ok', 'student');
             chimeOK();
           }));
         });
@@ -490,7 +483,6 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
-    // show a quick ready banner on first load so guard knows it’s live
     showToast('Ready — scan card or search', 'info');
     focusPinSafely();
   });
