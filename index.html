@@ -156,6 +156,16 @@
     </footer>
   </div>
 
+  <!-- Audio chimes (no WebAudio; tiny inline WAVs) -->
+  <!-- Success tone (2 short beeps) -->
+  <audio id="sndOk" preload="auto">
+    <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAAAAABkAAAAAAAAPwAAAP///wAAAP8AAAD/AAAA/wAAAP///wAA" type="audio/wav">
+  </audio>
+  <!-- Failure tone (short descending) -->
+  <audio id="sndFail" preload="auto">
+    <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAAAAABkAAAAAAAAPwAAAP8AAAD/AAAA/wAAAP///wAAAP8AAAA=" type="audio/wav">
+  </audio>
+
 <script>
   // ===== Config =====
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
@@ -184,6 +194,7 @@
   const adminBtn = $('#adminBtn'), adminDrawer = $('#admin'), adminClose = $('#adminClose'), adminClearLog = $('#adminClearLog');
   const ckTrim = $('#ckTrim'), ckIgnoreEnter = $('#ckIgnoreEnter'), ckDebug = $('#ckDebug'), ckSound = $('#ckSound');
   const liveTenEl = $('#liveTen'), liveLogEl = $('#liveLog');
+  const sndOk = $('#sndOk'), sndFail = $('#sndFail');
   let lastSubmitAt = 0;
 
   // ===== Theme =====
@@ -202,83 +213,9 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  // ===== Chimes (safe Web-Audio: smaller curve, clamped values, user gesture gate) =====
-  let audioCtx = null, master = null, comp = null, dist = null, audioReady = false, audioArmed = false;
-
-  function armAudioOnce() {
-    if (audioArmed) return;
-    audioArmed = true;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    audioCtx = new AC();
-    // nodes
-    comp = audioCtx.createDynamicsCompressor();
-    try {
-      comp.threshold.setValueAtTime(-14, audioCtx.currentTime);
-      comp.knee.setValueAtTime(20, audioCtx.currentTime);
-      comp.ratio.setValueAtTime(12, audioCtx.currentTime);
-      comp.attack.setValueAtTime(0.003, audioCtx.currentTime);
-      comp.release.setValueAtTime(0.08, audioCtx.currentTime);
-    } catch(_) {}
-    master = audioCtx.createGain();
-    try { master.gain.setValueAtTime(0.9, audioCtx.currentTime); } catch(_) {}
-    dist = audioCtx.createWaveShaper();
-    // Smaller curve to avoid memory spikes (“argument too large” issues on some devices)
-    dist.curve = makeDistortionCurve(2048, 60);
-    dist.oversample = '4x';
-    master.connect(comp).connect(audioCtx.destination);
-
-    // resume on first gesture
-    const kick = () => audioCtx.resume?.().finally(()=>{ audioReady = true; });
-    window.addEventListener('pointerdown', kick, { once: true });
-    window.addEventListener('keydown', kick, { once: true });
-  }
-
-  function makeDistortionCurve(length = 2048, amount = 50) {
-    const n = Math.max(256, Math.min(65536, length|0));
-    const curve = new Float32Array(n);
-    const deg = Math.PI / 180;
-    for (let i = 0; i < n; i++) {
-      const x = (i * 2) / n - 1;
-      curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
-    }
-    return curve;
-  }
-
-  function gate(){ return ckSound && ckSound.checked && audioCtx && audioReady; }
-  function tone({ freq = 880, dur = 0.18, t = audioCtx.currentTime, type = 'sine', gain = 0.5, toDist = false, detune = 0 }) {
-    if (!gate()) return;
-    // Clamp values to avoid non-finite errors
-    freq = Math.max(20, Math.min(4000, Number(freq)||880));
-    dur  = Math.max(0.05, Math.min(1.0, Number(dur)||0.18));
-    gain = Math.max(0.0005, Math.min(1.5, Number(gain)||0.5));
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = type;
-    try {
-      o.frequency.setValueAtTime(freq, t);
-      if (detune) o.detune.setValueAtTime(detune, t);
-      g.gain.setValueAtTime(0.0005, t);
-      g.gain.linearRampToValueAtTime(gain, t + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    } catch(_){}
-    (toDist ? o.connect(g).connect(dist).connect(master) : o.connect(g).connect(master));
-    try { o.start(t); o.stop(t + dur + 0.05); } catch(_){}
-  }
-  function chimeOk(){
-    if (!gate()) return;
-    const t0 = audioCtx.currentTime + 0.01;
-    tone({ freq: 659.25, dur: 0.14, t: t0,      type: 'sine', gain: 0.9 });
-    tone({ freq: 830.61, dur: 0.14, t: t0+0.12, type: 'sine', gain: 0.9 });
-    tone({ freq: 987.77, dur: 0.16, t: t0+0.24, type: 'sine', gain: 1.0 });
-  }
-  function chimeFail(){
-    if (!gate()) return;
-    const t0 = audioCtx.currentTime + 0.01;
-    tone({ freq: 440.00, dur: 0.16, t: t0,      type: 'square', gain: 0.9, toDist: true });
-    tone({ freq: 369.99, dur: 0.16, t: t0+0.12, type: 'square', gain: 0.85, toDist: true });
-    tone({ freq: 293.66, dur: 0.20, t: t0+0.24, type: 'square', gain: 0.8,  toDist: true });
-  }
+  // ===== Sounds (HTMLAudio; safe on Chrome/iOS) =====
+  function playOk(){ if (ckSound && ckSound.checked) { try{ sndOk.currentTime = 0; sndOk.play(); }catch(_){} } }
+  function playFail(){ if (ckSound && ckSound.checked) { try{ sndFail.currentTime = 0; sndFail.play(); }catch(_){} } }
 
   // ===== Toast =====
   let toastTimer=null;
@@ -323,7 +260,7 @@
     adminDrawer.setAttribute('aria-modal', show ? 'true' : 'false');
   }
   adminBtn.addEventListener('click', () => showAdmin(true));
-  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); armAudioOnce(); });
+  adminClose.addEventListener('click', () => { showAdmin(false); focusPinSafely(); });
   adminClearLog.addEventListener('click', () => { liveLogEl.innerHTML=''; liveTenEl.textContent='—'; });
 
   // ===== Helpers =====
@@ -351,7 +288,7 @@
     // 5s de-dupe
     if (!canSendNow(key)) {
       showToast('Duplicate scan ignored (5s)');
-      focusPinSafely(); armAudioOnce();
+      focusPinSafely();
       return;
     }
 
@@ -360,20 +297,21 @@
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
 
-      // --- IMPORTANT: Only open kiosk when backend explicitly says student_in ---
+      // Student: open kiosk ONLY when backend declares student_in
       if (data && data.status === 'student_in' && data.legacyId) {
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
         showToast(`${name} — sent to Veracross`);
-        chimeOk(); try{ navigator.vibrate?.(30); }catch{}
+        playOk();
+        try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
       if (!res.ok || (data && data.error)) {
         showToast((data && data.error) || ('Error ' + res.status));
-        chimeFail();
+        playFail();
         return;
       }
 
@@ -382,17 +320,18 @@
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.');
-      chimeOk(); try{ navigator.vibrate?.(30); }catch{}
+      playOk();
+      try{ navigator.vibrate?.(30); }catch{}
     }catch{
       showToast('Network error');
-      chimeFail();
+      playFail();
     }finally{
       lastSubmitAt = Date.now();
-      focusPinSafely(); armAudioOnce();
+      focusPinSafely();
     }
   }
 
-  // ===== USB wedge — auto submit on quiet (no chimes while typing)
+  // ===== USB wedge — auto submit on quiet
   let wedgeTimer = null;
   const WEDGE_QUIET_MS = 120;
   pinEl.addEventListener('input', ()=>{
@@ -429,7 +368,7 @@
       box.innerHTML = ''; return;
     }
 
-    searchTimer = setTimeout(()=>doSearch(q), 160);
+    searchTimer = setTimeout(()=>doSearch(q), 150);
   });
 
   qEl.addEventListener('keydown', (e)=>{
@@ -534,7 +473,7 @@
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`);
-            chimeOk();
+            playOk();
           }));
         });
       }
@@ -591,9 +530,6 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
-    // Arm audio after first user gesture (prevents “argument too large”/NotAllowed errors)
-    window.addEventListener('pointerdown', armAudioOnce, { once: true });
-    window.addEventListener('keydown', armAudioOnce, { once: true });
     focusPinSafely();
   });
 
