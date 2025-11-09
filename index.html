@@ -138,8 +138,8 @@
   /* ===== Config ===== */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 250;            // guard against ultra-fast repeats
-  const DEDUPE_WINDOW_MS = 5000;      // block same code/person for 5 seconds
+  const COOLDOWN_MS = 250;
+  const DEDUPE_WINDOW_MS = 5000;
 
   /* ===== DOM ===== */
   const $ = s => document.querySelector(s);
@@ -163,7 +163,7 @@
   }
   themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
 
-  /* ===== Chimes (play only on submission result) ===== */
+  /* ===== Chimes ===== */
   let audioCtx=null, master=null, comp=null, dist=null, audioReady=false;
   function initAudio(){
     if (audioReady) return;
@@ -228,7 +228,7 @@
   window.addEventListener('offline', updateNet);
   updateNet();
 
-  /* ===== Focus helpers ===== */
+  /* ===== Focus ===== */
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
@@ -245,7 +245,7 @@
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  /* ===== De-dupe (5s) ===== */
+  /* ===== De-dupe ===== */
   const lastSeenMap = new Map();
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key){
@@ -271,7 +271,6 @@
 
     if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
 
-    // immediate feedback (perceived speed)
     showToast(act === 'in' ? 'Signing IN…' : 'Signing OUT…', true);
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
@@ -283,7 +282,7 @@
         showToast(msg, false); chimeFail(); return;
       }
 
-      // Student flow
+      // Student flow returned by backend
       if (data.status === 'student_in' && data.legacyId) {
         const legacy = data.legacyId;
         const name = data.student || 'Student';
@@ -311,9 +310,9 @@
     }
   }
 
-  /* ===== USB / keyboard-wedge — auto submit on quiet ===== */
+  /* ===== Card input auto-submit ===== */
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 100; // lower for snappier UX
+  const WEDGE_QUIET_MS = 100;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
@@ -327,7 +326,7 @@
     }, WEDGE_QUIET_MS);
   });
 
-  /* ===== Search (Faculty first, then Students). Empty input → no list. ===== */
+  /* ===== Search (Faculty first, then Students) ===== */
   let searchTimer = null, searchAbort = null, searchToken = 0;
 
   qEl.addEventListener('input', ()=>{
@@ -345,7 +344,8 @@
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (!q) { try { searchAbort?.abort(); } catch(_){}; searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
+      if (!q) { try { searchAbort?.abort(); } catch(_){};
+        searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
       doSearch(q); e.preventDefault();
     }
   });
@@ -380,7 +380,10 @@
     if (nlf.includes(nq)) s += 24;
     return s;
   }
-  function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
+  function flipLF(full){
+    const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
+    return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
+  }
 
   async function doSearch(q){
     try { searchAbort?.abort(); } catch(_) {}
@@ -399,7 +402,7 @@
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
       stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
 
-      // Dedup + sort — Faculty
+      // Faculty dedupe + sort
       const facMap = new Map();
       facRes.forEach(r=>{
         const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||'');
@@ -407,7 +410,7 @@
       });
       const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      // Dedup + sort — Students
+      // Student dedupe + sort
       const stuMap = new Map();
       stuRes.forEach(r=>{
         const lf = String(r.fullName||''); const flip = flipLF(lf);
@@ -419,20 +422,31 @@
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
       const frag = document.createDocumentFragment();
+
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
         facSorted.forEach(({ firstName, lastName, personId })=>{
           frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId })));
         });
       }
+
       if (stuSorted.length) {
         frag.appendChild(sectionHeader('STUDENTS'));
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
           frag.appendChild(resultRow(label, 'Sign IN', ()=>{
+            // >>> BLOCK sign-out for students via name search <<<
+            const isOut = btnOut.classList.contains('active');
+            if (isOut) {
+              showToast('Students can only sign IN.', false);
+              chimeFail();
+              return;
+            }
+            // otherwise open Veracross kiosk for IN
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-            showToast(`${label} — sent to Veracross`, true); chimeOk();
+            showToast(`${label} — sent to Veracross`, true);
+            chimeOk();
           }));
         });
       }
