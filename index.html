@@ -161,7 +161,13 @@
     const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
     setTheme(prefersDark ? 'dark' : 'light');
   }
-  themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
+
+  // >>> CHANGE: after toggling theme, immediately refocus Cougar Card <<<
+  themeBtn.addEventListener('click', () => {
+    setTheme(document.body.classList.contains('dark') ? 'light' : 'dark');
+    themeBtn.blur();                // remove visual focus from button
+    setTimeout(focusPinSafely, 0);  // return cursor to PIN field
+  });
 
   /* ===== Chimes ===== */
   let audioCtx=null, master=null, comp=null, dist=null, audioReady=false;
@@ -250,7 +256,7 @@
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key){
     const now=Date.now(), last=lastSeenMap.get(key)||0;
-    if (now-last < DEDUPE_WINDOW_MS) return false;
+    if (now-last < 5000) return false;
     lastSeenMap.set(key, now);
     return true;
   }
@@ -435,14 +441,8 @@
         stuSorted.forEach(({ fullName, legacyId, _flip })=>{
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
           frag.appendChild(resultRow(label, 'Sign IN', ()=>{
-            // >>> BLOCK sign-out for students via name search <<<
             const isOut = btnOut.classList.contains('active');
-            if (isOut) {
-              showToast('Students can only sign IN.', false);
-              chimeFail();
-              return;
-            }
-            // otherwise open Veracross kiosk for IN
+            if (isOut) { showToast('Students can only sign IN.', false); chimeFail(); return; }
             const kioskURL = VC_BASE + encodeURIComponent(legacyId);
             window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
             showToast(`${label} — sent to Veracross`, true);
@@ -467,7 +467,8 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     setAction('in');
-    focusPinSafely();
+    // initial focus ready for scanning
+    setTimeout(()=>{ pinEl.focus(); }, 0);
   });
 </script>
 </body>
