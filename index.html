@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Teacher Attendance — Guard Console</title>
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
@@ -53,7 +52,6 @@
   body.dark .sectionTag{ color:#e8eefc; background:#16243c; border-color:#2a4a7d; }
   .actionBtn{ background:#2563eb; color:#fff; font-size:20px; padding:12px 16px; border:2px solid #2563eb; border-radius:14px; font-weight:900; cursor:pointer; }
 
-  /* Centered, bold toast with status dot */
   .toast{
     position:fixed; left:50%; bottom:20px; transform:translateX(-50%) translateY(10px); opacity:0;
     min-width:min(92vw, 780px);
@@ -64,13 +62,8 @@
     transition: transform .12s ease-out, opacity .12s ease-out;
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
-  .toast .dot{ width:14px; height:14px; border-radius:50%; background:#2563eb; box-shadow:0 0 0 4px color-mix(in srgb, #2563eb 30%, transparent); }
-  .toast.ok .dot{ background:#16a34a; box-shadow:0 0 0 4px color-mix(in srgb, #16a34a 30%, transparent); }
-  .toast.fail .dot{ background:#dc2626; box-shadow:0 0 0 4px color-mix(in srgb, #dc2626 30%, transparent); }
-  .toast .label{ font-weight:900; }
-  .toast .sub{ font-weight:700; color:var(--muted); }
-
-  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
+  .toast.ok{ border-color:#16a34a; box-shadow:0 12px 34px rgba(22,163,74,.22); }
+  .toast.fail{ border-color:#dc2626; box-shadow:0 12px 34px rgba(220,38,38,.22); }
 </style>
 </head>
 <body>
@@ -86,8 +79,8 @@
     </div>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
-      <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
-      <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
+      <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
+      <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
     </div>
 
     <div class="grid">
@@ -106,27 +99,17 @@
       </div>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite">
-      <span class="dot" aria-hidden="true"></span>
-      <span id="toastLabel" class="label">Ready.</span>
-      <span id="toastSub" class="sub"></span>
-    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite">Ready.</div>
   </div>
 
 <script>
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 150;
-  const DEDUPE_WINDOW_MS = 5000;
 
   const $ = s => document.querySelector(s);
-  const pinEl = $('#pin'), qEl = $('#q');
-  const toastEl = $('#toast'), toastLabel = $('#toastLabel'), toastSub = $('#toastSub');
+  const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
-
-  let lastSubmitAt = 0;
-  const lastSeenMap = new Map();
 
   /* Theme */
   function setTheme(mode){
@@ -138,42 +121,23 @@
   }
   (function initTheme(){
     const saved = localStorage.getItem('theme');
-    if (saved) setTheme(saved); else setTheme(window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    setTheme(saved || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
     themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
   })();
 
   /* Toast + chimes */
   let toastTimer=null, audioCtx=null, master=null, readyAudio=false;
-  function showToast(label, kind='info', sub=''){
-    toastLabel.textContent = label || '';
-    toastSub.textContent = sub || '';
-    toastEl.className = 'toast' + (kind==='ok' ? ' ok' : kind==='fail' ? ' fail' : '');
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2200);
-  }
-  function initAudioOnce(){
-    if (readyAudio) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    audioCtx = new AC();
-    master = audioCtx.createGain();
-    master.gain.setValueAtTime(0.95, audioCtx.currentTime);
-    master.connect(audioCtx.destination);
-    readyAudio = true;
-  }
-  const kick = ()=>{ try{ initAudioOnce(); audioCtx?.resume?.(); }catch{} };
-  window.addEventListener('pointerdown', kick, { once:true });
-  window.addEventListener('keydown',     kick, { once:true });
-  function beep(f, d, t){ if(!readyAudio) return; const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type='sine'; o.frequency.setValueAtTime(f,t); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(1,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+d); o.connect(g).connect(master); o.start(t); o.stop(t+d+0.02); }
-  function chimeOK(){ if(!readyAudio) return; const t=audioCtx.currentTime+0.01; beep(880,.10,t); beep(1175,.12,t+.12); beep(1318,.12,t+.24); }
-  function chimeFAIL(){ if(!readyAudio) return; const t=audioCtx.currentTime+0.01; beep(440,.16,t); beep(329,.18,t+.14); }
+  function showToast(text, kind='info'){ toastEl.textContent=text||''; toastEl.className='toast' + (kind==='ok'?' ok':kind==='fail'?' fail':''); toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2000); }
+  function initAudioOnce(){ if(readyAudio) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC(); master=audioCtx.createGain(); master.gain.setValueAtTime(0.95,audioCtx.currentTime); master.connect(audioCtx.destination); readyAudio=true; }
+  window.addEventListener('pointerdown', ()=>{try{initAudioOnce(); audioCtx?.resume?.();}catch{}}, {once:true});
+  window.addEventListener('keydown',     ()=>{try{initAudioOnce(); audioCtx?.resume?.();}catch{}}, {once:true});
+  function beep(f,d,t){ if(!readyAudio) return; const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.setValueAtTime(f,t); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(1,t+.01); g.gain.exponentialRampToValueAtTime(0.0001,t+d); o.connect(g).connect(master); o.start(t); o.stop(t+d+.02); }
+  function chimeOK(){ if(!readyAudio) return; const t=audioCtx.currentTime+.01; beep(880,.1,t); beep(1175,.12,t+.12); beep(1318,.12,t+.24); }
+  function chimeFAIL(){ if(!readyAudio) return; const t=audioCtx.currentTime+.01; beep(440,.16,t); beep(329,.18,t+.14); }
 
   /* Helpers */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-  function pin10(raw){ const d=digitsOnly(raw); return d.length<=10 ? d.padStart(10,'0') : d.slice(-10); }
-  function makeKey({pin,personId}){ return pin?`pin:${pin}`:`pid:${personId}`; }
-  function canSendNow(key){ const now=Date.now(); const last=lastSeenMap.get(key)||0; if(now-last<DEDUPE_WINDOW_MS) return false; lastSeenMap.set(key,now); return true; }
+  function pin10(raw){ const d=digitsOnly(raw); return d? (d.length<=10? d.padStart(10,'0'): d.slice(-10)) : ''; }
   function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
   function focusPin(){ try{ pinEl.focus(); pinEl.select?.(); }catch{} }
   function setAction(a){ const IN=a==='in'; btnIn.classList.toggle('active',IN); btnOut.classList.toggle('active',!IN); setTimeout(focusPin,0); }
@@ -181,60 +145,63 @@
   btnOut.addEventListener('click',()=>setAction('out'));
   window.addEventListener('keydown',(e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  /* Network badge */
   function updateNet(){ const on=navigator.onLine; netBadge.textContent=on?'Online':'Offline'; netBadge.style.background=on?'var(--card)':'#fee2e2'; netBadge.style.color=on?'var(--text)':'#991b1b'; }
   window.addEventListener('online',updateNet); window.addEventListener('offline',updateNet); updateNet();
 
-  /* Fast fetch with 2s timeout */
-  async function fetchFast(url, opt={}, timeoutMs=2000){
-    const ctrl = new AbortController();
-    const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
-    try { return await fetch(url, { ...opt, signal: ctrl.signal }); }
-    finally { clearTimeout(timer); }
+  /* Warm backend (build caches, avoid cold start) */
+  (async function warm(){
+    try { await fetch(`${ENDPOINT}?selftest=1`, { cache:'no-store' }); } catch(_) {}
+  })();
+
+  /* Fetch with 7s timeout + one retry */
+  async function fetchFast(url, opt={}, timeoutMs=7000, retryOnce=true){
+    const doFetch = () => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
+      return fetch(url, { ...opt, signal: ctrl.signal }).finally(()=>clearTimeout(timer));
+    };
+    try { return await doFetch(); }
+    catch (e) {
+      if (retryOnce) { await new Promise(r=>setTimeout(r,150)); return fetchFast(url,opt,timeoutMs,false); }
+      throw e;
+    }
   }
 
-  /* Submit (optimistic UI) */
-  async function submitPinOrId({ pin, personId }) {
+  /* Submit (optimistic) */
+  let lastSubmitAt = 0;
+  const DEDUPE_WINDOW_MS = 5000;
+  const lastSeen = new Map();
+  function canSendNow(key){ const now=Date.now(); const last=lastSeen.get(key)||0; if (now-last<DEDUPE_WINDOW_MS) return false; lastSeen.set(key,now); return true; }
+  const makeKey = ({pin,personId}) => pin ? `pin:${pin}` : `pid:${personId}`;
+
+  async function submitPinOrId({ pin, personId }){
     const act = currentAction();
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); return; }
 
-    // Instant optimistic toast
-    if (pin) showToast(`Signing ${act.toUpperCase()}…`, 'info');
-
+    showToast(`Signing ${act.toUpperCase()}…`);
     try{
       const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
-      const res = await fetchFast(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body }, 2000);
+      const res = await fetchFast(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const txt = await res.text(); let data=null; try{ data = JSON.parse(txt); }catch{}
 
-      // Student handoff (server verified student ID)
+      // Student handoff
       if (data && data.status === 'student_in' && data.legacyId) {
-        const name = data.student || 'Student';
-        const kioskURL = VC_BASE + encodeURIComponent(String(data.legacyId));
-        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        showToast(`${name} — sent to Veracross`, 'ok', 'student');
-        chimeOK();
-        return;
+        const label = data.student || 'Student';
+        window.open(`${VC_BASE}${encodeURIComponent(String(data.legacyId))}`, '_blank', 'width=480,height=820,noopener,noreferrer');
+        showToast(`${label} — sent to Veracross`, 'ok'); chimeOK(); return;
       }
 
-      if (!res.ok || (data && data.error)) {
-        showToast(data && data.error ? data.error : ('Error ' + res.status), 'fail');
-        chimeFAIL();
-        return;
-      }
+      if (!res.ok || (data && data.error)) { showToast(data && data.error ? data.error : ('Error ' + res.status), 'fail'); chimeFAIL(); return; }
 
-      // Faculty success
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      showToast(`${firstName||''} ${lastName||''} — ${verb} @ ${time||''}`, 'ok', 'faculty');
-      chimeOK();
-    } catch (err) {
-      showToast('Network/timeout', 'fail');
-      chimeFAIL();
+      showToast(`${firstName||''} ${lastName||''} — ${verb} @ ${time||''}`, 'ok'); chimeOK();
+    } catch {
+      showToast('Network/timeout', 'fail'); chimeFAIL();
     } finally {
       lastSubmitAt = Date.now();
-      pinEl.value = '';
-      focusPin();
+      pinEl.value=''; focusPin();
     }
   }
 
@@ -246,7 +213,7 @@
     wedgeTimer = setTimeout(()=>{
       const ten = pin10(pinEl.value);
       if (ten.length < 10) return;
-      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
+      if (Date.now() - lastSubmitAt < 120) return;
       submitPinOrId({ pin: ten });
     }, WEDGE_QUIET_MS);
   });
@@ -262,7 +229,7 @@
     const q = qEl.value.trim();
     const box = $('#results');
     if (!q) { try{searchAbort?.abort();}catch{} searchAbort=null; searchToken++; box.innerHTML=''; return; }
-    searchTimer = setTimeout(()=>doSearch(q), 80);
+    searchTimer = setTimeout(()=>doSearch(q), 100);
   });
   qEl.addEventListener('keydown',(e)=>{
     if (e.key === 'Enter') { e.preventDefault(); const q=qEl.value.trim(); if (!q) { try{searchAbort?.abort();}catch{} searchAbort=null; searchToken++; $('#results').innerHTML=''; return; } doSearch(q); }
@@ -272,10 +239,9 @@
     try{ searchAbort?.abort(); }catch{}; searchAbort = new AbortController();
     const myToken = ++searchToken; const sig=searchAbort.signal; const box=$('#results'); box.innerHTML='<div class="muted">Searching…</div>';
     try{
-      const facP = fetchFast(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {}, 2000).then(r=>r.json()).catch(()=>[]);
-      const stuP = fetchFast(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {}, 2000).then(r=>r.json()).catch(()=>[]);
+      const facP = fetchFast(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {}, 7000).then(r=>r.json()).catch(()=>[]);
+      const stuP = fetchFast(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {}, 7000).then(r=>r.json()).catch(()=>[]);
       let [fac,stu] = await Promise.all([facP,stuP]);
-
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
       const frag = document.createDocumentFragment();
@@ -288,22 +254,17 @@
       if (Array.isArray(stu) && stu.length) {
         frag.appendChild(sectionHeader('STUDENTS'));
         stu.slice(0,30).forEach(({ fullName, legacyId })=>{
-          // Student search result → send to kiosk immediately on click
           frag.appendChild(resultRow(fullName, 'Sign IN', ()=>{
-            const kioskURL = VC_BASE + encodeURIComponent(String(legacyId));
-            window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-            showToast(`${fullName} — sent to Veracross`, 'ok', 'student');
-            chimeOK();
+            window.open(`${VC_BASE}${encodeURIComponent(String(legacyId))}`, '_blank', 'width=480,height=820,noopener,noreferrer');
+            showToast(`${fullName} — sent to Veracross`, 'ok'); chimeOK();
           }));
         });
       }
-
       box.innerHTML = '';
-      if (frag.children.length === 0) box.innerHTML = '<div class="muted">No matches found.</div>';
-      else box.appendChild(frag);
+      if (!frag.children.length) box.innerHTML = '<div class="muted">No matches found.</div>'; else box.appendChild(frag);
     } catch (e) {
       if (e && e.name === 'AbortError') return;
-      if (myToken === searchToken) box.innerHTML = '<div class="muted">Search failed.</div>';
+      if (myToken === searchToken) $('#results').innerHTML = '<div class="muted">Search failed.</div>';
     }
   }
 
