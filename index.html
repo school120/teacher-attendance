@@ -5,15 +5,14 @@
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Guard Booth Attendance Kiosk</title>
-<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students sent to Shortcuts → Veracross." />
+<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students sent to iOS Shortcuts → Veracross." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
     --in:#16a34a; --out:#dc2626; --blue:#2563eb; --ok:#0f766e; --err:#b91c1c;
-    --radius-lg:14px; --radius-xl:18px;
-    --shadow-1:0 10px 30px rgba(0,0,0,.08);
+    --radius-xl:18px; --shadow-1:0 10px 30px rgba(0,0,0,.08);
     --ring:0 0 0 6px rgba(59,130,246,.16);
   }
   body.dark{ --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
@@ -45,8 +44,8 @@
     position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
     opacity:0; background:var(--card); border:1px solid var(--border);
     box-shadow:0 8px 30px rgba(0,0,0,.12);
-    border-radius:14px; padding:18px 22px; font-weight:900; font-size:20px;
-    transition:all .18s ease; pointer-events:none; z-index:50; text-align:center;
+    border-radius:16px; padding:20px 24px; font-weight:900; font-size:20px;
+    transition:all .15s ease; pointer-events:none; z-index:50; text-align:center;
   }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
   .toast.ok{ color:var(--ok); }
@@ -93,7 +92,7 @@
     color:var(--muted); padding:10px 0 2px;
   }
 
-  /* One-tap fallback banner for iOS handoff */
+  /* iOS handoff banner */
   .handoff{
     position:fixed; left:50%; bottom:88px; transform:translateX(-50%);
     background:#111827; color:#fff; padding:14px 18px; border-radius:14px; border:2px solid #111827;
@@ -151,9 +150,9 @@
 <script>
   /* ===== Config ===== */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
-  const SHORTCUT_NAME = 'VC Auto Check-In'; // must match the Shortcut you created
-  const COOLDOWN_MS = 250;
-  const DEDUPE_WINDOW_MS = 5000;
+  const SHORTCUT_NAME = 'VC Auto Check-In';   // must match your iOS Shortcut name
+  const COOLDOWN_MS = 200;                    // anti-spam on wedge typing
+  const DEDUPE_WINDOW_MS = 5000;              // ignore same scan for 5s
 
   /* ===== DOM ===== */
   const $ = s => document.querySelector(s);
@@ -201,23 +200,23 @@
     window.addEventListener('keydown', kick, { once:true });
     audioReady = true;
   }
-  function tone({ f=880, dur=0.18, t=audioCtx.currentTime, type='sine', g=0.7, distOn=false, detune=0 }){
+  function tone({ f=880, dur=0.18, t=audioCtx.currentTime, type='sine', g=0.9, distOn=false }){
     const o=audioCtx.createOscillator(), gn=audioCtx.createGain();
-    o.type=type; o.frequency.setValueAtTime(f,t); if (detune) o.detune.setValueAtTime(detune,t);
+    o.type=type; o.frequency.setValueAtTime(f,t);
     gn.gain.setValueAtTime(0,t); gn.gain.linearRampToValueAtTime(g,t+0.012); gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
     (distOn ? o.connect(gn).connect(dist).connect(master) : o.connect(gn).connect(master));
     o.start(t); o.stop(t+dur+0.02);
   }
   function chimeOk(){ initAudio(); const t0=audioCtx.currentTime+0.01;
-    tone({f:659.25, dur:0.14, t:t0,      g:1.0});
-    tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0});
-    tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0});
-    tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0});
+    tone({f:659.25, dur:0.14, t:t0});
+    tone({f:830.61, dur:0.14, t:t0+0.12});
+    tone({f:987.77, dur:0.16, t:t0+0.24});
+    tone({f:1318.5, dur:0.22, t:t0+0.36});
   }
   function chimeFail(){ initAudio(); const t0=audioCtx.currentTime+0.01;
-    tone({f:440.00, dur:0.16, t:t0,      type:'square', g:1.0, distOn:true});
-    tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true});
-    tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9,  distOn:true});
+    tone({f:440.00, dur:0.16, t:t0,      type:'square', distOn:true});
+    tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', distOn:true});
+    tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', distOn:true});
   }
 
   /* ===== Toast ===== */
@@ -287,12 +286,7 @@
       + '?name=' + encodeURIComponent(SHORTCUT_NAME)
       + '&input=' + encodeURIComponent(legacy10);
   }
-
-  function canAutoNavigateNow(){
-    // Treat as a gesture for ~3 seconds after any tap/keypress
-    return (Date.now() - lastGestureTs) < 3000;
-  }
-
+  function canAutoNavigateNow(){ return (Date.now() - lastGestureTs) < 3000; }
   function showHandoff(legacy10){
     handoffBar.style.display = 'block';
     handoffBtn.onclick = ()=>{
@@ -300,19 +294,11 @@
       setTimeout(()=>{ handoffBar.style.display='none'; }, 400);
     };
   }
-
   function handoffToShortcuts(legacy10){
-    // Prefer navigating the current tab (most reliable on iOS)
     try {
-      if (canAutoNavigateNow()) {
-        location.href = shortcutsUrl(legacy10);
-      } else {
-        // We didn’t have a fresh gesture; show one-tap banner
-        showHandoff(legacy10);
-      }
-    } catch {
-      showHandoff(legacy10);
-    }
+      if (canAutoNavigateNow()) { location.href = shortcutsUrl(legacy10); }
+      else { showHandoff(legacy10); }
+    } catch { showHandoff(legacy10); }
   }
 
   /* ===== Submit API (faculty in/out + student handoff) ===== */
@@ -332,13 +318,12 @@
         showToast(msg, false); chimeFail(); return;
       }
 
-      // Student flow returned by backend: {status:'student_in', legacyId, student}
+      // Student flow from backend: {status:'student_in', legacyId, student}
       if (data.status === 'student_in' && data.legacyId) {
         const legacy = String(data.legacyId);
         const name = data.student || 'Student';
         showToast(`${name} — sending to Veracross…`, true);
         chimeOk();
-        // Try to hand off immediately; if iOS blocks, we’ll show the banner
         handoffToShortcuts(legacy);
         try{ navigator.vibrate?.(30); }catch{}
         return;
@@ -362,7 +347,7 @@
 
   /* ===== Card input auto-submit ===== */
   let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 100;
+  const WEDGE_QUIET_MS = 90;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
@@ -387,7 +372,7 @@
       try { searchAbort?.abort(); } catch(_){}
       searchAbort = null; searchToken++; box.innerHTML = ''; return;
     }
-    searchTimer = setTimeout(()=>doSearch(q), 150);
+    searchTimer = setTimeout(()=>doSearch(q), 140);
   });
 
   qEl.addEventListener('keydown', (e)=>{
