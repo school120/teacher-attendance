@@ -107,173 +107,124 @@
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
 
   const $ = s => document.querySelector(s);
-  const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
+  const qEl = $('#q'), resultsEl = $('#results');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const toastEl = $('#toast');
 
-  /* Theme */
-  function setTheme(mode){
-    const dark = mode === 'dark';
-    document.body.classList.toggle('dark', dark);
-    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
-    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  function showToast(t){ toastEl.textContent=t; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), 2200); }
+  function isInSelected(){ return btnIn.classList.contains('active'); }
+
+  let searchTimer=null, searchToken=0, searchAbort=null;
+  function sectionHeader(text){
+    const row=document.createElement('div'); row.className='row';
+    const name=document.createElement('div'); name.className='name'; name.textContent=text;
+    const spacer=document.createElement('div'); row.appendChild(name); row.appendChild(spacer); return row;
   }
-  (function initTheme(){
-    const saved = localStorage.getItem('theme');
-    setTheme(saved || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
-    themeBtn.addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
-  })();
-
-  /* Toast + chimes */
-  let toastTimer=null, audioCtx=null, master=null, readyAudio=false;
-  function showToast(text, kind='info'){ toastEl.textContent=text||''; toastEl.className='toast' + (kind==='ok'?' ok':kind==='fail'?' fail':''); toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), 2000); }
-  function initAudioOnce(){ if(readyAudio) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC(); master=audioCtx.createGain(); master.gain.setValueAtTime(0.95,audioCtx.currentTime); master.connect(audioCtx.destination); readyAudio=true; }
-  window.addEventListener('pointerdown', ()=>{try{initAudioOnce(); audioCtx?.resume?.();}catch{}}, {once:true});
-  window.addEventListener('keydown',     ()=>{try{initAudioOnce(); audioCtx?.resume?.();}catch{}}, {once:true});
-  function beep(f,d,t){ if(!readyAudio) return; const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.setValueAtTime(f,t); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(1,t+.01); g.gain.exponentialRampToValueAtTime(0.0001,t+d); o.connect(g).connect(master); o.start(t); o.stop(t+d+.02); }
-  function chimeOK(){ if(!readyAudio) return; const t=audioCtx.currentTime+.01; beep(880,.1,t); beep(1175,.12,t+.12); beep(1318,.12,t+.24); }
-  function chimeFAIL(){ if(!readyAudio) return; const t=audioCtx.currentTime+.01; beep(440,.16,t); beep(329,.18,t+.14); }
-
-  /* Helpers */
-  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-  function pin10(raw){ const d=digitsOnly(raw); return d? (d.length<=10? d.padStart(10,'0'): d.slice(-10)) : ''; }
-  function currentAction(){ return btnIn.classList.contains('active') ? 'in' : 'out'; }
-  function focusPin(){ try{ pinEl.focus(); pinEl.select?.(); }catch{} }
-  function setAction(a){ const IN=a==='in'; btnIn.classList.toggle('active',IN); btnOut.classList.toggle('active',!IN); setTimeout(focusPin,0); }
-  btnIn.addEventListener('click',()=>setAction('in'));
-  btnOut.addEventListener('click',()=>setAction('out'));
-  window.addEventListener('keydown',(e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
-
-  function updateNet(){ const on=navigator.onLine; netBadge.textContent=on?'Online':'Offline'; netBadge.style.background=on?'var(--card)':'#fee2e2'; netBadge.style.color=on?'var(--text)':'#991b1b'; }
-  window.addEventListener('online',updateNet); window.addEventListener('offline',updateNet); updateNet();
-
-  /* Warm backend (build caches, avoid cold start) */
-  (async function warm(){
-    try { await fetch(`${ENDPOINT}?selftest=1`, { cache:'no-store' }); } catch(_) {}
-  })();
-
-  /* Fetch with 7s timeout + one retry */
-  async function fetchFast(url, opt={}, timeoutMs=7000, retryOnce=true){
-    const doFetch = () => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
-      return fetch(url, { ...opt, signal: ctrl.signal }).finally(()=>clearTimeout(timer));
-    };
-    try { return await doFetch(); }
-    catch (e) {
-      if (retryOnce) { await new Promise(r=>setTimeout(r,150)); return fetchFast(url,opt,timeoutMs,false); }
-      throw e;
-    }
+  function addRow(label, btnText, onClick){
+    const row=document.createElement('div'); row.className='row';
+    const name=document.createElement('div'); name.className='name'; name.textContent=label;
+    const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent=btnText;
+    btn.addEventListener('click', onClick);
+    row.appendChild(name); row.appendChild(btn); return row;
   }
-
-  /* Submit (optimistic) */
-  let lastSubmitAt = 0;
-  const DEDUPE_WINDOW_MS = 5000;
-  const lastSeen = new Map();
-  function canSendNow(key){ const now=Date.now(); const last=lastSeen.get(key)||0; if (now-last<DEDUPE_WINDOW_MS) return false; lastSeen.set(key,now); return true; }
-  const makeKey = ({pin,personId}) => pin ? `pin:${pin}` : `pid:${personId}`;
-
-  async function submitPinOrId({ pin, personId }){
-    const act = currentAction();
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)'); return; }
-
-    showToast(`Signing ${act.toUpperCase()}…`);
-    try{
-      const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
-      const res = await fetchFast(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
-      const txt = await res.text(); let data=null; try{ data = JSON.parse(txt); }catch{}
-
-      // Student handoff
-      if (data && data.status === 'student_in' && data.legacyId) {
-        const label = data.student || 'Student';
-        window.open(`${VC_BASE}${encodeURIComponent(String(data.legacyId))}`, '_blank', 'width=480,height=820,noopener,noreferrer');
-        showToast(`${label} — sent to Veracross`, 'ok'); chimeOK(); return;
-      }
-
-      if (!res.ok || (data && data.error)) { showToast(data && data.error ? data.error : ('Error ' + res.status), 'fail'); chimeFAIL(); return; }
-
-      const { status, firstName, lastName, time } = data || {};
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      showToast(`${firstName||''} ${lastName||''} — ${verb} @ ${time||''}`, 'ok'); chimeOK();
-    } catch {
-      showToast('Network/timeout', 'fail'); chimeFAIL();
-    } finally {
-      lastSubmitAt = Date.now();
-      pinEl.value=''; focusPin();
-    }
-  }
-
-  /* Ultra-fast wedge */
-  let wedgeTimer=null;
-  const WEDGE_QUIET_MS = 45;
-  pinEl.addEventListener('input', ()=>{
-    clearTimeout(wedgeTimer);
-    wedgeTimer = setTimeout(()=>{
-      const ten = pin10(pinEl.value);
-      if (ten.length < 10) return;
-      if (Date.now() - lastSubmitAt < 120) return;
-      submitPinOrId({ pin: ten });
-    }, WEDGE_QUIET_MS);
-  });
-  pinEl.addEventListener('keydown',(e)=>{ if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } });
-
-  /* Search (faculty first, then students) */
-  let searchTimer=null, searchAbort=null, searchToken=0;
-  function sectionHeader(text){ const row=document.createElement('div'); row.className='row'; const tag=document.createElement('span'); tag.className='sectionTag'; tag.textContent=text; row.appendChild(tag); row.appendChild(document.createElement('div')); return row; }
-  function resultRow(label, btnText, onClick){ const row=document.createElement('div'); row.className='row'; const name=document.createElement('div'); name.className='name'; name.textContent=label; const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent=btnText; btn.addEventListener('click', onClick); row.appendChild(name); row.appendChild(btn); return row; }
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
-    const q = qEl.value.trim();
-    const box = $('#results');
-    if (!q) { try{searchAbort?.abort();}catch{} searchAbort=null; searchToken++; box.innerHTML=''; return; }
-    searchTimer = setTimeout(()=>doSearch(q), 100);
+    const q=qEl.value.trim();
+    if(!q){ try{searchAbort?.abort();}catch{}; searchAbort=null; searchToken++; resultsEl.innerHTML=''; return; }
+    searchTimer=setTimeout(()=>doSearch(q), 150);
   });
-  qEl.addEventListener('keydown',(e)=>{
-    if (e.key === 'Enter') { e.preventDefault(); const q=qEl.value.trim(); if (!q) { try{searchAbort?.abort();}catch{} searchAbort=null; searchToken++; $('#results').innerHTML=''; return; } doSearch(q); }
+  qEl.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); clearTimeout(searchTimer); const q=qEl.value.trim(); if(q) doSearch(q); else { resultsEl.innerHTML=''; } }
   });
 
   async function doSearch(q){
-    try{ searchAbort?.abort(); }catch{}; searchAbort = new AbortController();
-    const myToken = ++searchToken; const sig=searchAbort.signal; const box=$('#results'); box.innerHTML='<div class="muted">Searching…</div>';
-    try{
-      const facP = fetchFast(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {}, 7000).then(r=>r.json()).catch(()=>[]);
-      const stuP = fetchFast(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {}, 7000).then(r=>r.json()).catch(()=>[]);
-      let [fac,stu] = await Promise.all([facP,stuP]);
-      if (myToken !== searchToken || !qEl.value.trim()) return;
+    try{ searchAbort?.abort(); }catch{}
+    const controller=new AbortController(); searchAbort=controller;
+    const myToken=++searchToken;
 
-      const frag = document.createDocumentFragment();
-      if (Array.isArray(fac) && fac.length) {
+    resultsEl.innerHTML='<div class="muted">Searching…</div>';
+
+    try{
+      const facP=fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:controller.signal}).then(r=>r.json());
+      const stuP=fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:controller.signal}).then(r=>r.json());
+      let [facRes,stuRes]=await Promise.allSettled([facP,stuP]);
+
+      if(myToken!==searchToken || !qEl.value.trim()) return;
+
+      facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
+      stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
+
+      const frag=document.createDocumentFragment();
+
+      // FACULTY first
+      if(facRes.length){
         frag.appendChild(sectionHeader('FACULTY'));
-        fac.slice(0,30).forEach(({ firstName, lastName, personId })=>{
-          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId })));
-        });
-      }
-      if (Array.isArray(stu) && stu.length) {
-        frag.appendChild(sectionHeader('STUDENTS'));
-        stu.slice(0,30).forEach(({ fullName, legacyId })=>{
-          frag.appendChild(resultRow(fullName, 'Sign IN', ()=>{
-            window.open(`${VC_BASE}${encodeURIComponent(String(legacyId))}`, '_blank', 'width=480,height=820,noopener,noreferrer');
-            showToast(`${fullName} — sent to Veracross`, 'ok'); chimeOK();
+        facRes.forEach(({firstName,lastName,personId})=>{
+          frag.appendChild(addRow(`${firstName} ${lastName}`, 'Submit', ()=>{
+            submitPinOrId({ personId }); // your existing helper
           }));
         });
       }
-      box.innerHTML = '';
-      if (!frag.children.length) box.innerHTML = '<div class="muted">No matches found.</div>'; else box.appendChild(frag);
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;
-      if (myToken === searchToken) $('#results').innerHTML = '<div class="muted">Search failed.</div>';
+
+      // STUDENTS next
+      if(stuRes.length){
+        frag.appendChild(sectionHeader('STUDENTS'));
+        stuRes.forEach(({fullName, legacyId})=>{
+          // Students can only IN — if OUT selected, show error instead of sending
+          frag.appendChild(addRow(fullName, 'Sign IN', ()=>{
+            if(!isInSelected()){
+              showToast('Students can only sign IN');
+              // play fail chime if you have one:
+              window.chimeFail && window.chimeFail();
+              return;
+            }
+            window.open(VC_BASE + encodeURIComponent(legacyId), '_blank', 'width=480,height=820,noopener,noreferrer');
+            showToast(fullName + ' — sent to Veracross');
+            // play ok chime:
+            window.chimeOk && window.chimeOk();
+          }));
+        });
+      }
+
+      resultsEl.innerHTML='';
+      if(!facRes.length && !stuRes.length){
+        resultsEl.innerHTML='<div class="muted">No matches found.</div>';
+      }else{
+        resultsEl.appendChild(frag);
+      }
+    }catch(e){
+      if(e && e.name==='AbortError') return;
+      resultsEl.innerHTML='<div class="muted">Search failed.</div>';
     }
   }
 
-  /* Init */
-  document.addEventListener('DOMContentLoaded', ()=>{
-    setAction('in');
-    showToast('Ready — scan card or search');
-    focusPin();
-  });
+  // ---- minimal submit helper (faculty) ----
+  async function submitPinOrId({ pin, personId }){
+    const action = isInSelected() ? 'in' : 'out';
+    const body = new URLSearchParams({ action, ...(pin?{pin}:{personId}) }).toString();
+    try{
+      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      const data = await res.json();
+      if(data.error){
+        showToast(data.error);
+        window.chimeFail && window.chimeFail();
+        return;
+      }
+      if(data.status==='student_in'){ // safety if faculty lookup missed
+        window.open(VC_BASE + encodeURIComponent(data.legacyId), '_blank', 'width=480,height=820,noopener,noreferrer');
+        showToast(`${data.student||'Student'} — sent to Veracross`);
+        window.chimeOk && window.chimeOk();
+        return;
+      }
+      const verb = data.status==='in' ? 'IN' : 'OUT';
+      showToast(`${data.firstName||''} ${data.lastName||''} signed ${verb} — ${data.time||''}`.trim());
+      window.chimeOk && window.chimeOk();
+    }catch{
+      showToast('Network error');
+      window.chimeFail && window.chimeFail();
+    }
+  }
 </script>
 </body>
 </html>
