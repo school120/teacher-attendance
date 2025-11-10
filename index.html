@@ -212,7 +212,7 @@
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
 
-    showToast(act === 'in' ? 'Signing IN…' : 'Signing OUT…', true);
+    //showToast(act === 'in' ? 'Signing IN…' : 'Signing OUT…', true);
 
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
     try{
