@@ -97,8 +97,9 @@
   /* ===== Config ===== */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
-  const COOLDOWN_MS = 250;
-  const DEDUPE_WINDOW_MS = 5000;
+  const COOLDOWN_MS = 600;        // protect API & quotas
+  const DEDUPE_WINDOW_MS = 5000;  // ignore repeat of same person/key for 5s
+  const WEDGE_QUIET_MS = 60;      // quick debounce for swipe/tap bursts
 
   /* ===== DOM ===== */
   const $ = s => document.querySelector(s);
@@ -168,6 +169,7 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2200);
   }
+  function showOrUpdateToast(text, ok=true){ showToast(text, ok); } // simple updater
 
   /* ===== Net badge ===== */
   function updateNet(){
@@ -202,31 +204,77 @@
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
   function canSendNow(key){ const now=Date.now(), last=lastSeenMap.get(key)||0; if (now-last < DEDUPE_WINDOW_MS) return false; lastSeenMap.set(key, now); return true; }
 
+  /* ===== Name cache for instant feedback ===== */
+  const NAME_CACHE_KEY = 'kiosk_name_cache_v1';
+  let NAME_CACHE = {};
+  try { NAME_CACHE = JSON.parse(localStorage.getItem(NAME_CACHE_KEY) || '{}'); } catch {}
+  function cacheNameForKey(key, name) {
+    try {
+      NAME_CACHE[key] = { name, ts: Date.now() };
+      const entries = Object.entries(NAME_CACHE).sort((a,b)=>b[1].ts - a[1].ts).slice(0,500);
+      NAME_CACHE = Object.fromEntries(entries);
+      localStorage.setItem(NAME_CACHE_KEY, JSON.stringify(NAME_CACHE));
+    } catch {}
+  }
+  function getCachedName(key) { return NAME_CACHE[key]?.name || ''; }
+
   /* ===== Helpers ===== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
+  function withTimeout(promise, ms=4000) {
+    let t; const timeout = new Promise((_, rej)=> t = setTimeout(()=>rej(new Error('timeout')), ms));
+    return Promise.race([promise.finally(()=>clearTimeout(t)), timeout]);
+  }
 
-  /* ===== Submit API (optimized toast timing) ===== */
+  /* ===== Request limiter to protect API during bursts ===== */
+  let inFlight = 0;
+  const MAX_INFLIGHT = 4; // allow up to 4 concurrent calls
+  async function limitedFetch(url, options){
+    if (inFlight >= MAX_INFLIGHT) {
+      showToast('System busy — please try again', false);
+      throw new Error('busy');
+    }
+    inFlight++;
+    try { return await fetch(url, options); }
+    finally { inFlight--; }
+  }
+
+  /* ===== Submit API (cooldown + optimistic toast) ===== */
   let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId }) {
+  async function submitPinOrId({ pin, personId, knownName='' }) {
+    const now = Date.now();
+    if (now - lastSubmitAt < COOLDOWN_MS) { return; } // client cooldown
+    lastSubmitAt = now; // set now so we space out calls
+
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
 
-    // No pre-request toast
+    // optimistic toast if we know a name
+    const optimisticName = knownName || getCachedName(key) || '';
+    if (optimisticName) {
+      const label = act === 'in' ? 'IN' : 'OUT';
+      showOrUpdateToast(`${optimisticName} — ${label} (verifying…)`, true);
+    }
+
     const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
+
     try{
-      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      const res = await withTimeout(
+        limitedFetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body }),
+        4000
+      );
       let data=null; try{ data = await res.json(); }catch{}
 
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
-        showToast(msg, false); chimeFail(); return;
+        showOrUpdateToast(msg, false); chimeFail(); return;
       }
 
       // Student flows (toast first, heavy work next tick)
       if (data.status === 'student_in' && data.legacyId) {
-        const legacy = data.legacyId; const name = data.student || 'Student';
-        showToast(`${name} — sent to Veracross`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
+        const legacy = data.legacyId; const name = data.student || optimisticName || 'Student';
+        cacheNameForKey(key, name);
+        showOrUpdateToast(`${name} — sent to Veracross`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
         setTimeout(()=>{
           const kioskURL = VC_BASE + encodeURIComponent(legacy);
           window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
@@ -234,31 +282,39 @@
         return;
       }
       if (data.status === 'student_out_recorded') {
-        const name = data.student || 'Student'; const t = data.time || '';
-        showToast(`${name} — signed OUT at ${t}`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
+        const name = data.student || optimisticName || 'Student';
+        cacheNameForKey(key, name);
+        const t = data.time || '';
+        showOrUpdateToast(`${name} — signed OUT at ${t}`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
       // Faculty success
       const { status, firstName, lastName, time } = data || {};
+      const finalName = `${firstName||''} ${lastName||''}`.trim();
+      if (finalName) cacheNameForKey(key, finalName);
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.', true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
-    }catch{
-      showToast('Network error', false); chimeFail();
+      const line = `${finalName || optimisticName || 'User'} signed ${verb} — ${time||''}`.trim();
+      showOrUpdateToast(line || 'Done.', true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
+    }catch(e){
+      if (e && e.message === 'busy') return; // already gave a toast
+      showOrUpdateToast(e && e.message === 'timeout' ? 'Timed out — try again' : 'Network error', false);
+      chimeFail();
     }finally{
-      lastSubmitAt = Date.now(); focusPinSafely();
+      // keep focus + allow next scan after cooldown naturally elapses
+      focusPinSafely();
     }
   }
 
   /* ===== Card input auto-submit ===== */
-  let wedgeTimer = null; const WEDGE_QUIET_MS = 60; // was 100
+  let wedgeTimer = null;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
       const d = digitsOnly(pinEl.value); if (d.length < 10) return;
-      const ten = d.slice(-10); if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten }); pinEl.value = ''; focusPinSafely();
+      const ten = d.slice(-10);
+      submitPinOrId({ pin: ten });
+      pinEl.value = ''; focusPinSafely();
     }, WEDGE_QUIET_MS);
   });
 
@@ -334,7 +390,10 @@
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
         facSorted.forEach(({ firstName, lastName, personId })=>{
-          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId })));
+          const label = `${firstName} ${lastName}`.trim();
+          frag.appendChild(resultRow(label, 'Submit', ()=> 
+            submitPinOrId({ personId, knownName: label })
+          ));
         });
       }
 
@@ -348,16 +407,16 @@
             ()=>{
               const isOut = btnOut.classList.contains('active');
               if (!isOut) {
-                // IN → Veracross handoff (toast first)
-                showToast(`${label} — sent to Veracross`, true); chimeOk();
+                // IN → Veracross handoff: toast first, open next tick
+                showOrUpdateToast(`${label} — sent to Veracross`, true); chimeOk();
                 setTimeout(()=>{
                   const kioskURL = VC_BASE + encodeURIComponent(legacyId);
                   window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
                 }, 0);
                 return;
               }
-              // OUT → send directly to backend using legacyId
-              submitPinOrId({ pin: String(legacyId) });
+              // OUT → backend using legacyId; pass knownName for instant feedback
+              submitPinOrId({ pin: String(legacyId), knownName: label });
             }
           ));
         });
