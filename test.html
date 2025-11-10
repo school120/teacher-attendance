@@ -239,72 +239,81 @@
   }
 
   /* ===== Submit API (cooldown + optimistic toast) ===== */
-  let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId, knownName='' }) {
-    const now = Date.now();
-    if (now - lastSubmitAt < COOLDOWN_MS) { return; } // client cooldown
-    lastSubmitAt = now; // set now so we space out calls
+let lastSubmitAt = 0;
+async function submitPinOrId({ pin, personId, knownName='' }) {
+  const now = Date.now();
+  if (now - lastSubmitAt < COOLDOWN_MS) return; // short cooldown to protect API
+  lastSubmitAt = now;
 
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
+  const act = btnIn.classList.contains('active') ? 'in' : 'out';
+  const key = makeKey({ pin, personId });
+  if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
 
-    // optimistic toast if we know a name
-    const optimisticName = knownName || getCachedName(key) || '';
-    if (optimisticName) {
-      const label = act === 'in' ? 'IN' : 'OUT';
-      showOrUpdateToast(`${optimisticName} — ${label} (verifying…)`, true);
-    }
+  const body = new URLSearchParams({ action: act, ...(pin ? { pin } : { personId }) }).toString();
 
-    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
+  try {
+    const res = await withTimeout(
+      limitedFetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      }),
+      4000
+    );
 
-    try{
-      const res = await withTimeout(
-        limitedFetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body }),
-        4000
-      );
-      let data=null; try{ data = await res.json(); }catch{}
+    let data = null;
+    try { data = await res.json(); } catch {}
 
-      if (!res.ok || (data && data.error)) {
-        const msg = (data && data.error) || ('Error ' + res.status);
-        showOrUpdateToast(msg, false); chimeFail(); return;
-      }
-
-      // Student flows (toast first, heavy work next tick)
-      if (data.status === 'student_in' && data.legacyId) {
-        const legacy = data.legacyId; const name = data.student || optimisticName || 'Student';
-        cacheNameForKey(key, name);
-        showOrUpdateToast(`${name} — sent to Veracross`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
-        setTimeout(()=>{
-          const kioskURL = VC_BASE + encodeURIComponent(legacy);
-          window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        }, 0);
-        return;
-      }
-      if (data.status === 'student_out_recorded') {
-        const name = data.student || optimisticName || 'Student';
-        cacheNameForKey(key, name);
-        const t = data.time || '';
-        showOrUpdateToast(`${name} — signed OUT at ${t}`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
-        return;
-      }
-
-      // Faculty success
-      const { status, firstName, lastName, time } = data || {};
-      const finalName = `${firstName||''} ${lastName||''}`.trim();
-      if (finalName) cacheNameForKey(key, finalName);
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      const line = `${finalName || optimisticName || 'User'} signed ${verb} — ${time||''}`.trim();
-      showOrUpdateToast(line || 'Done.', true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
-    }catch(e){
-      if (e && e.message === 'busy') return; // already gave a toast
-      showOrUpdateToast(e && e.message === 'timeout' ? 'Timed out — try again' : 'Network error', false);
+    if (!res.ok || (data && data.error)) {
+      const msg = (data && data.error) || ('Error ' + res.status);
+      showToast(msg, false);
       chimeFail();
-    }finally{
-      // keep focus + allow next scan after cooldown naturally elapses
-      focusPinSafely();
+      return;
     }
+
+    // === Student IN ===
+    if (data.status === 'student_in' && data.legacyId) {
+      const legacy = data.legacyId;
+      const name = data.student || knownName || 'Student';
+      cacheNameForKey(key, name);
+      showToast(`${name} — sent to Veracross`, true);
+      chimeOk();
+      try { navigator.vibrate?.(30); } catch {}
+      setTimeout(() => {
+        const kioskURL = VC_BASE + encodeURIComponent(legacy);
+        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+      }, 0);
+      return;
+    }
+
+    // === Student OUT ===
+    if (data.status === 'student_out_recorded') {
+      const name = data.student || knownName || 'Student';
+      cacheNameForKey(key, name);
+      const t = data.time || '';
+      showToast(`${name} — signed OUT at ${t}`, true);
+      chimeOk();
+      try { navigator.vibrate?.(30); } catch {}
+      return;
+    }
+
+    // === Faculty ===
+    const { status, firstName, lastName, time } = data || {};
+    const finalName = `${firstName || ''} ${lastName || ''}`.trim();
+    if (finalName) cacheNameForKey(key, finalName);
+    const verb = status === 'in' ? 'IN' : status === 'out' ? 'OUT' : (status || '').toUpperCase();
+    const line = `${finalName || knownName || 'User'} signed ${verb} — ${time || ''}`.trim();
+    showToast(line || 'Done.', true);
+    chimeOk();
+    try { navigator.vibrate?.(30); } catch {}
+  } catch (e) {
+    if (e && e.message === 'busy') return; // already notified
+    showToast(e && e.message === 'timeout' ? 'Timed out — try again' : 'Network error', false);
+    chimeFail();
+  } finally {
+    focusPinSafely();
   }
+}
 
   /* ===== Card input auto-submit ===== */
   let wedgeTimer = null;
