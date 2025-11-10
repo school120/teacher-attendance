@@ -2,10 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Guard Booth Attendance Kiosk</title>
-<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students sent to Veracross or logged on OUT." />
+<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students IN → Veracross, OUT → logged to separate sheet." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -23,75 +22,40 @@
   html { overflow-x:hidden; }
   body{ min-height:100svh; overscroll-behavior-y:contain; overflow:auto; -webkit-overflow-scrolling:touch; }
 
-  .wrap{
-    margin:auto; width:min(1100px,96%); background:var(--card);
-    border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative;
-    min-height:100svh; padding:28px; overflow:visible; overflow-x:clip;
-  }
+  .wrap{ margin:auto; width:min(1100px,96%); background:var(--card); border-radius:var(--radius-xl); box-shadow:var(--shadow-1); position:relative; min-height:100svh; padding:28px; overflow:visible; overflow-x:clip; }
 
-  /* Top */
   .top-center { text-align:center; margin-bottom:8px; }
   h1{ margin:0 0 6px; font-weight:900; font-size:30px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
 
-  /* Badges + theme */
   .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
   .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
-  /* Toast */
-  .toast{
-    position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
-    opacity:0; background:var(--card); border:1px solid var(--border);
-    box-shadow:0 8px 30px rgba(0,0,0,.12);
-    border-radius:14px; padding:18px 22px; font-weight:900; font-size:20px;
-    transition:all .2s ease; pointer-events:none; z-index:50; text-align:center;
-  }
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12); border-radius:14px; padding:18px 22px; font-weight:900; font-size:20px; transition:all .2s ease; pointer-events:none; z-index:50; text-align:center; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
   .toast.ok{ color:var(--ok); }
   .toast.err{ color:var(--err); }
 
-  /* IN/OUT */
   .segment{ display:flex; gap:14px; width:100%; margin:16px 0 20px; }
-  .segment.segment-xl button{
-    flex:1 1 0; border:2px solid #d1d5db; border-radius:16px;
-    font-weight:900; font-size:42px; line-height:1.1; min-height:96px;
-    padding:22px 24px; cursor:pointer; color:#111;
-    background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-    transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05);
-  }
-  .segment.segment-xl button.active#actIn{
-    background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25);
-  }
-  .segment.segment-xl button.active#actOut{
-    background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25);
-  }
+  .segment.segment-xl button{ flex:1 1 0; border:2px solid #d1d5db; border-radius:16px; font-weight:900; font-size:42px; line-height:1.1; min-height:96px; padding:22px 24px; cursor:pointer; color:#111; background:linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%); transition:transform .06s ease, box-shadow .2s ease, background .2s ease; box-shadow:0 4px 10px rgba(0,0,0,.05); }
+  .segment.segment-xl button.active#actIn{ background:linear-gradient(180deg, #16a34a 0%, #15803d 100%); color:#fff; border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.25); }
+  .segment.segment-xl button.active#actOut{ background:linear-gradient(180deg, #dc2626 0%, #991b1b 100%); color:#fff; border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.25); }
 
-  /* Grid + cards */
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
   .card{ border:1px solid var(--border); border-radius:14px; background:var(--card); padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden; background-clip: padding-box; }
   .card h2{ margin:0 0 12px; font-size:20px; text-align:center; }
 
-  /* Inputs */
-  input[type=text], input[type=password], input[type=search]{
-    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text);
-  }
-  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{
-    border-color:#3b82f6; box-shadow:var(--ring); outline:none;
-  }
+  input[type=text], input[type=password], input[type=search]{ width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); }
+  input[type=text]:focus-visible, input[type=password]:focus-visible, input[type=search]:focus-visible{ border-color:#3b82f6; box-shadow:var(--ring); outline:none; }
 
-  /* Results */
   .list{ display:grid; gap:12px; max-height:460px; overflow:auto; margin-top:14px; background:var(--card); background-clip: padding-box; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex:1 1 auto; padding-right:16px; scrollbar-gutter: stable both-edges; }
   .row{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
   .name{ min-width:0; font-weight:800; font-size:20px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .actionBtn{ --c: var(--blue); background:linear-gradient(180deg, var(--c) 0%, color-mix(in srgb, var(--c) 80%, #000 20%) 100%); color:#fff; font-size:20px; padding:16px 20px; border:2px solid var(--c); border-radius:14px; font-weight:900; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,.12); justify-self:end; }
 
-  /* Section headers (centered) */
-  .sectionHdr{
-    text-align:center; font-weight:900; font-size:14px; letter-spacing:.12em;
-    color:var(--muted); padding:10px 0 2px;
-  }
+  .sectionHdr{ text-align:center; font-weight:900; font-size:14px; letter-spacing:.12em; color:var(--muted); padding:10px 0 2px; }
 
   @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
 </style>
@@ -114,19 +78,14 @@
     </div>
 
     <div class="grid">
-      <!-- LEFT: Card -->
       <div class="card">
         <h2>Cougar Card</h2>
-        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="Tap or swipe card…" aria-label="Cougar card" />
+        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code" placeholder="Tap or swipe card…" aria-label="Cougar card" />
       </div>
 
-      <!-- RIGHT: Lookup -->
       <div class="card">
         <h2>Lookup by Name</h2>
-        <input id="q" type="search" inputmode="search" enterkeyhint="search"
-               autocapitalize="words" autocorrect="off" spellcheck="false"
-               placeholder="Search faculty or students" aria-label="Search name" />
+        <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="Search faculty or students" aria-label="Search name" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
@@ -139,6 +98,7 @@
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 250;
+  const DEDUPE_WINDOW_MS = 5000;
 
   /* ===== DOM ===== */
   const $ = s => document.querySelector(s);
@@ -160,7 +120,6 @@
     const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
     setTheme(prefersDark ? 'dark' : 'light');
   }
-
   themeBtn.addEventListener('click', () => {
     setTheme(document.body.classList.contains('dark') ? 'light' : 'dark');
     themeBtn.blur();
@@ -196,19 +155,8 @@
     (distOn ? o.connect(gn).connect(dist).connect(master) : o.connect(gn).connect(master));
     o.start(t); o.stop(t+dur+0.02);
   }
-  function chimeOk(){
-    initAudio(); const t0=audioCtx.currentTime+0.01;
-    tone({f:659.25, dur:0.14, t:t0,      g:1.0});
-    tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0});
-    tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0});
-    tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0});
-  }
-  function chimeFail(){
-    initAudio(); const t0=audioCtx.currentTime+0.01;
-    tone({f:440.00, dur:0.16, t:t0,      type:'square', g:1.0, distOn:true});
-    tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true});
-    tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9,  distOn:true});
-  }
+  function chimeOk(){ initAudio(); const t0=audioCtx.currentTime+0.01; tone({f:659.25, dur:0.14, t:t0, g:1.0}); tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0}); tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0}); tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0}); }
+  function chimeFail(){ initAudio(); const t0=audioCtx.currentTime+0.01; tone({f:440.00, dur:0.16, t:t0, type:'square', g:1.0, distOn:true}); tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true}); tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9, distOn:true}); }
 
   /* ===== Toast ===== */
   let toastTimer=null;
@@ -252,22 +200,16 @@
   /* ===== De-dupe ===== */
   const lastSeenMap = new Map();
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
-  function canSendNow(key){
-    const now=Date.now(), last=lastSeenMap.get(key)||0;
-    if (now-last < 5000) return false;
-    lastSeenMap.set(key, now);
-    return true;
-  }
+  function canSendNow(key){ const now=Date.now(), last=lastSeenMap.get(key)||0; if (now-last < DEDUPE_WINDOW_MS) return false; lastSeenMap.set(key, now); return true; }
 
   /* ===== Helpers ===== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
 
-  /* ===== Submit API (faculty in/out + student flow) ===== */
+  /* ===== Submit API ===== */
   let lastSubmitAt = 0;
   async function submitPinOrId({ pin, personId }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
-
     if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
 
     showToast(act === 'in' ? 'Signing IN…' : 'Signing OUT…', true);
@@ -281,25 +223,17 @@
         showToast(msg, false); chimeFail(); return;
       }
 
-      // Student IN → open Veracross
+      // Student flows
       if (data.status === 'student_in' && data.legacyId) {
-        const legacy = data.legacyId;
-        const name = data.student || 'Student';
+        const legacy = data.legacyId; const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        showToast(`${name} — sent to Veracross`, true);
-        chimeOk();
-        try{ navigator.vibrate?.(30); }catch{}
+        showToast(`${name} — sent to Veracross`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
         return;
       }
-
-      // Student OUT recorded by backend
       if (data.status === 'student_out_recorded') {
-        const name = data.student || 'Student';
-        const t = data.time || '';
-        showToast(`${name} — signed OUT at ${t}`, true);
-        chimeOk();
-        try{ navigator.vibrate?.(30); }catch{}
+        const name = data.student || 'Student'; const t = data.time || '';
+        showToast(`${name} — signed OUT at ${t}`, true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
@@ -307,31 +241,22 @@
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
-      showToast(line || 'Done.', true);
-      chimeOk();
-      try{ navigator.vibrate?.(30); }catch{}
+      showToast(line || 'Done.', true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
     }catch{
-      showToast('Network error', false);
-      chimeFail();
+      showToast('Network error', false); chimeFail();
     }finally{
-      lastSubmitAt = Date.now();
-      focusPinSafely();
+      lastSubmitAt = Date.now(); focusPinSafely();
     }
   }
 
   /* ===== Card input auto-submit ===== */
-  let wedgeTimer = null;
-  const WEDGE_QUIET_MS = 100;
+  let wedgeTimer = null; const WEDGE_QUIET_MS = 100;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
-      const d = digitsOnly(pinEl.value);
-      if (d.length < 10) return;
-      const ten = d.slice(-10);
-      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten });
-      pinEl.value = '';
-      focusPinSafely();
+      const d = digitsOnly(pinEl.value); if (d.length < 10) return;
+      const ten = d.slice(-10); if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
+      submitPinOrId({ pin: ten }); pinEl.value = ''; focusPinSafely();
     }, WEDGE_QUIET_MS);
   });
 
@@ -340,12 +265,8 @@
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
-    const q = qEl.value.trim();
-    const box = $('#results');
-    if (!q) {
-      try { searchAbort?.abort(); } catch(_){ }
-      searchAbort = null; searchToken++; box.innerHTML = ''; return;
-    }
+    const q = qEl.value.trim(); const box = $('#results');
+    if (!q) { try { searchAbort?.abort(); } catch(_){}; searchAbort = null; searchToken++; box.innerHTML = ''; return; }
     searchTimer = setTimeout(()=>doSearch(q), 150);
   });
 
@@ -353,15 +274,12 @@
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (!q) { try { searchAbort?.abort(); } catch(_){ };
-        searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
+      if (!q) { try { searchAbort?.abort(); } catch(_){ }; searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
       doSearch(q); e.preventDefault();
     }
   });
 
-  function sectionHeader(text){
-    const div = document.createElement('div'); div.className='sectionHdr'; div.textContent = text; return div;
-  }
+  function sectionHeader(text){ const div = document.createElement('div'); div.className='sectionHdr'; div.textContent = text; return div; }
   function resultRow(label, btnText, onClick){
     const row = document.createElement('div'); row.className='row';
     const name = document.createElement('div'); name.className='name'; name.textContent = label;
@@ -372,33 +290,16 @@
   }
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
   function scoreName(q, first, last, fullLF){
-    const nq = norm(q);
-    const nf = norm(first), nl = norm(last);
-    const nfl = nf + ' ' + nl;
-    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
-    if (nfl === nq || nlf === nq) return 1000;
-    if (nf === nq || nl === nq) return 900;
-    let s = 0;
-    if (nf.startsWith(nq)) s += 120;
-    if (nl.startsWith(nq)) s += 110;
-    if (nfl.startsWith(nq)) s += 100;
-    if (nlf.startsWith(nq)) s += 95;
-    if (nf.includes(nq)) s += 30;
-    if (nl.includes(nq)) s += 28;
-    if (nfl.includes(nq)) s += 26;
-    if (nlf.includes(nq)) s += 24;
-    return s;
+    const nq = norm(q); const nf = norm(first), nl = norm(last);
+    const nfl = nf + ' ' + nl; const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
+    if (nfl === nq || nlf === nq) return 1000; if (nf === nq || nl === nq) return 900;
+    let s = 0; if (nf.startsWith(nq)) s += 120; if (nl.startsWith(nq)) s += 110; if (nfl.startsWith(nq)) s += 100; if (nlf.startsWith(nq)) s += 95; if (nf.includes(nq)) s += 30; if (nl.includes(nq)) s += 28; if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24; return s;
   }
-  function flipLF(full){
-    const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
-    return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
-  }
+  function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
 
   async function doSearch(q){
     try { searchAbort?.abort(); } catch(_) {}
-    searchAbort = new AbortController();
-    const myToken = ++searchToken; const sig = searchAbort.signal;
-
+    searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
     const box = $('#results'); box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
 
     try{
@@ -409,23 +310,19 @@
       if (myToken !== searchToken || !qEl.value.trim()) return;
 
       facRes = facRes.status==='fulfilled' && Array.isArray(facRes.value) ? facRes.value : [];
-      stuRes = stuRes.status==='fulfilled' && Array.isArray(stuRes.value) ? stuRes.value : [];
+      stuRes = (function(v){
+        if (v.status !== 'fulfilled') return [];
+        if (Array.isArray(v.value)) return v.value;
+        if (v.value && v.value.error) { box.innerHTML = `<div class=\"muted\" style=\"text-align:center;\">${v.value.error}</div>`; return []; }
+        return [];
+      })(stuRes);
 
-      // Faculty dedupe + sort
       const facMap = new Map();
-      facRes.forEach(r=>{
-        const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||'');
-        const cur = facMap.get(pid); if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
-      });
+      facRes.forEach(r=>{ const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||''); const cur = facMap.get(pid); if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s}); });
       const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
-      // Student dedupe + sort
       const stuMap = new Map();
-      stuRes.forEach(r=>{
-        const lf = String(r.fullName||''); const flip = flipLF(lf);
-        const legacy = String(r.legacyId||''); const s = scoreName(q, flip.first||'', flip.last||'', lf);
-        const cur = stuMap.get(legacy); if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
-      });
+      stuRes.forEach(r=>{ const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||''); const s = scoreName(q, flip.first||'', flip.last||'', lf); const cur = stuMap.get(legacy); if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s}); });
       const stuSorted = Array.from(stuMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
       if (myToken !== searchToken || !qEl.value.trim()) return;
@@ -445,15 +342,14 @@
           const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
           frag.appendChild(resultRow(
             label,
-            btnOut.classList.contains('active') ? 'Sign OUT' : 'Sign IN',
+            'Submit',
             ()=>{
               const isOut = btnOut.classList.contains('active');
               if (!isOut) {
                 // IN → Veracross handoff
                 const kioskURL = VC_BASE + encodeURIComponent(legacyId);
                 window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-                showToast(`${label} — sent to Veracross`, true);
-                chimeOk();
+                showToast(`${label} — sent to Veracross`, true); chimeOk();
                 return;
               }
               // OUT → send directly to backend using legacyId
