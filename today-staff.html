@@ -2,35 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Today’s Staff Live View</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Today’s Staff — Live</title>
 <meta name="color-scheme" content="light dark">
-<link rel="preconnect" href="https://script.google.com" crossorigin>
 <style>
-  :root {
-    --bg: #0b1020; --card: #111827; --text: #f3f4f6; --muted: #94a3b8;
-    --border: #334155; --in: #16a34a; --out: #dc2626;
-  }
+  :root{ --bg:#0b1020; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --border:#334155; --in:#16a34a; --out:#dc2626; }
   @media (prefers-color-scheme: light){
     :root{ --bg:#f6f7fb; --card:#fff; --text:#0f172a; --muted:#667085; --border:#e5e7eb; }
   }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-       background:var(--bg);color:var(--text);padding:20px;overflow-x:hidden;}
-  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
-  h1{font-size:28px;font-weight:900;}
-  .muted{color:var(--muted);}
-  .board{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;}
-  table{width:100%;border-collapse:collapse;}
-  th,td{padding:10px 12px;text-align:left;}
-  th{font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.08em;}
-  tr{border-bottom:1px solid var(--border);}
-  .name{font-weight:800;}
-  .status{font-weight:900;}
-  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;}
-  .dot.in{background:var(--in);}
-  .dot.out{background:var(--out);}
-  footer{margin-top:10px;font-size:12px;color:var(--muted);}
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+  h1{ font-size:28px; font-weight:900; letter-spacing:.2px; }
+  .muted{ color:var(--muted); }
+  .board{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; }
+  .stats{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+  .pill{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  table{ width:100%; border-collapse:separate; border-spacing:0 8px; }
+  thead th{ text-align:left; font-size:12px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; padding:0 10px; }
+  tbody tr{ background:var(--card); border:1px solid var(--border); }
+  tbody td{ padding:12px 10px; }
+  tbody tr td:first-child{ border-top-left-radius:12px; border-bottom-left-radius:12px; }
+  tbody tr td:last-child{ border-top-right-radius:12px; border-bottom-right-radius:12px; }
+  .name{ font-weight:800; }
+  .status{ font-weight:900; display:flex; align-items:center; gap:8px; }
+  .dot{ width:10px; height:10px; border-radius:50%; }
+  .in{ background:var(--in); }
+  .out{ background:var(--out); }
+  footer{ margin-top:10px; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
 </style>
 </head>
 <body>
@@ -40,54 +39,148 @@
   </header>
 
   <div class="board">
-    <table>
-      <thead>
-        <tr><th>Name</th><th>Status</th><th>Time In</th><th>Time Out</th></tr>
-      </thead>
-      <tbody id="body">
-        <tr><td colspan="4" class="muted">Loading data…</td></tr>
-      </tbody>
-    </table>
+    <div class="stats">
+      <span class="pill">IN: <b id="statIn">0</b></span>
+      <span class="pill">OUT: <b id="statOut">0</b></span>
+      <span class="pill">Total rows: <b id="statTotal">0</b></span>
+    </div>
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Status</th><th>Time In</th><th>Time Out</th></tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="4" class="muted" style="padding:18px 10px;">Waiting for data…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <footer>
-    Source: Teacher-YYYY-MM-DD sheet • Auto-refreshing every 5s
+    <span>Source: Teacher-YYYY-MM-DD (Google Sheets)</span>
+    <span id="err" class="muted"></span>
   </footer>
 
 <script>
-const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+/*
+  Live view without backend changes:
+  - Reads the public Sheet via Google Visualization (gviz) endpoint.
+  - Requires the spreadsheet to be viewable or "Published to the web".
+*/
+
+// === Config: your sheet ID from backend constants ===
+const SPREADSHEET_ID = '1MqINDS1CuhcOSbQjeDqX91oEXSewGx3QHgD3NXJikIk';
 const REFRESH_MS = 5000;
-const bodyEl = document.getElementById('body');
-const updEl = document.getElementById('updated');
 
-function fmtTime(t){ return (t||'').trim() || '—'; }
-function statusDot(s){ return `<span class="dot ${s}"></span>${s.toUpperCase()}`; }
+// === DOM
+const bodyEl = document.getElementById('tbody');
+const updEl  = document.getElementById('updated');
+const errEl  = document.getElementById('err');
+const statIn = document.getElementById('statIn');
+const statOut= document.getElementById('statOut');
+const statTotal= document.getElementById('statTotal');
 
-async function loadData(){
+// Build today's tab name in America/New_York
+function todayName(){
+  const now = new Date();
+  // If the display machine is not in ET, you can adjust here if needed.
+  const y = now.getFullYear();
+  const m = String(now.getMonth()+1).padStart(2,'0');
+  const d = String(now.getDate()).padStart(2,'0');
+  return `Teacher-${y}-${m}-${d}`;
+}
+
+// gviz URL for the sheet by name
+function gvizUrl(){
+  const sheet = encodeURIComponent(todayName());
+  // out:json returns JS-wrapped JSON; we’ll parse the payload.
+  return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheet}&nocache=${Date.now()}`;
+}
+
+// Parse gviz JSON (strip wrapper)
+function parseGviz(text){
+  // response looks like: google.visualization.Query.setResponse({...});
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1) throw new Error('Bad gviz payload');
+  return JSON.parse(text.slice(start, end+1));
+}
+
+// Extract rows ([First Name, Last Name, Time In, Time Out])
+function mapRows(gv){
+  const table = gv.table;
+  if (!table || !Array.isArray(table.rows)) return [];
+  const rows = [];
+  for (const r of table.rows){
+    const c = (r.c || []).map(x => (x && x.v) || '');
+    const fn = String(c[0]||'').trim();
+    const ln = String(c[1]||'').trim();
+    const tin= String(c[2]||'').trim();
+    const tout=String(c[3]||'').trim();
+    if (!fn && !ln && !tin && !tout) continue; // skip blanks
+    const status = (tin && !tout) ? 'in' : 'out';
+    rows.push({ firstName: fn, lastName: ln, timeIn: tin, timeOut: tout, status });
+  }
+  return rows;
+}
+
+function render(rows){
+  // Latest state per person (sheet usually already pairs, but dedupe just in case)
+  const byKey = new Map();
+  for (const r of rows){
+    const key = (r.lastName.toLowerCase() + ',' + r.firstName.toLowerCase()).trim();
+    byKey.set(key, r); // last wins
+  }
+  const deduped = Array.from(byKey.values());
+
+  const inCount  = deduped.filter(r=>r.status==='in').length;
+  const outCount = deduped.length - inCount;
+  statIn.textContent = inCount;
+  statOut.textContent = outCount;
+  statTotal.textContent = deduped.length;
+
+  // Sort: IN first, then Last, First
+  deduped.sort((a,b)=>{
+    if (a.status !== b.status) return a.status==='in' ? -1 : 1;
+    const la = a.lastName.toLowerCase(), lb = b.lastName.toLowerCase();
+    if (la < lb) return -1; if (la > lb) return 1;
+    const fa = a.firstName.toLowerCase(), fb = b.firstName.toLowerCase();
+    return fa < fb ? -1 : fa > fb ? 1 : 0;
+  });
+
+  if (!deduped.length){
+    bodyEl.innerHTML = `<tr><td colspan="4" class="muted" style="padding:18px 10px;">No rows yet for ${todayName()}.</td></tr>`;
+    return;
+  }
+  bodyEl.innerHTML = deduped.map(r=>`
+    <tr>
+      <td class="name">${r.firstName} ${r.lastName}</td>
+      <td class="status"><span class="dot ${r.status}"></span>${r.status.toUpperCase()}</td>
+      <td>${r.timeIn || '—'}</td>
+      <td>${r.timeOut || '—'}</td>
+    </tr>
+  `).join('');
+}
+
+async function tick(){
   try{
-    const res = await fetch(`${ENDPOINT}?action=today&nocache=${Date.now()}`, {cache:'no-store'});
-    const data = await res.json();
+    errEl.textContent = '';
+    const res = await fetch(gvizUrl(), { cache:'no-store' });
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const txt = await res.text();
+    const gv = parseGviz(txt);
+    const rows = mapRows(gv);
+    render(rows);
     updEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
-    const rows = (data.rows||[]).sort((a,b)=>{
-      if(a.status!==b.status) return a.status==='in' ? -1 : 1;
-      return a.lastName.localeCompare(b.lastName);
-    });
-    if(!rows.length){ bodyEl.innerHTML = `<tr><td colspan="4" class="muted">No staff signed in yet.</td></tr>`; return; }
-    bodyEl.innerHTML = rows.map(r=>`
-      <tr>
-        <td class="name">${r.firstName} ${r.lastName}</td>
-        <td class="status">${statusDot(r.status)}</td>
-        <td>${fmtTime(r.timeIn)}</td>
-        <td>${fmtTime(r.timeOut)}</td>
-      </tr>`).join('');
   }catch(e){
-    bodyEl.innerHTML = `<tr><td colspan="4" class="muted">Network error, retrying…</td></tr>`;
+    errEl.textContent = 'Could not load sheet (check sharing / publish to web).';
+    // keep old view
   }finally{
-    setTimeout(loadData, REFRESH_MS);
+    setTimeout(tick, REFRESH_MS);
   }
 }
 
-loadData();
+tick();
 </script>
 </body>
 </html>
