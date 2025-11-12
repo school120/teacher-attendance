@@ -205,25 +205,48 @@
   /* ===== Helpers ===== */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
 
+  /* ===== Client error queue (for offline/network issues) ===== */
+  function queueClientError(msg, extra={}){
+    const payload = { action:'client_error', note:String(msg||'network error'), ...extra };
+    try{
+      const q = JSON.parse(localStorage.getItem('client_error_queue')||'[]');
+      q.push(payload);
+      localStorage.setItem('client_error_queue', JSON.stringify(q));
+    }catch(_){}
+  }
+  async function flushClientErrors(){
+    let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
+    if (!q.length) return;
+    const left=[];
+    for (const p of q){
+      try{
+        await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams(p).toString() });
+      }catch(_){ left.push(p); }
+    }
+    try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
+  }
+  window.addEventListener('online', flushClientErrors);
+
   /* ===== Submit API ===== */
   let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId }) {
+  async function submitPinOrId({ pin, personId, src='' }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { showToast('Duplicate scan ignored (5s)', false); return; }
 
-    //showToast(act === 'in' ? 'Signing IN…' : 'Signing OUT…', true);
-
-    const body = new URLSearchParams({ action: act, ...(pin?{pin}:{personId}) }).toString();
+    const body = new URLSearchParams({ action: act, src: src || (pin ? 'card' : 'name'), ...(pin?{pin}:{personId}) }).toString();
     try{
       const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
-        showToast(msg, false); chimeFail(); return;
+        showToast(msg, false); chimeFail();
+        // queue client error details for later
+        queueClientError(msg, { a:act, pin:pin||'', personId:personId||'', src: src||'' });
+        return;
       }
 
-      // Student flows
+      // Student flows (backend logs first)
       if (data.status === 'student_in' && data.legacyId) {
         const legacy = data.legacyId; const name = data.student || 'Student';
         const kioskURL = VC_BASE + encodeURIComponent(legacy);
@@ -242,8 +265,10 @@
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
       showToast(line || 'Done.', true); chimeOk(); try{ navigator.vibrate?.(30); }catch{}
-    }catch{
+    }catch(err){
       showToast('Network error', false); chimeFail();
+      // stash for later upload
+      queueClientError('fetch failed', { a:act, pin:pin||'', personId:personId||'', src: src||'' });
     }finally{
       lastSubmitAt = Date.now(); focusPinSafely();
     }
@@ -256,7 +281,7 @@
     wedgeTimer = setTimeout(()=>{
       const d = digitsOnly(pinEl.value); if (d.length < 10) return;
       const ten = d.slice(-10); if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten }); pinEl.value = ''; focusPinSafely();
+      submitPinOrId({ pin: ten, src: 'card' }); pinEl.value = ''; focusPinSafely();
     }, WEDGE_QUIET_MS);
   });
 
@@ -272,7 +297,7 @@
 
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
-       clearTimeout(searchTimer);
+      clearTimeout(searchTimer);
       const q = qEl.value.trim();
       if (!q) { try { searchAbort?.abort(); } catch(_){ }; searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
       doSearch(q); e.preventDefault();
@@ -313,7 +338,7 @@
       stuRes = (function(v){
         if (v.status !== 'fulfilled') return [];
         if (Array.isArray(v.value)) return v.value;
-        if (v.value && v.value.error) { box.innerHTML = `<div class=\"muted\" style=\"text-align:center;\">${v.value.error}</div>`; return []; }
+        if (v.value && v.value.error) { box.innerHTML = `<div class="muted" style="text-align:center;">${v.value.error}</div>`; return []; }
         return [];
       })(stuRes);
 
@@ -332,7 +357,7 @@
       if (facSorted.length) {
         frag.appendChild(sectionHeader('FACULTY'));
         facSorted.forEach(({ firstName, lastName, personId })=>{
-          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId })));
+          frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId, src:'name' })));
         });
       }
 
@@ -343,11 +368,7 @@
           frag.appendChild(resultRow(
             label,
             'Submit',
-            ()=>{
-              // Always go through backend first — logs IN or OUT in sheets.
-              // Backend tells us to open Veracross if it's a student IN.
-              submitPinOrId({ pin: String(legacyId) });
-            }
+            ()=> submitPinOrId({ pin: String(legacyId), src:'name' }) // always log via backend; it will open VC on student_in
           ));
         });
       }
@@ -369,6 +390,8 @@
     initTheme();
     setAction('in');
     setTimeout(()=>{ pinEl.focus(); }, 0);
+    // try to flush any queued client errors from offline periods
+    flushClientErrors().catch(()=>{});
   });
 </script>
 </body>
