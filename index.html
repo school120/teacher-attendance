@@ -12,7 +12,7 @@
     ⚡ Focused goals:
     - Snappy UI (less layout thrash, fewer timers, passive listeners)
     - Clean structure (tiny modules in a single file)
-    - Solid offline behavior (queue + flush)
+    - Offline-friendly logging (queue + flush)
     - Accessibility + kiosk ergonomics
   */
 
@@ -63,7 +63,10 @@
 
   .sectionHdr{ text-align:center; font-weight:900; font-size:14px; letter-spacing:.12em; color:var(--muted); padding:10px 0 2px; }
 
-  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } .segment.segment-xl button{ font-size:36px; min-height:88px; } }
+  @media (max-width:900px){
+    .grid{ grid-template-columns:1fr; }
+    .segment.segment-xl button{ font-size:36px; min-height:88px; }
+  }
 </style>
 </head>
 <body>
@@ -216,7 +219,12 @@
   /* ================= De-dupe ================= */
   const lastSeenMap = new Map();
   function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
-  function canSendNow(key){ const now=Date.now(), last=lastSeenMap.get(key)||0; if (now-last < DEDUPE_WINDOW_MS) return false; lastSeenMap.set(key, now); return true; }
+  function canSendNow(key){
+    const now=Date.now(), last=lastSeenMap.get(key)||0;
+    if (now-last < DEDUPE_WINDOW_MS) return false;
+    lastSeenMap.set(key, now);
+    return true;
+  }
 
   /* ================= Client error queue ================= */
   function queueClientError(msg, extra={}){
@@ -233,12 +241,19 @@
     const left=[];
     for (const p of q){
       try{
-        await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams(p).toString() });
+        await fetch(ENDPOINT, {
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams(p).toString()
+        });
       }catch(_){ left.push(p); }
     }
     try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
   }
-  window.addEventListener('online', () => requestIdleCallback?.(flushClientErrors) ?? flushClientErrors());
+  window.addEventListener('online', () => {
+    if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
+    else setTimeout(flushClientErrors, 500);
+  });
 
   /* ================= API submit ================= */
   let lastSubmitAt = 0;
@@ -247,10 +262,20 @@
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
 
-    const body = new URLSearchParams({ action: act, src: src || (pin ? 'card' : 'name'), ...(pin?{pin}:{personId}) }).toString();
+    const body = new URLSearchParams({
+      action: act,
+      src: src || (pin ? 'card' : 'name'),
+      ...(pin?{pin}:{personId})
+    }).toString();
+
     try{
-      const res = await fetch(ENDPOINT, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+      const res = await fetch(ENDPOINT, {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body
+      });
       const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
+
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
         Toast.show(msg, false); Chime.fail();
@@ -258,7 +283,7 @@
         return;
       }
 
-      // Student flows
+      // Student flows (used by card scans or faculty)
       if (data.status === 'student_in' && data.legacyId) {
         const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
@@ -270,7 +295,7 @@
         return;
       }
 
-      // Faculty
+      // Faculty success
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -283,6 +308,36 @@
     }
   }
 
+  /* ================= FAST student IN from name search ================= */
+  function quickStudentInFromName({ legacyId, label }) {
+    const act = 'in';
+
+    // 1) Instant UX: open Veracross + toast + chime
+    const kioskURL = VC_BASE + encodeURIComponent(legacyId);
+    window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+    Toast.show(`${label} — sent to Veracross`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
+
+    // 2) Background log to backend (do not await)
+    const body = new URLSearchParams({
+      action: act,
+      src: 'name_fast',
+      pin: String(legacyId)
+    }).toString();
+
+    fetch(ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    }).catch(() => {
+      queueClientError('student_in_fast_failed', {
+        a: act,
+        pin: String(legacyId),
+        src: 'name_fast'
+      });
+    });
+  }
+
   /* ================= Card input auto-submit ================= */
   let wedgeTimer = null;
   pinEl.addEventListener('input', ()=>{
@@ -290,7 +345,9 @@
     wedgeTimer = setTimeout(()=>{
       const d = digitsOnly(pinEl.value); if (d.length < 10) return;
       const ten = d.slice(-10); if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten, src: 'card' }); pinEl.value = ''; focusPinSafely();
+      submitPinOrId({ pin: ten, src: 'card' });
+      pinEl.value = '';
+      focusPinSafely();
     }, WEDGE_QUIET_MS);
   }, { passive:true });
 
@@ -301,19 +358,32 @@
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
     const q = qEl.value.trim(); const box = $('#results');
-    if (!q) { try { searchAbort?.abort(); } catch(_){}; searchAbort = null; searchToken++; box.innerHTML = ''; return; }
+    if (!q) {
+      try { searchAbort?.abort(); } catch(_){}; searchAbort = null;
+      searchToken++; box.innerHTML = '';
+      return;
+    }
     searchTimer = setTimeout(()=>doSearch(q), 150);
   });
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
-      if (!q) { try { searchAbort?.abort(); } catch(_){ }; searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
+      if (!q) {
+        try { searchAbort?.abort(); } catch(_){ };
+        searchAbort=null; searchToken++; $('#results').innerHTML='';
+        e.preventDefault(); return;
+      }
       doSearch(q); e.preventDefault();
     }
   });
 
-  function sectionHeader(text){ const div = document.createElement('div'); div.className='sectionHdr'; div.textContent = text; return div; }
+  function sectionHeader(text){
+    const div = document.createElement('div');
+    div.className='sectionHdr';
+    div.textContent = text;
+    return div;
+  }
   function resultRow(label, btnText, onClick){
     const row = document.createElement('div'); row.className='row';
     const name = document.createElement('div'); name.className='name'; name.textContent = label;
@@ -327,9 +397,17 @@
     const nq = norm(q); const nf = norm(first), nl = norm(last);
     const nfl = nf + ' ' + nl; const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
     if (nfl === nq || nlf === nq) return 1000; if (nf === nq || nl === nq) return 900;
-    let s = 0; if (nf.startsWith(nq)) s += 120; if (nl.startsWith(nq)) s += 110; if (nfl.startsWith(nq)) s += 100; if (nlf.startsWith(nq)) s += 95; if (nf.includes(nq)) s += 30; if (nl.includes(nq)) s += 28; if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24; return s;
+    let s = 0;
+    if (nf.startsWith(nq)) s += 120; if (nl.startsWith(nq)) s += 110;
+    if (nfl.startsWith(nq)) s += 100; if (nlf.startsWith(nq)) s += 95;
+    if (nf.includes(nq)) s += 30; if (nl.includes(nq)) s += 28;
+    if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24;
+    return s;
   }
-  function flipLF(full){ const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/); return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''}; }
+  function flipLF(full){
+    const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
+    return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
+  }
 
   async function doSearch(q){
     try { searchAbort?.abort(); } catch(_) {}
@@ -339,13 +417,19 @@
     // Simple memo to cut latency on repeated queries
     const cacheKey = q.toLowerCase();
     const cached = cacheSearch.get(cacheKey);
-    if (cached && (Date.now() - cached.t < 10_000)) { renderSearch(q, cached.data, myToken); return; }
+    if (cached && (Date.now() - cached.t < 10000)) {
+      renderSearch(q, cached.data, myToken);
+      return;
+    }
 
     try{
       const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
       const [facRes, stuRes] = await Promise.all([facP, stuP]);
-      const data = { fac: Array.isArray(facRes)?facRes:[], stu: Array.isArray(stuRes)?stuRes:[] };
+      const data = {
+        fac: Array.isArray(facRes)?facRes:[],
+        stu: Array.isArray(stuRes)?stuRes:[]
+      };
       cacheSearch.set(cacheKey, { t: Date.now(), data });
       renderSearch(q, data, myToken);
     } catch (e){
@@ -359,25 +443,47 @@
     const { fac, stu } = data;
 
     const facMap = new Map();
-    fac.forEach(r=>{ const pid = String(r.personId||''); const s = scoreName(q, r.firstName||'', r.lastName||''); const cur = facMap.get(pid); if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s}); });
+    fac.forEach(r=>{
+      const pid = String(r.personId||'');
+      const s = scoreName(q, r.firstName||'', r.lastName||'');
+      const cur = facMap.get(pid);
+      if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
+    });
     const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
     const stuMap = new Map();
-    stu.forEach(r=>{ const lf = String(r.fullName||''); const flip = flipLF(lf); const legacy = String(r.legacyId||''); const s = scoreName(q, flip.first||'', flip.last||'', lf); const cur = stuMap.get(legacy); if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s}); });
+    stu.forEach(r=>{
+      const lf = String(r.fullName||'');
+      const flip = flipLF(lf);
+      const legacy = String(r.legacyId||'');
+      const s = scoreName(q, flip.first||'', flip.last||'', lf);
+      const cur = stuMap.get(legacy);
+      if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
+    });
     const stuSorted = Array.from(stuMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
     const frag = document.createDocumentFragment();
+
     if (facSorted.length) {
       frag.appendChild(sectionHeader('FACULTY'));
       facSorted.forEach(({ firstName, lastName, personId })=>{
-        frag.appendChild(resultRow(`${firstName} ${lastName}`, 'Submit', ()=> submitPinOrId({ personId, src:'name' })));
+        frag.appendChild(resultRow(
+          `${firstName} ${lastName}`,
+          'Submit',
+          ()=> submitPinOrId({ personId, src:'name' })
+        ));
       });
     }
+
     if (stuSorted.length) {
       frag.appendChild(sectionHeader('STUDENTS'));
       stuSorted.forEach(({ fullName, legacyId, _flip })=>{
         const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
-        frag.appendChild(resultRow(label, 'Submit', ()=> submitPinOrId({ pin: String(legacyId), src:'name' })));
+        frag.appendChild(resultRow(
+          label,
+          'Submit',
+          ()=> quickStudentInFromName({ legacyId, label })   // FAST path
+        ));
       });
     }
 
@@ -392,9 +498,12 @@
 
   /* ================= Init ================= */
   document.addEventListener('DOMContentLoaded', ()=>{
-    initTheme(); updateNet(); setAction('in');
+    initTheme();
+    updateNet();
+    setAction('in');
     setTimeout(()=>{ pinEl.focus(); }, 0);
-    (window.requestIdleCallback ? requestIdleCallback(flushClientErrors) : setTimeout(flushClientErrors, 500));
+    if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
+    else setTimeout(flushClientErrors, 500);
   });
 })();
 </script>
