@@ -272,7 +272,7 @@
 
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
-      clearTimeout(searchTimer);
+       clearTimeout(searchTimer);
       const q = qEl.value.trim();
       if (!q) { try { searchAbort?.abort(); } catch(_){ }; searchAbort=null; searchToken++; $('#results').innerHTML=''; e.preventDefault(); return; }
       doSearch(q); e.preventDefault();
@@ -344,15 +344,8 @@
             label,
             'Submit',
             ()=>{
-              const isOut = btnOut.classList.contains('active');
-              if (!isOut) {
-                // IN → Veracross handoff
-                const kioskURL = VC_BASE + encodeURIComponent(legacyId);
-                window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-                showToast(`${label} — sent to Veracross`, true); chimeOk();
-                return;
-              }
-              // OUT → send directly to backend using legacyId
+              // Always go through backend first — logs IN or OUT in sheets.
+              // Backend tells us to open Veracross if it's a student IN.
               submitPinOrId({ pin: String(legacyId) });
             }
           ));
