@@ -384,7 +384,8 @@
     let audioCtx=null, master=null, comp=null, dist=null, ready=false;
     function init(){
       if (ready) return;
-      const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
       comp = audioCtx.createDynamicsCompressor();
       comp.threshold.setValueAtTime(-12, audioCtx.currentTime);
       comp.knee.setValueAtTime(24, audioCtx.currentTime);
@@ -392,8 +393,17 @@
       comp.attack.setValueAtTime(0.002, audioCtx.currentTime);
       comp.release.setValueAtTime(0.08, audioCtx.currentTime);
       dist = audioCtx.createWaveShaper();
-      dist.curve = (function makeCurve(amount=60){ const n=44100,c=new Float32Array(n),deg=Math.PI/180; for(let i=0;i<n;i++){ const x=(i*2)/n-1; c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x)); } return c; })();
-      dist.oversample='4x'; master = audioCtx.createGain(); master.gain.setValueAtTime(0.95, audioCtx.currentTime);
+      dist.curve = (function makeCurve(amount=60){
+        const n=44100,c=new Float32Array(n),deg=Math.PI/180;
+        for(let i=0;i<n;i++){
+          const x=(i*2)/n-1;
+          c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));
+        }
+        return c;
+      })();
+      dist.oversample='4x';
+      master = audioCtx.createGain();
+      master.gain.setValueAtTime(0.95, audioCtx.currentTime);
       master.connect(comp).connect(audioCtx.destination);
       const kick = ()=> audioCtx.resume?.().catch(()=>{});
       window.addEventListener('pointerdown', kick, { once:true, passive:true });
@@ -402,13 +412,31 @@
     }
     function tone({ f=880, dur=0.18, t=audioCtx.currentTime, type='sine', g=0.7, distOn=false, detune=0 }){
       const o=audioCtx.createOscillator(), gn=audioCtx.createGain();
-      o.type=type; o.frequency.setValueAtTime(f,t); if (detune) o.detune.setValueAtTime(detune,t);
-      gn.gain.setValueAtTime(0,t); gn.gain.linearRampToValueAtTime(g,t+0.012); gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.type=type;
+      o.frequency.setValueAtTime(f,t);
+      if (detune) o.detune.setValueAtTime(detune,t);
+      gn.gain.setValueAtTime(0,t);
+      gn.gain.linearRampToValueAtTime(g,t+0.012);
+      gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
       (distOn ? o.connect(gn).connect(dist).connect(master) : o.connect(gn).connect(master));
-      o.start(t); o.stop(t+dur+0.02);
+      o.start(t);
+      o.stop(t+dur+0.02);
     }
-    function ok(){ init(); const t0=audioCtx.currentTime+0.01; tone({f:659.25, dur:0.14, t:t0, g:1.0}); tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0}); tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0}); tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0}); }
-    function fail(){ init(); const t0=audioCtx.currentTime+0.01; tone({f:440.00, dur:0.16, t:t0, type:'square', g:1.0, distOn:true}); tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true}); tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9, distOn:true}); }
+    function ok(){
+      init();
+      const t0=audioCtx.currentTime+0.01;
+      tone({f:659.25, dur:0.14, t:t0, g:1.0});
+      tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0});
+      tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0});
+      tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0});
+    }
+    function fail(){
+      init();
+      const t0=audioCtx.currentTime+0.01;
+      tone({f:440.00, dur:0.16, t:t0, type:'square', g:1.0, distOn:true});
+      tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true});
+      tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9, distOn:true});
+    }
     return { ok, fail };
   })();
 
@@ -416,7 +444,6 @@
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
-    // Keep emoji + label
     themeBtn.innerHTML = dark ? '☀️ <span>Light</span>' : '🌙 <span>Dark</span>';
     if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
@@ -446,23 +473,41 @@
   /* ================= Focus helpers ================= */
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
-  window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) focusPinSafely();
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) focusPinSafely();
+  });
 
-  /* ================= Action toggle ================= */
+  /* ================= Action toggle + URL hash ================= */
   function setAction(a){
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
     btnOut.classList.toggle('active', !inActive);
+    btnIn.setAttribute('aria-selected', inActive ? 'true' : 'false');
+    btnOut.setAttribute('aria-selected', !inActive ? 'true' : 'false');
     setTimeout(focusPinSafely, 0);
   }
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
-  window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='ArrowLeft') setAction('in');
+    if(e.key==='ArrowRight') setAction('out');
+  });
+
+  function applyHashAction(){
+    const h = (location.hash || '').toLowerCase();
+    if (h === '#out') setAction('out');
+    else if (h === '#in') setAction('in');
+  }
+  window.addEventListener('hashchange', applyHashAction);
 
   /* ================= De-dupe ================= */
   const lastSeenMap = new Map();
-  function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
+  function makeKey({ pin, personId }) {
+    return pin ? `pin:${pin}` : `pid:${personId}`;
+  }
   function canSendNow(key){
     const now=Date.now(), last=lastSeenMap.get(key)||0;
     if (now-last < DEDUPE_WINDOW_MS) return false;
@@ -484,7 +529,8 @@
     }catch(_){ }
   }
   async function flushClientErrors(){
-    let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
+    let q=[];
+    try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
     if (!q.length) return;
     const left=[];
     for (const p of q){
@@ -612,7 +658,10 @@
   async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
+    if (!canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
 
     const bodyObj = {
       action: act,
@@ -632,11 +681,14 @@
         headers:{'Content-Type':'application/x-www-form-urlencoded'},
         body
       });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
+      const text = await res.text();
+      let data=null;
+      try{ data = JSON.parse(text); }catch{}
 
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
-        Toast.show(msg, false); Chime.fail();
+        Toast.show(msg, false);
+        Chime.fail();
         queueClientError(msg, {
           a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
           firstName, lastName, grade
@@ -648,11 +700,15 @@
       if (data.status === 'student_in' && data.legacyId) {
         const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        Toast.show(`${data.student||'Student'} — sent to Veracross`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+        Toast.show(`${data.student||'Student'} — sent to Veracross`, true);
+        Chime.ok();
+        try{ navigator.vibrate?.(30); }catch{}
         return;
       }
       if (data.status === 'student_out_recorded') {
-        Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+        Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true);
+        Chime.ok();
+        try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
@@ -660,15 +716,19 @@
       const { status, firstName:fn, lastName:ln, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
-      Toast.show(line || 'Done.', true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+      Toast.show(line || 'Done.', true);
+      Chime.ok();
+      try{ navigator.vibrate?.(30); }catch{}
     }catch(err){
-      Toast.show('Network error', false); Chime.fail();
+      Toast.show('Network error', false);
+      Chime.fail();
       queueClientError('fetch_failed', {
         a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
         firstName, lastName, grade
       });
     }finally{
-      lastSubmitAt = Date.now(); focusPinSafely();
+      lastSubmitAt = Date.now();
+      focusPinSafely();
     }
   }
 
@@ -692,7 +752,7 @@
     // 2) Background log
     const body = new URLSearchParams({
       action: act,
-      src: 'name_fast_student_in',
+      src: 'student_in_fast',
       pin: String(legacyId),
       firstName: firstName||'',
       lastName: lastName||'',
@@ -707,7 +767,7 @@
       queueClientError('student_in_fast_failed', {
         a: act,
         pin: String(legacyId),
-        src: 'name_fast_student_in',
+        src: 'student_in_fast',
         firstName, lastName, grade
       });
     });
@@ -884,7 +944,8 @@
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
-    const q = qEl.value.trim(); const box = $('#results');
+    const q = qEl.value.trim();
+    const box = $('#results');
     if (!q) {
       try { searchAbort?.abort(); } catch(_){}; searchAbort = null;
       searchToken++; box.innerHTML = '';
@@ -901,7 +962,8 @@
         searchAbort=null; searchToken++; $('#results').innerHTML='';
         e.preventDefault(); return;
       }
-      doSearch(q); e.preventDefault();
+      doSearch(q);
+      e.preventDefault();
     }
   });
 
@@ -919,26 +981,41 @@
     return div;
   }
   function resultRow(label, btnText, onClick){
-    const row = document.createElement('div'); row.className='row';
-    const name = document.createElement('div'); name.className='name'; name.textContent = label;
-    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
+    const row = document.createElement('div');
+    row.className='row';
+    const name = document.createElement('div');
+    name.className='name';
+    name.textContent = label;
+    const btn = document.createElement('button');
+    btn.className='actionBtn';
+    btn.textContent = btnText;
     btn.addEventListener('click', ()=>{
       onClick();
       clearSearchUI();  // clear search box + results after submit
     });
-    row.appendChild(name); row.appendChild(btn);
+    row.appendChild(name);
+    row.appendChild(btn);
     return row;
   }
-  function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
+  function norm(s){
+    return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  }
   function scoreName(q, first, last, fullLF){
-    const nq = norm(q); const nf = norm(first), nl = norm(last);
-    const nfl = nf + ' ' + nl; const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
-    if (nfl === nq || nlf === nq) return 1000; if (nf === nq || nl === nq) return 900;
+    const nq = norm(q);
+    const nf = norm(first), nl = norm(last);
+    const nfl = nf + ' ' + nl;
+    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
+    if (nfl === nq || nlf === nq) return 1000;
+    if (nf === nq || nl === nq) return 900;
     let s = 0;
-    if (nf.startsWith(nq)) s += 120; if (nl.startsWith(nq)) s += 110;
-    if (nfl.startsWith(nq)) s += 100; if (nlf.startsWith(nq)) s += 95;
-    if (nf.includes(nq)) s += 30; if (nl.includes(nq)) s += 28;
-    if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24;
+    if (nf.startsWith(nq)) s += 120;
+    if (nl.startsWith(nq)) s += 110;
+    if (nfl.startsWith(nq)) s += 100;
+    if (nlf.startsWith(nq)) s += 95;
+    if (nf.includes(nq)) s += 30;
+    if (nl.includes(nq)) s += 28;
+    if (nfl.includes(nq)) s += 26;
+    if (nlf.includes(nq)) s += 24;
     return s;
   }
   function flipLF(full){
@@ -958,7 +1035,9 @@
 
     // Fallback: remote search via Apps Script
     try { searchAbort?.abort(); } catch(_) {}
-    searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
+    searchAbort = new AbortController();
+    const myToken = ++searchToken;
+    const sig = searchAbort.signal;
     box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
 
     const cacheKey = q.toLowerCase();
@@ -1120,7 +1199,10 @@
     pinEl.disabled = false;
     qEl.disabled   = false;
 
+    // Default to IN, then apply URL hash override
     setAction('in');
+    applyHashAction();
+
     setTimeout(()=>{ pinEl.focus(); }, 0);
     if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
     else setTimeout(flushClientErrors, 500);
