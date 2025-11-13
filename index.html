@@ -2,312 +2,620 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<meta name="viewport"
+  content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Guard Booth Attendance Kiosk</title>
+<meta name="description"
+  content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students IN → Veracross, OUT → logged." />
+<meta name="color-scheme" content="light dark">
+<meta id="meta-theme" name="theme-color" content="#ffffff">
 
 <style>
-/* --- simplified clean styles (fast rendering) --- */
-html,body{margin:0;padding:0;height:100%;background:#f5f5f7;font-family:system-ui;}
-body.dark{background:#0b1020;color:#fff;}
-.wrap{max-width:960px;margin:auto;padding:20px;}
-h1{text-align:center;font-size:32px;margin:0 0 6px;}
-.muted{color:#666;text-align:center;}
-.segment{display:flex;gap:10px;margin:16px 0;}
-.segment button{flex:1;padding:22px;font-size:38px;border-radius:14px;border:2px solid #ccc;font-weight:700;cursor:pointer;}
-.segment button.active#actIn{background:#16a34a;color:#fff;border-color:#16a34a;}
-.segment button.active#actOut{background:#dc2626;color:#fff;border-color:#dc2626;}
-.card{border:1px solid #ddd;border-radius:12px;padding:14px;margin-bottom:16px;background:#fff;}
-input{width:100%;padding:18px;font-size:22px;border-radius:10px;border:1.5px solid #999;}
-.list{max-height:420px;overflow:auto;margin-top:12px;display:grid;gap:10px;}
-.row{display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid #ccc;border-radius:10px;background:#fafafa;}
-.name{font-size:20px;font-weight:700;}
-.actionBtn{padding:12px 18px;font-size:18px;border-radius:10px;border:none;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;}
-.badges{position:absolute;top:14px;right:14px;display:flex;gap:8px;}
-.badge{padding:6px 10px;border-radius:10px;border:1px solid #ccc;background:#fff;font-weight:700;font-size:12px;}
-#rosterStatus.badge{cursor:default;}
-.toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);opacity:0;padding:18px 24px;background:#fff;border:1px solid #ccc;border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.15);font-size:20px;font-weight:800;transition:.25s;z-index:999;}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-.toast.ok{color:#0a7a44;}
-.toast.err{color:#b60000;}
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
+    --in:#16a34a; --out:#dc2626; --blue:#2563eb; --ok:#0f766e; --err:#b91c1c;
+    --radius-lg:14px; --radius-xl:18px; --shadow-1:0 10px 30px rgba(0,0,0,.08);
+    --ring:0 0 0 6px rgba(59,130,246,.16);
+  }
+  body.dark{
+    --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151;
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  html{ overflow-x:hidden; }
+
+  .wrap{
+    margin:auto; width:min(1100px,96%); background:var(--card); border-radius:var(--radius-xl);
+    box-shadow:var(--shadow-1); min-height:100svh; padding:28px; position:relative;
+  }
+
+  .top-center{ text-align:center; margin-bottom:8px; }
+  h1{ margin:0 0 6px; font-size:30px; font-weight:900; }
+
+  .muted{ color:var(--muted); }
+
+  .badges{
+    position:absolute; right:18px; top:18px; display:flex; gap:8px; flex-wrap:wrap;
+    justify-content:flex-end; max-width:60%;
+  }
+  .badge{
+    font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px;
+    border:1px solid var(--border); background:var(--card); white-space:nowrap;
+  }
+  .gear{
+    border:1px solid var(--border); background:var(--card); border-radius:10px;
+    padding:6px 10px; font-weight:800; cursor:pointer;
+  }
+
+  .toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+    opacity:0; background:var(--card); border:1px solid var(--border); box-shadow:0 8px 30px rgba(0,0,0,.12);
+    border-radius:14px; padding:18px 22px; font-weight:900; font-size:20px; transition:.18s;
+    z-index:50;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.ok{ color:var(--ok); }
+  .toast.err{ color:var(--err); }
+
+  .segment{
+    margin:16px 0 20px; display:flex; gap:14px;
+  }
+  .segment.segment-xl button{
+    flex:1; border:2px solid #d1d5db; border-radius:16px; font-weight:900;
+    font-size:42px; min-height:96px; padding:22px 24px; cursor:pointer;
+    background:linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);
+  }
+  #actIn.active{
+    background:linear-gradient(180deg,#16a34a 0%,#15803d 100%); color:white;
+    border-color:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.3);
+  }
+  #actOut.active{
+    background:linear-gradient(180deg,#dc2626 0%,#991b1b 100%); color:white;
+    border-color:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.3);
+  }
+
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:16px; display:flex; flex-direction:column;
+  }
+  input[type=password],input[type=search]{
+    width:100%; padding:18px 20px; font-size:24px; border:1.5px solid var(--border);
+    border-radius:12px; background:var(--card); color:var(--text);
+  }
+  input:focus-visible{
+    border-color:#3b82f6; box-shadow:var(--ring); outline:none;
+  }
+
+  .list{
+    margin-top:14px; overflow:auto; display:grid; gap:12px;
+    max-height:460px; padding-right:16px;
+  }
+  .row{
+    padding:14px 16px; border:1px solid var(--border); border-radius:12px;
+    display:grid; grid-template-columns:1fr auto; gap:12px;
+  }
+  .name{ font-size:20px; font-weight:800; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .actionBtn{
+    padding:14px 18px; font-size:20px; border-radius:14px; cursor:pointer;
+    font-weight:900; color:white; background:linear-gradient(180deg,#2563eb 0%,#1e40af 100%);
+    border:2px solid #2563eb;
+  }
+
+  .sectionHdr{ text-align:center; font-size:14px; font-weight:900; padding:10px 0 2px; color:var(--muted); }
+
+  @media(max-width:900px){
+    .grid{ grid-template-columns:1fr; }
+    .segment.segment-xl button{ font-size:36px; min-height:88px; }
+  }
+
+  /* Bootstrap Overlay */
+  .boot-overlay{
+    position:fixed; inset:0; background:rgba(15,23,42,.78); display:flex;
+    align-items:center; justify-content:center; z-index:60;
+  }
+  .boot-overlay-inner{
+    background:var(--card); padding:20px 26px; border-radius:16px;
+    display:flex; flex-direction:column; gap:10px; align-items:center;
+  }
+  .boot-spinner{
+    width:32px; height:32px; border-radius:999px;
+    border:3px solid rgba(148,163,184,.7); border-top-color:var(--blue);
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 </style>
 </head>
 
 <body>
 <div class="wrap">
+  <div class="badges">
+    <div id="netBadge" class="badge">Online</div>
+    <div id="rosterStatus" class="badge">Roster: —</div>
+    <button id="themeBtn" class="gear">🌙 Dark</button>
+  </div>
 
-<div class="badges">
-  <div id="netBadge" class="badge">Online</div>
-  <div id="rosterStatus" class="badge">⏳ Roster…</div>
-  <button id="themeBtn" class="badge">🌙</button>
-</div>
+  <div class="top-center">
+    <h1>Guard Booth Attendance Kiosk</h1>
+    <p class="muted">Select <b>IN</b> or <b>OUT</b>, then swipe card or search.</p>
+  </div>
 
-<h1>Guard Booth Attendance Kiosk</h1>
-<p class="muted">Select IN/OUT → swipe card or search name</p>
+  <div class="segment segment-xl">
+    <button id="actIn" class="active">IN</button>
+    <button id="actOut">OUT</button>
+  </div>
 
-<div class="segment">
-  <button id="actIn" class="active">IN</button>
-  <button id="actOut">OUT</button>
-</div>
+  <div class="grid">
+    <div class="card">
+      <h2>Cougar Card</h2>
+      <input id="pin" type="password" autocomplete="one-time-code" placeholder="Tap or swipe…" />
+    </div>
 
-<div class="card">
-  <h2>Cougar Card</h2>
-  <input id="pin" type="password" placeholder="Tap or swipe…">
-</div>
+    <div class="card">
+      <h2>Lookup by Name</h2>
+      <input id="q" type="search" placeholder="Search faculty or students" />
+      <div id="results" class="list"></div>
+    </div>
+  </div>
 
-<div class="card">
-  <h2>Lookup by Name</h2>
-  <input id="q" type="search" placeholder="Search students or faculty…">
-  <div id="results" class="list"></div>
-</div>
+  <div id="toast" class="toast"></div>
 
-<div id="toast" class="toast"></div>
-
+  <div id="bootOverlay" class="boot-overlay">
+    <div class="boot-overlay-inner">
+      <div class="boot-spinner"></div>
+      <div class="boot-text">Loading rosters…</div>
+    </div>
+  </div>
 </div>
 
 <script>
-/***********************************************************
+(() => {
+'use strict';
+
+/*************************************************************
  * CONFIG
- ***********************************************************/
-const ENDPOINT = "https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec";
-const VC_BASE  = "https://checkin.veracross.com/frisch/kiosk/entrance?legacy=";
+ *************************************************************/
+const ENDPOINT = 'YOUR_DEPLOYED_WEBAPP_URL';   // ← replace with your Apps Script URL
+const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
+const COOLDOWN_MS = 250;
+const DEDUPE_MS = 5000;
+const WEDGE_QUIET = 100;
 
-let faculty = [];
-let students = [];
-let bootstrapReady = false;
+/*************************************************************
+ * DOM SHORTCUTS
+ *************************************************************/
+const $ = s => document.querySelector(s);
+const pinEl = $('#pin');
+const qEl   = $('#q');
+const toastEl = $('#toast');
+const actIn = $('#actIn'), actOut = $('#actOut');
+const resultsEl = $('#results');
+const themeBtn = $('#themeBtn');
+const netBadge = $('#netBadge');
+const rosterStatus = $('#rosterStatus');
+const bootOverlay = $('#bootOverlay');
+const metaTheme = document.querySelector('meta[name="theme-color"]');
 
-/***********************************************************
- * DOM
- ***********************************************************/
-const pinEl = document.getElementById("pin");
-const qEl   = document.getElementById("q");
-const listEl= document.getElementById("results");
-const toastEl=document.getElementById("toast");
-const netBadge=document.getElementById("netBadge");
-const rosterStatus=document.getElementById("rosterStatus");
-const actIn=document.getElementById("actIn");
-const actOut=document.getElementById("actOut");
+/*************************************************************
+ * BASIC HELPERS
+ *************************************************************/
+const digits = s => String(s||'').replace(/\D+/g,'');
+const ten = s => digits(s).slice(-10);
 
-/***********************************************************
- * THEME
- ***********************************************************/
-document.getElementById("themeBtn").onclick = () => {
-  document.body.classList.toggle("dark");
-  localStorage.setItem("dark", document.body.classList.contains("dark"));
-};
-if (localStorage.getItem("dark")==="true") document.body.classList.add("dark");
-
-/***********************************************************
- * NETWORK BADGE
- ***********************************************************/
-function updateNet() {
-  const on = navigator.onLine;
-  netBadge.textContent = on ? "Online" : "Offline";
-  netBadge.style.background = on ? "#fff" : "#ffd5d5";
-  netBadge.style.color = on ? "#000" : "#900";
-}
-window.addEventListener("online", updateNet);
-window.addEventListener("offline", updateNet);
-updateNet();
-
-/***********************************************************
+/*************************************************************
  * TOAST
- ***********************************************************/
-function toast(msg, ok=true){
-  toastEl.textContent = msg;
-  toastEl.classList.toggle("ok", ok);
-  toastEl.classList.toggle("err", !ok);
-  toastEl.classList.add("show");
-  setTimeout(()=>toastEl.classList.remove("show"),2000);
-}
-
-/***********************************************************
- * ACTION (IN/OUT)
- ***********************************************************/
-function isIn(){ return actIn.classList.contains("active"); }
-actIn.onclick = ()=>{ actIn.classList.add("active"); actOut.classList.remove("active"); };
-actOut.onclick= ()=>{ actOut.classList.add("active"); actIn.classList.remove("active"); };
-
-/***********************************************************
- * BOOTSTRAP — download lists ONCE
- ***********************************************************/
-async function bootstrap(){
-  rosterStatus.textContent = "⏳ Roster…";
-
-  try{
-    const r = await fetch(ENDPOINT + "?action=bootstrap");
-    const data = await r.json();
-
-    faculty = data.faculty || [];
-    students= data.students|| [];
-
-    bootstrapReady = true;
-    rosterStatus.textContent = "⚡ Ready";
-    rosterStatus.title = "Roster loaded " + new Date().toLocaleString();
-
-  }catch(e){
-    rosterStatus.textContent = "❌ Fail";
-    rosterStatus.title = "Roster failed to load";
+ *************************************************************/
+const Toast = (()=>{ 
+  let t=null;
+  function show(msg, ok=true, ms=2000){
+    toastEl.textContent=msg;
+    toastEl.classList.toggle('ok',ok);
+    toastEl.classList.toggle('err',!ok);
+    toastEl.classList.add('show');
+    clearTimeout(t);
+    t=setTimeout(()=>toastEl.classList.remove('show'),ms);
   }
-}
-bootstrap();
+  return { show };
+})();
 
-/***********************************************************
- * LOCAL SEARCH (super fast)
- ***********************************************************/
-function normalize(s){ return s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
-
-function searchLocal(q){
-  const nq = normalize(q);
-
-  const fac = faculty.filter(f=>{
-    const name = normalize(f.firstName+" "+f.lastName);
-    return name.includes(nq);
-  });
-
-  const stu = students.filter(s=>{
-    const name = normalize(s.firstName+" "+s.lastName);
-    return name.includes(nq);
-  });
-
-  return {fac, stu};
-}
-
-function renderResults(q){
-  listEl.innerHTML = "";
-  if (!q) return;
-
-  const {fac, stu} = searchLocal(q);
-
-  if (fac.length){
-    listEl.appendChild(section("FACULTY"));
-    fac.forEach(f=>{
-      listEl.appendChild(row(`${f.firstName} ${f.lastName}`, ()=>submitFaculty(f)));
-    });
+/*************************************************************
+ * CHIMES
+ *************************************************************/
+const Chime = (()=>{ 
+  let ctx, ready=false;
+  function init(){
+    if(ready) return;
+    const AC = window.AudioContext||window.webkitAudioContext;
+    ctx = new AC();
+    window.addEventListener('pointerdown',()=>ctx.resume(),{once:true});
+    ready=true;
   }
-
-  if (stu.length){
-    listEl.appendChild(section("STUDENTS"));
-    stu.forEach(s=>{
-      listEl.appendChild(row(`${s.firstName} ${s.lastName}`, ()=>submitStudent(s)));
-    });
+  function ok(){
+    init();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.frequency.value=880; o.type='sine';
+    o.connect(g).connect(ctx.destination);
+    g.gain.setValueAtTime(0,ctx.currentTime);
+    g.gain.linearRampToValueAtTime(.9,ctx.currentTime+.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+.2);
+    o.start(); o.stop(ctx.currentTime+.25);
   }
-
-  if (!fac.length && !stu.length){
-    listEl.innerHTML = "<div class='muted'>No matches</div>";
+  function fail(){
+    init();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.frequency.value=200; o.type='square';
+    o.connect(g).connect(ctx.destination);
+    g.gain.setValueAtTime(0,ctx.currentTime);
+    g.gain.linearRampToValueAtTime(.7,ctx.currentTime+.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+.3);
+    o.start(); o.stop(ctx.currentTime+.35);
   }
+  return { ok, fail };
+})();
+
+ /*************************************************************
+ * THEME
+ *************************************************************/
+function setTheme(mode){
+  const dark = mode==='dark';
+  document.body.classList.toggle('dark',dark);
+  themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
+  if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
+  localStorage.setItem('kiosk_theme',dark?'dark':'light');
 }
-
-function section(t){
-  const d=document.createElement("div");
-  d.textContent=t;
-  d.style.fontSize="12px";
-  d.style.fontWeight="900";
-  d.style.marginTop="10px";
-  return d;
+function initTheme(){
+  const saved = localStorage.getItem('kiosk_theme');
+  if(saved){ setTheme(saved); return; }
+  const sysDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  setTheme(sysDark?'dark':'light');
 }
-function row(label,click){
-  const r=document.createElement("div");
-  r.className="row";
-  const n=document.createElement("div");
-  n.className="name";
-  n.textContent=label;
-  const b=document.createElement("button");
-  b.className="actionBtn";
-  b.textContent="Submit";
-  b.onclick=click;
-  r.appendChild(n); r.appendChild(b);
-  return r;
-}
-
-qEl.addEventListener("input", ()=>renderResults(qEl.value.trim()));
-
-/***********************************************************
- * SUBMIT HANDLERS
- ***********************************************************/
-async function submitStudent(rec){
-  const actingIn = isIn();
-  const legacy = rec.legacyId;
-
-  if (actingIn){
-    // open veracross immediately
-    window.open(VC_BASE + encodeURIComponent(legacy), "_blank", "width=480,height=820");
-    toast(rec.firstName+" sent to VC", true);
-    sendToBackend("in",{pin:legacy}); // background log
-  } else {
-    toast(rec.firstName+" Out", true);
-    sendToBackend("out",{pin:legacy});
-  }
-}
-
-async function submitFaculty(f){
-  if (isIn()){
-    toast(`${f.firstName} IN`,true);
-    sendToBackend("in",{personId:f.personId});
-  } else {
-    toast(`${f.firstName} OUT`,true);
-    sendToBackend("out",{personId:f.personId});
-  }
-}
-
-/***********************************************************
- * CARD SWIPE
- ***********************************************************/
-pinEl.addEventListener("input", ()=>{
-  const d = pinEl.value.replace(/\D+/g,"");
-  if (d.length>=10){
-    const ten=d.slice(-10);
-    pinEl.value="";
-    processPin(ten);
-  }
+themeBtn.addEventListener('click',()=>{
+  setTheme(document.body.classList.contains('dark')?'light':'dark');
 });
 
-function processPin(pin){
-  const stu = students.find(s=>s.legacyId===pin);
-  const fac = faculty.find(f=>f.pin===pin); // optional if stored
-  if (stu) return submitStudent(stu);
-  if (fac) return submitFaculty(fac);
+/*************************************************************
+ * NETWORK BADGE
+ *************************************************************/
+function updateNet(){
+  const o = navigator.onLine;
+  netBadge.textContent = o?'Online':'Offline';
+  netBadge.style.background = o?'var(--card)':'#fee2e2';
+  netBadge.style.color = o?'var(--text)':'#991b1b';
+}
+window.addEventListener('online',updateNet);
+window.addEventListener('offline',updateNet);
 
-  toast("Unknown card",false);
-  sendToBackend("error",{type:"unknown",details:"Unknown PIN",raw:{pin}});
+/*************************************************************
+ * ACTION TOGGLE (IN / OUT)
+ *************************************************************/
+function setAction(a){
+  const isIn = a==='in';
+  actIn.classList.toggle('active',isIn);
+  actOut.classList.toggle('active',!isIn);
+  pinEl.focus();
+}
+actIn.addEventListener('click',()=>setAction('in'));
+actOut.addEventListener('click',()=>setAction('out'));
+
+/*************************************************************
+ * BOOTSTRAP DATA
+ * Backend now returns:
+ * {
+ *   students: [
+ *      { legacyId, firstName, lastName }
+ *   ],
+ *   faculty: [
+ *      { personId, firstName, lastName, pin }
+ *   ]
+ * }
+ *************************************************************/
+let students = [];
+let faculty = [];
+let mapStudents = new Map();   // legacy → record
+let mapFacultyPins = new Map();// pin → record
+let mapFacultyPid  = new Map();// personId → record
+let bootstrapReady = false;
+
+function firstLast(f,l){ return `${f||''} ${l||''}`.trim(); }
+
+async function loadBootstrap(){
+  const url = ENDPOINT + '?action=bootstrap';
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Bootstrap HTTP '+res.status);
+  const data = await res.json();
+
+  // Students
+  students = data.students || [];
+  mapStudents.clear();
+  students.forEach(s=>{
+    mapStudents.set(String(s.legacyId),{
+      legacyId:String(s.legacyId),
+      firstName:s.firstName||'',
+      lastName:s.lastName||'',
+      label:firstLast(s.firstName,s.lastName)
+    });
+  });
+
+  // Faculty
+  faculty = data.faculty || [];
+  mapFacultyPins.clear();
+  mapFacultyPid.clear();
+  faculty.forEach(f=>{
+    if(f.pin) mapFacultyPins.set(String(f.pin),f);
+    if(f.personId) mapFacultyPid.set(String(f.personId),f);
+  });
+
+  bootstrapReady = true;
 }
 
-/***********************************************************
- * BACKEND SEND + QUEUE
- ***********************************************************/
-async function sendToBackend(action, params={}){
-  const body = new URLSearchParams({action,...params});
-  try{
-    await fetch(ENDPOINT,{method:"POST",body});
-  }catch(e){
-    // offline → log later
-    const q = JSON.parse(localStorage.getItem("queue")||"[]");
-    q.push({action,params,time:Date.now()});
-    localStorage.setItem("queue",JSON.stringify(q));
+/*************************************************************
+ * SEARCH ENGINE — FIRST LAST ONLY
+ *************************************************************/
+function norm(s){
+  return String(s||'').toLowerCase()
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+}
+
+function score(first,last,q){
+  const Nq = norm(q);
+  const Nf = norm(first);
+  const Nl = norm(last);
+  const full = Nf + ' ' + Nl;
+
+  if(full === Nq) return 1000;
+  if(Nf === Nq || Nl === Nq) return 900;
+
+  let s=0;
+  if(Nf.startsWith(Nq)) s+=120;
+  if(Nl.startsWith(Nq)) s+=110;
+  if(full.startsWith(Nq)) s+=100;
+
+  if(Nf.includes(Nq)) s+=40;
+  if(Nl.includes(Nq)) s+=38;
+  if(full.includes(Nq)) s+=36;
+
+  return s;
+}
+
+/*************************************************************
+ * RENDER LIST
+ *************************************************************/
+function sectionHeader(txt){
+  const d=document.createElement('div');
+  d.className='sectionHdr'; d.textContent=txt;
+  return d;
+}
+function resultRow(label, onclick){
+  const row=document.createElement('div'); row.className='row';
+  const name=document.createElement('div'); name.className='name'; name.textContent=label;
+  const btn=document.createElement('button'); btn.className='actionBtn'; btn.textContent='Submit';
+  btn.addEventListener('click',onclick);
+  row.appendChild(name); row.appendChild(btn);
+  return row;
+}
+
+/*************************************************************
+ * DO SEARCH
+ *************************************************************/
+function localSearch(q){
+  const Q=q.trim(); if(!Q){ resultsEl.innerHTML=''; return; }
+
+  const facHits=[];
+  for(const f of faculty){
+    const sc = score(f.firstName,f.lastName,Q);
+    if(sc>0) facHits.push({...f,_score:sc});
+  }
+
+  const stuHits=[];
+  for(const s of students){
+    const sc = score(s.firstName,s.lastName,Q);
+    if(sc>0) stuHits.push({...s,_score:sc});
+  }
+
+  facHits.sort((a,b)=>b._score - a._score);
+  stuHits.sort((a,b)=>b._score - a._score);
+
+  const frag=document.createDocumentFragment();
+
+  // Faculty first
+  if(facHits.length){
+    frag.appendChild(sectionHeader('FACULTY'));
+    facHits.slice(0,25).forEach(f=>{
+      const label = firstLast(f.firstName,f.lastName);
+      frag.appendChild(
+        resultRow(label,()=>quickFaculty(f,label))
+      );
+    });
+  }
+
+  if(stuHits.length){
+    frag.appendChild(sectionHeader('STUDENTS'));
+    stuHits.slice(0,25).forEach(s=>{
+      const label = firstLast(s.firstName,s.lastName);
+      frag.appendChild(
+        resultRow(label,()=>quickStudent(s,label))
+      );
+    });
+  }
+
+  resultsEl.replaceChildren();
+  if(!facHits.length && !stuHits.length){
+    resultsEl.innerHTML='<div class="muted" style="text-align:center;">No matches found.</div>';
+  } else {
+    resultsEl.appendChild(frag);
   }
 }
 
-async function flushQueue(){
-  const q = JSON.parse(localStorage.getItem("queue")||"[]");
-  if (!q.length) return;
+/*************************************************************
+ * FAST ACTIONS
+ *************************************************************/
+function isIn(){ return actIn.classList.contains('active'); }
 
-  const rest=[];
-  for (const job of q){
-    try{
-      const body = new URLSearchParams({action:job.action,...job.params});
-      await fetch(ENDPOINT,{method:"POST",body});
-    }catch(e){
-      rest.push(job);
+function quickStudent(s,label){
+  if(isIn()){
+    // Student IN → Veracross + log
+    const url = VC_BASE + encodeURIComponent(s.legacyId);
+    window.open(url,'_blank','width=480,height=820');
+    Toast.show(`${label} — sent to Veracross`,true);
+    Chime.ok();
+
+    fetch(ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({
+        action:'in', src:'name_fast', pin:String(s.legacyId)
+      })
+    });
+  } else {
+    // Student OUT fast
+    const now = new Date();
+    const t = now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    Toast.show(`${label} — signed OUT — ${t}`,true);
+    Chime.ok();
+
+    fetch(ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({
+        action:'out', src:'student_out_fast', pin:String(s.legacyId)
+      })
+    });
+  }
+}
+
+function quickFaculty(f,label){
+  const act = isIn()?'in':'out';
+  const now = new Date();
+  const t = now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  Toast.show(`${label} signed ${act.toUpperCase()} — ${t}`,true);
+  Chime.ok();
+
+  const params={ action:act, src:'name_fast_faculty', personId:f.personId };
+  if(f.pin) params.pin=f.pin;
+
+  fetch(ENDPOINT,{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams(params)
+  });
+}
+
+/*************************************************************
+ * CARD INPUT
+ *************************************************************/
+let lastSend=0, wedgeTimer=null;
+
+pinEl.addEventListener('input',()=>{
+  clearTimeout(wedgeTimer);
+  wedgeTimer=setTimeout(()=>{
+    const d = digits(pinEl.value);
+    if(d.length<10) return;
+    if(Date.now()-lastSend<COOLDOWN_MS) return;
+
+    const card = ten(d);
+
+    // Local match first
+    if(bootstrapReady){
+      if(mapStudents.has(card)){
+        quickStudent(mapStudents.get(card),mapStudents.get(card).label);
+      } else if(mapFacultyPins.has(card)){
+        const f = mapFacultyPins.get(card);
+        const label = firstLast(f.firstName,f.lastName);
+        quickFaculty(f,label);
+      } else {
+        slowSubmit({ pin:card, src:'card' });
+      }
+    } else {
+      slowSubmit({ pin:card, src:'card' });
     }
+
+    pinEl.value='';
+    lastSend=Date.now();
+    pinEl.focus();
+  },WEDGE_QUIET);
+});
+
+/*************************************************************
+ * SLOW SUBMIT (fallback)
+ *************************************************************/
+async function slowSubmit({ pin, personId, src }){
+  const act = isIn()?'in':'out';
+  try{
+    const res = await fetch(ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({
+        action:act, pin:pin||'', personId:personId||'', src:src||''
+      })
+    });
+    const data = await res.json().catch(()=>null);
+
+    if(data && data.status==='student_in'){
+      const url = VC_BASE + encodeURIComponent(pin);
+      window.open(url,'_blank','width=480,height=820');
+      Toast.show(`Student — sent to Veracross`,true);
+      Chime.ok();
+      return;
+    }
+    if(data && data.status==='student_out_recorded'){
+      Toast.show(`Student — signed OUT`,true);
+      Chime.ok();
+      return;
+    }
+
+    if(data && data.status){
+      const label = `${data.firstName||''} ${data.lastName||''}`.trim();
+      Toast.show(`${label} signed ${data.status.toUpperCase()}`,true);
+      Chime.ok();
+      return;
+    }
+
+    Toast.show(data?.error || 'Error',false);
+    Chime.fail();
+  }catch(err){
+    Toast.show('Network error',false);
+    Chime.fail();
   }
-  localStorage.setItem("queue",JSON.stringify(rest));
 }
-setInterval(flushQueue,3000);
 
-/***********************************************************
+/*************************************************************
+ * SEARCH HANDLER
+ *************************************************************/
+qEl.addEventListener('input',()=>{
+  const q = qEl.value.trim();
+  if(!q){ resultsEl.innerHTML=''; return; }
+  if(bootstrapReady) localSearch(q);
+});
+
+/*************************************************************
  * INIT
- ***********************************************************/
-pinEl.focus();
-</script>
+ *************************************************************/
+document.addEventListener('DOMContentLoaded',async()=>{
+  initTheme();
+  updateNet();
 
+  pinEl.disabled=true;
+  qEl.disabled=true;
+
+  try{
+    await loadBootstrap();
+    bootstrapReady=true;
+    bootOverlay.style.display='none';
+    Toast.show('Kiosk ready (fast mode)',true,1500);
+  }catch(e){
+    bootstrapReady=false;
+    bootOverlay.style.display='none';
+    Toast.show('Online without cache — slower fallback',false,3000);
+  }
+
+  pinEl.disabled=false;
+  qEl.disabled=false;
+  setAction('in');
+  pinEl.focus();
+});
+})();
+</script>
 </body>
 </html>
