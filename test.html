@@ -301,7 +301,7 @@
       <div id="netBadge" class="badge">Online</div>
       <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">
-        🌙 <span>dark</span>
+        🌙 <span>Dark</span>
       </button>
     </div>
 
@@ -416,7 +416,8 @@
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
-    themeBtn.textContent = dark ? '☀️ Light' : '🌙 Dark';
+    // Keep emoji + label
+    themeBtn.innerHTML = dark ? '☀️ <span>Light</span>' : '🌙 <span>Dark</span>';
     if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }
@@ -455,9 +456,23 @@
     btnOut.classList.toggle('active', !inActive);
     setTimeout(focusPinSafely, 0);
   }
+
+  // NEW: read #in / #out from URL
+  function applyHashAction(){
+    const hash = (location.hash || '').toLowerCase();
+    if (hash === '#in') {
+      setAction('in');
+    } else if (hash === '#out') {
+      setAction('out');
+    }
+  }
+
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+
+  // NEW: if hash changes while page is open
+  window.addEventListener('hashchange', applyHashAction);
 
   /* ================= De-dupe ================= */
   const lastSeenMap = new Map();
@@ -538,7 +553,7 @@
   function updateRosterStatusLabel(){
     if (!rosterStatusEl) return;
 
-    let label = '⏳ Roster: loading…';
+    let label = 'Roster: ⏳ loading…';
     let title = '';
 
     if (lastBootSuccess){
@@ -556,7 +571,7 @@
         label = `❌ Roster failed`;
         title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
       } else {
-        label = `⏳ Roster: not cached yet`;
+        label = `Roster: ⏳ loading…`;
         title = `No successful roster downloads yet`;
       }
     }
@@ -612,9 +627,6 @@
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
-
-    // Instant “working” feedback for slow/unknown cards
-    Toast.show('Checking card…', true, 1500);
 
     const bodyObj = {
       action: act,
@@ -799,6 +811,40 @@
     });
   }
 
+  /* ================= FAST unknown-card error (instant) ================= */
+  function quickUnknownCardFail(pin){
+    const act = btnIn.classList.contains('active') ? 'in' : 'out';
+    const key = makeKey({ pin, personId: '' });
+    if (!canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    // Instant UX
+    Toast.show('Cougar Card not found', false);
+    Chime.fail();
+    try { navigator.vibrate?.(40); } catch(_){}
+
+    // Background log to backend
+    const body = new URLSearchParams({
+      action: act,
+      src: 'card_fast_unknown',
+      pin: String(pin)
+    }).toString();
+
+    fetch(ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    }).catch(() => {
+      queueClientError('unknown_card_fast_failed', {
+        a: act,
+        pin: String(pin),
+        src: 'card_fast_unknown'
+      });
+    });
+  }
+
   /* ================= Card input auto-submit ================= */
   let wedgeTimer = null;
   pinEl.addEventListener('input', ()=>{
@@ -832,8 +878,8 @@
             lastName: rec.lastName || ''
           });
         } else {
-          // Unknown card → backend decides if it's student/faculty/error
-          submitPinOrId({ pin: ten, src: 'card' });
+          // FAST local fail for unknown cards
+          quickUnknownCardFail(ten);
         }
       } else {
         // No bootstrap → safe slow path
@@ -1088,11 +1134,10 @@
     pinEl.disabled = false;
     qEl.disabled   = false;
 
-    // NEW: choose initial action based on URL hash (#out → OUT, otherwise IN)
-    const hash = (location.hash || '').toLowerCase();
-    if (hash === '#out') {
-      setAction('out');
-    } else {
+    // NEW: use hash (#in / #out) if present
+    applyHashAction();
+    if (!btnIn.classList.contains('active') && !btnOut.classList.contains('active')) {
+      // default if no valid hash
       setAction('in');
     }
 
