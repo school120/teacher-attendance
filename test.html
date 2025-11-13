@@ -301,7 +301,7 @@
       <div id="netBadge" class="badge">Online</div>
       <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">
-        🌙 <span>Dark</span>
+        🌙 <span>dark</span>
       </button>
     </div>
 
@@ -416,7 +416,7 @@
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
-    themeBtn.innerHTML = dark ? '☀️ <span>Light</span>' : '🌙 <span>Dark</span>';
+    themeBtn.textContent = dark ? '☀️ light' : '🌙 dark';
     if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }
@@ -455,23 +455,9 @@
     btnOut.classList.toggle('active', !inActive);
     setTimeout(focusPinSafely, 0);
   }
-
-  // NEW: read #in / #out from URL
-  function applyHashAction(){
-    const hash = (location.hash || '').toLowerCase();
-    if (hash === '#in') {
-      setAction('in');
-    } else if (hash === '#out') {
-      setAction('out');
-    }
-  }
-
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
-
-  // NEW: follow hash changes while open
-  window.addEventListener('hashchange', applyHashAction);
 
   /* ================= De-dupe ================= */
   const lastSeenMap = new Map();
@@ -552,25 +538,19 @@
   function updateRosterStatusLabel(){
     if (!rosterStatusEl) return;
 
-    let label = 'Roster: ⏳ loading…';
+    let label = '⏳ Roster: loading…';
     let title = '';
 
     if (lastBootSuccess){
       const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
-
-      if (bootstrapReady){
-        label = `⚡ Roster OK · ${when}`;
-      } else {
-        label = `⚠️ Roster fallback · ${when}`;
-      }
-
+      label = `⚡ Roster OK · ${when}`;
       title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
     } else {
       if (lastBootFail){
         label = `❌ Roster failed`;
         title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
       } else {
-        label = `Roster: ⏳ loading…`;
+        label = `⏳ Roster: not cached yet`;
         title = `No successful roster downloads yet`;
       }
     }
@@ -622,12 +602,7 @@
 
   /* ================= API submit (slow/fallback paths) ================= */
   let lastSubmitAt = 0;
-  async function submitPinOrId(
-    { pin, personId, src='', firstName='', lastName='', grade='' },
-    opts = {}
-  ) {
-    const { suppressSuccess = false } = opts;
-
+  async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
@@ -662,32 +637,21 @@
         return;
       }
 
-      // Student flows (slow paths)
       if (data.status === 'student_in' && data.legacyId) {
-        if (!suppressSuccess) {
-          const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
-          window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-          Toast.show(`${data.student||'Student'} — sent to Veracross`, true);
-          Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
-        }
+        const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
+        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+        Toast.show(`${data.student||'Student'} — sent to Veracross`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
         return;
       }
       if (data.status === 'student_out_recorded') {
-        if (!suppressSuccess) {
-          Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true);
-          Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
-        }
+        Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
         return;
       }
 
-      // Faculty success (slow paths)
       const { status, firstName:fn, lastName:ln, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
-      if (!suppressSuccess) {
-        Toast.show(line || 'Done.', true);
-        Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
-      }
+      Toast.show(line || 'Done.', true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
     }catch(err){
       Toast.show('Network error', false); Chime.fail();
       queueClientError('fetch_failed', {
@@ -701,6 +665,7 @@
 
   /* ================= FAST student IN ================= */
   function quickStudentIn({ legacyId, firstName, lastName, grade }) {
+    const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
     if (!canSendNow(key)) {
       Toast.show('Duplicate scan ignored (5s)', false);
@@ -709,24 +674,37 @@
 
     const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
-    // 1) Instant Veracross handoff + UX
     const kioskURL = VC_BASE + encodeURIComponent(legacyId);
     window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
     Toast.show(`${label} — sent to Veracross`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    // 2) Reliable log using same code as slow path (no extra success toast)
-    submitPinOrId({
-      pin: String(legacyId),
+    const body = new URLSearchParams({
+      action: act,
       src: 'name_fast_student_in',
-      firstName,
-      lastName,
-      grade
-    }, { suppressSuccess: true });
+      pin: String(legacyId),
+      firstName: firstName||'',
+      lastName: lastName||'',
+      grade: grade||''
+    }).toString();
+
+    fetch(ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    }).catch(() => {
+      queueClientError('student_in_fast_failed', {
+        a: act,
+        pin: String(legacyId),
+        src: 'name_fast_student_in',
+        firstName, lastName, grade
+      });
+    });
   }
 
   /* ================= FAST student OUT ================= */
   function quickStudentOut({ legacyId, firstName, lastName, grade }) {
+    const act = 'out';
     const key = makeKey({ pin: legacyId, personId: '' });
     if (!canSendNow(key)) {
       Toast.show('Duplicate scan ignored (5s)', false);
@@ -737,67 +715,16 @@
     const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     const who = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
-    // Instant UX
     Toast.show(`${who} — signed OUT — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
 
-    // Reliable log
-    submitPinOrId({
-      pin: String(legacyId),
-      src: 'student_out_fast',
-      firstName,
-      lastName,
-      grade
-    }, { suppressSuccess: true });
-  }
-
-  /* ================= FAST faculty IN/OUT ================= */
-  function quickFacultyAction({ personId, pin, firstName, lastName }) {
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
-    const verb = act === 'in' ? 'IN' : 'OUT';
-
-    // Instant UX
-    Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
-
-    // Reliable log
-    submitPinOrId({
-      pin: pin || '',
-      personId: personId || '',
-      src: pin ? 'card_fast_faculty' : 'name_fast_faculty',
-      firstName,
-      lastName
-    }, { suppressSuccess: true });
-  }
-
-  /* ================= FAST unknown-card error (instant) ================= */
-  function quickUnknownCardFail(pin){
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    // Instant UX
-    Toast.show('Cougar Card not found', false);
-    Chime.fail();
-    try { navigator.vibrate?.(40); } catch(_){}
-
-    // Background log to backend (ok if this fails silently)
     const body = new URLSearchParams({
       action: act,
-      src: 'card_fast_unknown',
-      pin: String(pin)
+      src: 'student_out_fast',
+      pin: String(legacyId),
+      firstName: firstName||'',
+      lastName: lastName||'',
+      grade: grade||''
     }).toString();
 
     fetch(ENDPOINT, {
@@ -805,10 +732,54 @@
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body
     }).catch(() => {
-      queueClientError('unknown_card_fast_failed', {
+      queueClientError('student_out_fast_failed', {
         a: act,
-        pin: String(pin),
-        src: 'card_fast_unknown'
+        pin: String(legacyId),
+        src: 'student_out_fast',
+        firstName, lastName, grade
+      });
+    });
+  }
+
+  /* ================= FAST faculty IN/OUT ================= */
+  function quickFacultyAction({ personId, pin, firstName, lastName }) {
+    const act = btnIn.classList.contains('active') ? 'in' : 'out';
+    const key = makeKey({ pin, personId });
+    if (!canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
+    const verb = act === 'in' ? 'IN' : 'OUT';
+
+    Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
+
+    const params = {
+      action: act,
+      src: pin ? 'card_fast_faculty' : 'name_fast_faculty'
+    };
+    if (pin) params.pin = pin;
+    if (personId) params.personId = personId;
+    if (firstName) params.firstName = firstName;
+    if (lastName) params.lastName = lastName;
+
+    const body = new URLSearchParams(params).toString();
+
+    fetch(ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    }).catch(() => {
+      queueClientError('faculty_fast_failed', {
+        a: act,
+        pin: pin || '',
+        personId: personId || '',
+        src: params.src,
+        firstName, lastName
       });
     });
   }
@@ -846,11 +817,9 @@
             lastName: rec.lastName || ''
           });
         } else {
-          // FAST local fail for unknown cards
-          quickUnknownCardFail(ten);
+          submitPinOrId({ pin: ten, src: 'card' });
         }
       } else {
-        // No bootstrap → safe slow path
         submitPinOrId({ pin: ten, src: 'card' });
       }
 
@@ -931,14 +900,12 @@
   async function doSearch(q){
     const box = $('#results');
 
-    // Preferred path: local search using bootstrapped lists
     if (bootstrapReady && (facultyList.length || studentList.length)) {
       box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
       localSearch(q);
       return;
     }
 
-    // Fallback: remote search via Apps Script
     try { searchAbort?.abort(); } catch(_) {}
     searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
     box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
@@ -1092,7 +1059,7 @@
       saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
       updateRosterStatusLabel();
       hideBootOverlay();
-      Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
+      Toast.show('Kiosk online (live roster)', true, 2000);
       queueClientError('bootstrap_failed', {
         src:'bootstrap',
         msg: String(e && e.message || e || '')
@@ -1102,9 +1069,10 @@
     pinEl.disabled = false;
     qEl.disabled   = false;
 
-    // Use URL hash (#in / #out) if present; default to IN
-    applyHashAction();
-    if (!btnIn.classList.contains('active') && !btnOut.classList.contains('active')) {
+    const hash = (location.hash || '').toLowerCase();
+    if (hash === '#out') {
+      setAction('out');
+    } else {
       setAction('in');
     }
 
