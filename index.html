@@ -26,8 +26,8 @@
   h1{ margin:0 0 6px; font-weight:900; font-size:30px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
 
-  .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; }
-  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+  .badges{ position:absolute; right:18px; top:18px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; max-width:min(100%, 540px); }
+  .badge{ font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); white-space:nowrap; }
   .gear{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:800; display:flex; align-items:center; gap:6px; }
   .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
@@ -58,6 +58,7 @@
   @media (max-width:900px){
     .grid{ grid-template-columns:1fr; }
     .segment.segment-xl button{ font-size:36px; min-height:88px; }
+    .badges{ position:static; justify-content:flex-end; margin-bottom:10px; }
   }
 
   /* ===== Bootstrap overlay ===== */
@@ -301,7 +302,7 @@
     else setTimeout(flushClientErrors, 500);
   });
 
-  /* ================= Bootstrap meta (last success/fail) ================= */
+  /* ================= Bootstrap meta ================= */
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -344,16 +345,13 @@
       const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
 
       if (bootstrapReady){
-        // FAST MODE — cache successfully loaded this session
         label = `⚡ Roster OK · ${when}`;
       } else {
-        // FALLBACK MODE — we have a past success but current run isn’t in fast mode
         label = `⚠️ Roster fallback · ${when}`;
       }
 
       title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
     } else {
-      // No successful bootstrap yet
       if (lastBootFail){
         label = `❌ Roster failed`;
         title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
@@ -363,7 +361,6 @@
       }
     }
 
-    // If we have both success & fail, include both in tooltip
     if (lastBootFail && lastBootSuccess){
       const whenF = fmtShortTs(lastBootFail.clientTs);
       title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
@@ -374,8 +371,10 @@
   }
 
   /* ================= Bootstrap cache (students + faculty) ================= */
-  let studentByLegacy = new Map();  // key: legacyId
-  let facultyByPin    = new Map();  // key: 10-digit quick pin
+  let studentByLegacy = new Map();  // legacyId → { firstName,lastName,... }
+  let facultyByPin    = new Map();  // pin → { firstName,lastName,personId }
+  let facultyList     = [];         // for local name search
+  let studentList     = [];         // for local name search
   let bootstrapReady  = false;
 
   async function loadBootstrap(){
@@ -387,6 +386,8 @@
 
     studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
     facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
+    facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
+    studentList     = Array.isArray(data.studentList) ? data.studentList : [];
     bootstrapReady  = true;
 
     saveBootstrapSuccess(data.ts || Date.now());
@@ -405,7 +406,7 @@
     bootOverlay.style.display = 'none';
   }
 
-  /* ================= API submit (fallback / non-fast paths) ================= */
+  /* ================= API submit (slow/fallback paths) ================= */
   let lastSubmitAt = 0;
   async function submitPinOrId({ pin, personId, src='' }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
@@ -433,7 +434,6 @@
         return;
       }
 
-      // Student flows (when we didn't fast path)
       if (data.status === 'student_in' && data.legacyId) {
         const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
@@ -445,7 +445,6 @@
         return;
       }
 
-      // Faculty success (slow paths)
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -467,16 +466,14 @@
       return;
     }
 
-    // 1) Instant VC open
     const kioskURL = VC_BASE + encodeURIComponent(legacyId);
     window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
     Toast.show(`${label || 'Student'} — sent to Veracross`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    // 2) Background log
     const body = new URLSearchParams({
       action: act,
-      src: 'name_fast',
+      src: 'student_in_fast',
       pin: String(legacyId)
     }).toString();
 
@@ -488,12 +485,47 @@
       queueClientError('student_in_fast_failed', {
         a: act,
         pin: String(legacyId),
-        src: 'name_fast'
+        src: 'student_in_fast'
       });
     });
   }
 
-  /* ================= FAST faculty IN/OUT (card or name) ================= */
+  /* ================= FAST student OUT (name or card) ================= */
+  function quickStudentOut({ legacyId, label }) {
+    const act = 'out';
+    const key = makeKey({ pin: legacyId, personId: '' });
+    if (!canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const who = label || 'Student';
+
+    Toast.show(`${who} — signed OUT — ${timeStr}`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
+
+    const body = new URLSearchParams({
+      action: act,
+      src: 'student_out_fast',
+      pin: String(legacyId)
+    }).toString();
+
+    fetch(ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    }).catch(() => {
+      queueClientError('student_out_fast_failed', {
+        a: act,
+        pin: String(legacyId),
+        src: 'student_out_fast'
+      });
+    });
+  }
+
+  /* ================= FAST faculty IN/OUT ================= */
   function quickFacultyAction({ personId, pin, label }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
@@ -533,7 +565,7 @@
     });
   }
 
-  /* ================= Card input auto-submit (fast when cache knows card) ================= */
+  /* ================= Card input auto-submit (fast paths) ================= */
   let wedgeTimer = null;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
@@ -547,24 +579,22 @@
       const isIn = btnIn.classList.contains('active');
 
       if (bootstrapReady) {
-        // Known student card → fast VC for IN
-        if (isIn && studentByLegacy.has(ten)) {
+        if (studentByLegacy.has(ten)) {
           const rec   = studentByLegacy.get(ten);
-          const label = `${rec.firstName} ${rec.lastName}`.trim() || 'Student';
-          quickStudentInFromName({ legacyId: ten, label });
-        }
-        // Known faculty card → fast toast/chime + background log
-        else if (facultyByPin.has(ten)) {
+          const label = `${rec.firstName||''} ${rec.lastName||''}`.trim() || 'Student';
+          if (isIn) {
+            quickStudentInFromName({ legacyId: ten, label });
+          } else {
+            quickStudentOut({ legacyId: ten, label });
+          }
+        } else if (facultyByPin.has(ten)) {
           const rec   = facultyByPin.get(ten);
-          const label = `${rec.firstName} ${rec.lastName}`.trim() || 'Faculty';
+          const label = `${rec.firstName||''} ${rec.lastName||''}`.trim() || 'Faculty';
           quickFacultyAction({ pin: ten, label });
-        }
-        // Unknown / new card → fallback to backend
-        else {
+        } else {
           submitPinOrId({ pin: ten, src: 'card' });
         }
       } else {
-        // No bootstrap → safe slow path
         submitPinOrId({ pin: ten, src: 'card' });
       }
 
@@ -574,7 +604,7 @@
     }, WEDGE_QUIET_MS);
   }, { passive:true });
 
-  /* ================= Search (Faculty first, then Students) ================= */
+  /* ================= Search (local fast, remote fallback) ================= */
   let searchTimer = null, searchAbort = null, searchToken = 0;
   const cacheSearch = new Map();
 
@@ -633,9 +663,19 @@
   }
 
   async function doSearch(q){
+    const box = $('#results');
+
+    // Fast path: use in-memory rosters
+    if (bootstrapReady && (facultyList.length || studentList.length)) {
+      box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
+      localSearch(q);
+      return;
+    }
+
+    // Fallback: remote search
     try { searchAbort?.abort(); } catch(_) {}
     searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
-    const box = $('#results'); box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
+    box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
 
     const cacheKey = q.toLowerCase();
     const cached = cacheSearch.get(cacheKey);
@@ -660,25 +700,61 @@
     }
   }
 
+  function localSearch(q){
+    const myToken = ++searchToken;
+    const nq = q.trim();
+    if (!nq){
+      $('#results').innerHTML = '';
+      return;
+    }
+
+    const fac = [];
+    for (const r of facultyList){
+      const { firstName, lastName, personId } = r;
+      const score = scoreName(nq, firstName||'', lastName||'');
+      if (score <= 0) continue;
+      fac.push({ firstName, lastName, personId, _score:score });
+    }
+
+    const stu = [];
+    for (const r of studentList){
+      const fullName = r.fullName || `${r.lastName||''}, ${r.firstName||''}`;
+      const flip = flipLF(fullName);
+      const score = scoreName(nq, flip.first||'', flip.last||'', fullName);
+      if (score <= 0) continue;
+      stu.push({
+        fullName,
+        legacyId: r.legacyId,
+        _flip: flip,
+        _score: score
+      });
+    }
+
+    const facSorted = fac.sort((a,b)=>b._score - a._score).slice(0,30);
+    const stuSorted = stu.sort((a,b)=>b._score - a._score).slice(0,30);
+
+    renderSearch(nq, { fac: facSorted, stu: stuSorted }, myToken);
+  }
+
   function renderSearch(q, data, token){
     if (token !== searchToken || !qEl.value.trim()) return;
     const { fac, stu } = data;
 
     const facMap = new Map();
-    fac.forEach(r=>{
+    (fac || []).forEach(r=>{
       const pid = String(r.personId||'');
-      const s = scoreName(q, r.firstName||'', r.lastName||'');
+      const s = r._score != null ? r._score : scoreName(q, r.firstName||'', r.lastName||'');
       const cur = facMap.get(pid);
       if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
     });
     const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
 
     const stuMap = new Map();
-    stu.forEach(r=>{
-      const lf = String(r.fullName||'');
-      const flip = flipLF(lf);
+    (stu || []).forEach(r=>{
+      const lf   = String(r.fullName||'');
+      const flip = r._flip || flipLF(lf);
       const legacy = String(r.legacyId||'');
-      const s = scoreName(q, flip.first||'', flip.last||'', lf);
+      const s = r._score != null ? r._score : scoreName(q, flip.first||'', flip.last||'', lf);
       const cur = stuMap.get(legacy);
       if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
     });
@@ -689,7 +765,7 @@
     if (facSorted.length) {
       frag.appendChild(sectionHeader('FACULTY'));
       facSorted.forEach(({ firstName, lastName, personId })=>{
-        const label = `${firstName} ${lastName}`.trim() || 'Faculty';
+        const label = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
         frag.appendChild(resultRow(
           label,
           'Submit',
@@ -708,10 +784,8 @@
           ()=> {
             const isOut = btnOut.classList.contains('active');
             if (isOut) {
-              // OUT → log to backend with normal path (no VC)
-              submitPinOrId({ pin: String(legacyId), src:'name' });
+              quickStudentOut({ legacyId: String(legacyId), label });
             } else {
-              // IN → fast VC + background log
               quickStudentInFromName({ legacyId: String(legacyId), label });
             }
           }
@@ -741,7 +815,7 @@
     showBootOverlay('Loading rosters…');
 
     try{
-      await loadBootstrap();   // will also save success + update label
+      await loadBootstrap();
       hideBootOverlay();
       Toast.show('Kiosk ready (fast mode)', true, 1400);
     }catch(e){
