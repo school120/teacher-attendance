@@ -59,12 +59,52 @@
     .grid{ grid-template-columns:1fr; }
     .segment.segment-xl button{ font-size:36px; min-height:88px; }
   }
+
+  /* ===== Bootstrap overlay ===== */
+  .boot-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.78);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:60;
+  }
+  .boot-overlay-inner{
+    background:var(--card);
+    color:var(--text);
+    padding:20px 26px;
+    border-radius:16px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+    min-width:260px;
+    text-align:center;
+  }
+  .boot-spinner{
+    width:32px;
+    height:32px;
+    border-radius:999px;
+    border:3px solid rgba(148,163,184,.7);
+    border-top-color:var(--blue);
+    animation:spin 0.7s linear infinite;
+  }
+  .boot-text{
+    font-weight:800;
+    font-size:16px;
+  }
+  @keyframes spin{
+    to{ transform:rotate(360deg); }
+  }
 </style>
 </head>
 <body>
   <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
     <div class="badges" aria-live="polite" aria-atomic="true">
       <div id="netBadge" class="badge">Online</div>
+      <div id="rosterStatus" class="badge">Roster: —</div>
       <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">🌙 Dark</button>
     </div>
 
@@ -92,6 +132,14 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Bootstrap overlay -->
+    <div id="bootOverlay" class="boot-overlay" aria-live="polite" aria-busy="true">
+      <div class="boot-overlay-inner">
+        <div class="boot-spinner" aria-hidden="true"></div>
+        <div class="boot-text">Loading rosters…</div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -108,9 +156,17 @@
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const rosterStatusEl = $('#rosterStatus');
+  const bootOverlay = $('#bootOverlay');
 
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
+
+  const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
+  const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
+
+  let lastBootSuccess = null;  // { serverTs, clientTs }
+  let lastBootFail    = null;  // { clientTs, message }
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -245,21 +301,108 @@
     else setTimeout(flushClientErrors, 500);
   });
 
+  /* ================= Bootstrap meta (last success/fail) ================= */
+  function fmtShortTs(ts){
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleString('en-US', {
+      month:'short',
+      day:'numeric',
+      hour:'numeric',
+      minute:'2-digit'
+    });
+  }
+
+  function loadBootstrapMetaFromStorage(){
+    try{
+      const s = localStorage.getItem(LS_BOOT_SUCCESS);
+      if (s) lastBootSuccess = JSON.parse(s);
+    }catch(_){}
+    try{
+      const f = localStorage.getItem(LS_BOOT_FAIL);
+      if (f) lastBootFail = JSON.parse(f);
+    }catch(_){}
+  }
+
+  function saveBootstrapSuccess(serverTs){
+    lastBootSuccess = { serverTs: serverTs || Date.now(), clientTs: Date.now() };
+    try{ localStorage.setItem(LS_BOOT_SUCCESS, JSON.stringify(lastBootSuccess)); }catch(_){}
+  }
+
+  function saveBootstrapFail(message){
+    lastBootFail = { clientTs: Date.now(), message: String(message||'failed') };
+    try{ localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(lastBootFail)); }catch(_){}
+  }
+
+  function updateRosterStatusLabel(){
+    if (!rosterStatusEl) return;
+
+    let label = '⏳ Roster: loading…';
+    let title = '';
+
+    if (lastBootSuccess){
+      const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
+
+      if (bootstrapReady){
+        // FAST MODE — cache successfully loaded this session
+        label = `⚡ Roster OK · ${when}`;
+      } else {
+        // FALLBACK MODE — we have a past success but current run isn’t in fast mode
+        label = `⚠️ Roster fallback · ${when}`;
+      }
+
+      title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
+    } else {
+      // No successful bootstrap yet
+      if (lastBootFail){
+        label = `❌ Roster failed`;
+        title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
+      } else {
+        label = `⏳ Roster: not cached yet`;
+        title = `No successful roster downloads yet`;
+      }
+    }
+
+    // If we have both success & fail, include both in tooltip
+    if (lastBootFail && lastBootSuccess){
+      const whenF = fmtShortTs(lastBootFail.clientTs);
+      title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
+    }
+
+    rosterStatusEl.textContent = label;
+    rosterStatusEl.title = title || 'Roster bootstrap status';
+  }
+
   /* ================= Bootstrap cache (students + faculty) ================= */
   let studentByLegacy = new Map();  // key: legacyId
   let facultyByPin    = new Map();  // key: 10-digit quick pin
   let bootstrapReady  = false;
 
   async function loadBootstrap(){
-    try{
-      const res  = await fetch(ENDPOINT + '?action=bootstrap');
-      const data = await res.json();
-      studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
-      facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
-      bootstrapReady  = true;
-    }catch(_){
-      bootstrapReady  = false;
+    const res  = await fetch(ENDPOINT + '?action=bootstrap');
+    if (!res.ok) {
+      throw new Error('Bootstrap HTTP ' + res.status);
     }
+    const data = await res.json();
+
+    studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
+    facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
+    bootstrapReady  = true;
+
+    saveBootstrapSuccess(data.ts || Date.now());
+    updateRosterStatusLabel();
+  }
+
+  /* ================= Bootstrap overlay helpers ================= */
+  function showBootOverlay(text){
+    if (!bootOverlay) return;
+    const t = bootOverlay.querySelector('.boot-text');
+    if (t && text) t.textContent = text;
+    bootOverlay.style.display = 'flex';
+  }
+  function hideBootOverlay(){
+    if (!bootOverlay) return;
+    bootOverlay.style.display = 'none';
   }
 
   /* ================= API submit (fallback / non-fast paths) ================= */
@@ -302,7 +445,7 @@
         return;
       }
 
-      // Faculty success (for slow paths)
+      // Faculty success (slow paths)
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -315,7 +458,7 @@
     }
   }
 
-  /* ================= FAST student IN from name (and card when we know it's student) ================= */
+  /* ================= FAST student IN (name or card) ================= */
   function quickStudentInFromName({ legacyId, label }) {
     const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -364,7 +507,6 @@
     const verb = act === 'in' ? 'IN' : 'OUT';
     const who  = label || 'Faculty';
 
-    // Instant kiosk-style feedback
     Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
@@ -391,7 +533,7 @@
     });
   }
 
-  /* ================= Card input auto-submit (fast when cache knows the card) ================= */
+  /* ================= Card input auto-submit (fast when cache knows card) ================= */
   let wedgeTimer = null;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
@@ -405,24 +547,24 @@
       const isIn = btnIn.classList.contains('active');
 
       if (bootstrapReady) {
-        // 1) Student card we know from snapshot → fast VC
+        // Known student card → fast VC for IN
         if (isIn && studentByLegacy.has(ten)) {
           const rec   = studentByLegacy.get(ten);
           const label = `${rec.firstName} ${rec.lastName}`.trim() || 'Student';
           quickStudentInFromName({ legacyId: ten, label });
         }
-        // 2) Faculty card we know from snapshot → fast toast/chime, log in bg
+        // Known faculty card → fast toast/chime + background log
         else if (facultyByPin.has(ten)) {
           const rec   = facultyByPin.get(ten);
           const label = `${rec.firstName} ${rec.lastName}`.trim() || 'Faculty';
           quickFacultyAction({ pin: ten, label });
         }
-        // 3) Unknown/brand-new card → safe slow path
+        // Unknown / new card → fallback to backend
         else {
           submitPinOrId({ pin: ten, src: 'card' });
         }
       } else {
-        // No bootstrap yet → slow path for everything
+        // No bootstrap → safe slow path
         submitPinOrId({ pin: ten, src: 'card' });
       }
 
@@ -587,10 +729,33 @@
   }
 
   /* ================= Init ================= */
-  document.addEventListener('DOMContentLoaded', ()=>{
+  document.addEventListener('DOMContentLoaded', async ()=>{
     initTheme();
     updateNet();
-    loadBootstrap();                 // fetch IDs once for fast first swipe
+
+    loadBootstrapMetaFromStorage();
+    updateRosterStatusLabel();
+
+    pinEl.disabled = true;
+    qEl.disabled   = true;
+    showBootOverlay('Loading rosters…');
+
+    try{
+      await loadBootstrap();   // will also save success + update label
+      hideBootOverlay();
+      Toast.show('Kiosk ready (fast mode)', true, 1400);
+    }catch(e){
+      bootstrapReady = false;
+      saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
+      updateRosterStatusLabel();
+      hideBootOverlay();
+      Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
+      queueClientError('bootstrap_failed', { src:'bootstrap', msg: String(e && e.message || e || '') });
+    }
+
+    pinEl.disabled = false;
+    qEl.disabled   = false;
+
     setAction('in');
     setTimeout(()=>{ pinEl.focus(); }, 0);
     if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
