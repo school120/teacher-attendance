@@ -59,86 +59,88 @@
 
   /* ───── Top row: roster left, title center, net/theme right ───── */
   .top-row{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:14px;
-    margin-bottom:12px;
+    position: relative;
+    margin-bottom: 16px;
+    padding-top: 36px; /* room for badges */
   }
+
+  .top-center{
+    text-align:center;
+    max-width:100%;
+  }
+
   .left-badges,
   .right-badges{
+    position:absolute;
+    top:0;
     display:flex;
     gap:8px;
     align-items:center;
     flex-wrap:wrap;
   }
-  .top-center{
-    flex:1 1 auto;
-    text-align:center;
-  }
+
+  .left-badges{ left:0; }
+  .right-badges{ right:0; }
 
   h1{ margin:0 0 6px; font-weight:900; font-size:30px; letter-spacing:.2px; }
   .muted{ color:var(--muted); }
 
-.badge {
-  font-size: 12px;
-  font-weight: 800;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--text);
-  white-space: nowrap;
-}
-
-/* Top row becomes a positioning container */
-.top-row{
-  position: relative;
-  margin-bottom: 16px;
-  padding-top: 34px;          /* space so header doesn't overlap badges */
-}
-
-/* Center block really centered */
-.top-center{
-  text-align: center;
-  max-width: 100%;
-}
-
-/* Pin badges to the sides instead of using flex layout spacing */
-.left-badges,
-.right-badges{
-  position: absolute;
-  top: 0;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-/* Left edge */
-.left-badges{
-  left: 0;
-}
-
-/* Right edge */
-.right-badges{
-  right: 0;
-}
-
-/* Mobile: stack things so nothing gets squished */
-@media (max-width: 700px){
-  .top-row{
-    padding-top: 64px;   /* a bit more room for badges on small screens */
+  .badge{
+    font-size:12px;
+    font-weight:800;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background:var(--card);
+    color:var(--text);
+    white-space:nowrap;
   }
 
-  .top-center{
-    padding: 0 12px;
+  /* Online / offline color pills */
+  .badge.net.online{
+    background:#dcfce7;
+    border-color:#86efac;
+    color:#166534;
+  }
+  .badge.net.offline{
+    background:#fee2e2;
+    border-color:#fca5a5;
+    color:#991b1b;
   }
 
-  .left-badges,
-  .right-badges{
-    top: 0;
+  /* Theme toggle styled like a badge */
+  #themeBtn{
+    font-size:12px;
+    font-weight:800;
+    padding:6px 12px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background:var(--card);
+    color:var(--text);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    cursor:pointer;
   }
-}
+  #themeBtn span{
+    font-size:12px;
+    letter-spacing:.08em;
+  }
+  #themeBtn:hover,
+  #themeBtn:focus-visible{
+    border-color:#3b82f6;
+    box-shadow:var(--ring);
+    outline:none;
+  }
+
+  @media (max-width:700px){
+    .top-row{
+      padding-top:64px;
+    }
+    .top-center{
+      padding:0 12px;
+    }
+  }
 
   .toast{
     position:fixed;
@@ -344,7 +346,7 @@
 <body>
   <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
 
-    <!-- Top row: roster left, title center, net/theme right -->
+    <!-- Top row: roster left, title center, theme + net right -->
     <div class="top-row">
       <div class="left-badges">
         <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
@@ -356,10 +358,9 @@
       </div>
 
       <div class="right-badges">
-        <button id="themeBtn" class="gear" title="Toggle dark mode" aria-label="Toggle dark mode">
+        <button id="themeBtn" title="Toggle theme" aria-label="Toggle dark mode">
           🌙 <span>Dark</span>
         </button>
-      
         <div id="netBadge" class="badge net online">Online</div>
       </div>
     </div>
@@ -416,8 +417,8 @@
   const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
   const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
 
-  let lastBootSuccess = null;  // { serverTs, clientTs }
-  let lastBootFail    = null;  // { clientTs, message }
+  let lastBootSuccess = null;
+  let lastBootFail    = null;
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -492,13 +493,8 @@
     if (!netBadge) return;
     netBadge.textContent = on ? 'Online' : 'Offline';
     netBadge.classList.add('net');
-    if (on){
-      netBadge.classList.add('online');
-      netBadge.classList.remove('offline');
-    } else {
-      netBadge.classList.add('offline');
-      netBadge.classList.remove('online');
-    }
+    netBadge.classList.toggle('online', on);
+    netBadge.classList.toggle('offline', !on);
   }
   window.addEventListener('online', updateNet, { passive:true });
   window.addEventListener('offline', updateNet, { passive:true });
@@ -573,6 +569,9 @@
   });
 
   /* ================= Bootstrap meta (last success/fail) ================= */
+  const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
+  const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
+
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -583,6 +582,9 @@
       minute:'2-digit'
     });
   }
+
+  let lastBootSuccess = null;
+  let lastBootFail    = null;
 
   function loadBootstrapMetaFromStorage(){
     try{
@@ -641,10 +643,10 @@
   }
 
   /* ================= Bootstrap cache (students + faculty) ================= */
-  let studentByLegacy = new Map();  // legacyId → roster row
-  let facultyByPin    = new Map();  // quick-pin → roster row
-  let facultyList     = [];         // [{personId, firstName, lastName}, ...]
-  let studentList     = [];         // [{legacyId, personId, firstName, lastName, fullName, grade}, ...]
+  let studentByLegacy = new Map();
+  let facultyByPin    = new Map();
+  let facultyList     = [];
+  let studentList     = [];
   let bootstrapReady  = false;
 
   async function loadBootstrap(){
@@ -713,7 +715,6 @@
         return;
       }
 
-      // Student flows (slow paths)
       if (data.status === 'student_in' && data.legacyId) {
         const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
@@ -725,7 +726,6 @@
         return;
       }
 
-      // Faculty success (slow paths)
       const { status, firstName:fn, lastName:ln, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
@@ -752,13 +752,11 @@
 
     const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
-    // 1) Instant Veracross handoff
     const kioskURL = VC_BASE + encodeURIComponent(legacyId);
     window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
     Toast.show(`${label} — sent to Veracross`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    // 2) Background log
     const body = new URLSearchParams({
       action: act,
       src: 'name_fast_student_in',
@@ -795,11 +793,9 @@
     const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     const who = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
-    // Instant UX
     Toast.show(`${who} — signed OUT — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
 
-    // Background log
     const body = new URLSearchParams({
       action: act,
       src: 'student_out_fast',
@@ -875,12 +871,10 @@
       return;
     }
 
-    // Instant UX
     Toast.show('Cougar Card not found', false);
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    // Background log to backend
     const body = new URLSearchParams({
       action: act,
       src: 'card_fast_unknown',
@@ -933,11 +927,9 @@
             lastName: rec.lastName || ''
           });
         } else {
-          // FAST local fail for unknown cards
           quickUnknownCardFail(ten);
         }
       } else {
-        // No bootstrap → safe slow path
         submitPinOrId({ pin: ten, src: 'card' });
       }
 
@@ -993,7 +985,7 @@
     const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
     btn.addEventListener('click', ()=>{
       onClick();
-      clearSearchUI();  // clear search box + results after submit
+      clearSearchUI();
     });
     row.appendChild(name); row.appendChild(btn);
     return row;
@@ -1018,14 +1010,12 @@
   async function doSearch(q){
     const box = $('#results');
 
-    // Preferred path: local search using bootstrapped lists
     if (bootstrapReady && (facultyList.length || studentList.length)) {
       box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
       localSearch(q);
       return;
     }
 
-    // Fallback: remote search via Apps Script
     try { searchAbort?.abort(); } catch(_) {}
     searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
     box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
@@ -1171,7 +1161,7 @@
     showBootOverlay('Loading rosters…');
 
     try{
-      await loadBootstrap();   // will also save success + update label
+      await loadBootstrap();
       hideBootOverlay();
       Toast.show('Kiosk ready (fast mode)', true, 1400);
     }catch(e){
@@ -1189,7 +1179,6 @@
     pinEl.disabled = false;
     qEl.disabled   = false;
 
-    // Default action, then override from hash if present (#in / #out)
     setAction('in');
     applyHashAction();
 
