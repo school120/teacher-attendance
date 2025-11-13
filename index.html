@@ -8,14 +8,6 @@
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
-  /*
-    ⚡ Focused goals:
-    - Snappy UI (less layout thrash, fewer timers, passive listeners)
-    - Clean structure (tiny modules in a single file)
-    - Offline-friendly logging (queue + flush)
-    - Accessibility + kiosk ergonomics
-  */
-
   :root{
     --bg:#f6f7fb; --card:#ffffff; --text:#0f172a; --muted:#667085; --border:#e5e7eb;
     --in:#16a34a; --out:#dc2626; --blue:#2563eb; --ok:#0f766e; --err:#b91c1c;
@@ -106,7 +98,6 @@
 (() => {
   'use strict';
 
-  /* ================= Const & DOM ================= */
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 250;
@@ -118,11 +109,10 @@
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
 
-  /* ================= Utilities ================= */
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
 
-  /* ================= Toast Module ================= */
+  /* ================= Toast ================= */
   const Toast = (() => {
     let timer = null;
     function show(text, ok=true, dur=2200){
@@ -136,7 +126,7 @@
     return { show };
   })();
 
-  /* ================= Chimes Module ================= */
+  /* ================= Chimes ================= */
   const Chime = (() => {
     let audioCtx=null, master=null, comp=null, dist=null, ready=false;
     function init(){
@@ -233,7 +223,7 @@
       const q = JSON.parse(localStorage.getItem('client_error_queue')||'[]');
       q.push(payload);
       localStorage.setItem('client_error_queue', JSON.stringify(q));
-    }catch(_){ /* ignore */ }
+    }catch(_){ }
   }
   async function flushClientErrors(){
     let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
@@ -255,7 +245,24 @@
     else setTimeout(flushClientErrors, 500);
   });
 
-  /* ================= API submit ================= */
+  /* ================= Bootstrap cache (students + faculty) ================= */
+  let studentByLegacy = new Map();  // key: legacyId
+  let facultyByPin    = new Map();  // key: 10-digit quick pin
+  let bootstrapReady  = false;
+
+  async function loadBootstrap(){
+    try{
+      const res  = await fetch(ENDPOINT + '?action=bootstrap');
+      const data = await res.json();
+      studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
+      facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
+      bootstrapReady  = true;
+    }catch(_){
+      bootstrapReady  = false;
+    }
+  }
+
+  /* ================= API submit (fallback / non-fast paths) ================= */
   let lastSubmitAt = 0;
   async function submitPinOrId({ pin, personId, src='' }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
@@ -283,7 +290,7 @@
         return;
       }
 
-      // Student flows (used by card scans or faculty)
+      // Student flows (when we didn't fast path)
       if (data.status === 'student_in' && data.legacyId) {
         const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
         window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
@@ -295,7 +302,7 @@
         return;
       }
 
-      // Faculty success
+      // Faculty success (for slow paths)
       const { status, firstName, lastName, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${firstName||''} ${lastName||''} signed ${verb} — ${time||''}`.trim();
@@ -308,17 +315,22 @@
     }
   }
 
-  /* ================= FAST student IN from name search ================= */
+  /* ================= FAST student IN from name (and card when we know it's student) ================= */
   function quickStudentInFromName({ legacyId, label }) {
     const act = 'in';
+    const key = makeKey({ pin: legacyId, personId: '' });
+    if (!canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
 
-    // 1) Instant UX: open Veracross + toast + chime
+    // 1) Instant VC open
     const kioskURL = VC_BASE + encodeURIComponent(legacyId);
     window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-    Toast.show(`${label} — sent to Veracross`, true);
+    Toast.show(`${label || 'Student'} — sent to Veracross`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    // 2) Background log to backend (do not await)
+    // 2) Background log
     const body = new URLSearchParams({
       action: act,
       src: 'name_fast',
@@ -338,16 +350,85 @@
     });
   }
 
-  /* ================= Card input auto-submit ================= */
+  /* ================= FAST faculty IN/OUT (card or name) ================= */
+  function quickFacultyAction({ personId, pin, label }) {
+    const act = btnIn.classList.contains('active') ? 'in' : 'out';
+    const key = makeKey({ pin, personId });
+    if (!canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const verb = act === 'in' ? 'IN' : 'OUT';
+    const who  = label || 'Faculty';
+
+    // Instant kiosk-style feedback
+    Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
+
+    const params = {
+      action: act,
+      src: pin ? 'card_fast_faculty' : 'name_fast_faculty'
+    };
+    if (pin) params.pin = pin;
+    if (personId) params.personId = personId;
+
+    const body = new URLSearchParams(params).toString();
+
+    fetch(ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body
+    }).catch(() => {
+      queueClientError('faculty_fast_failed', {
+        a: act,
+        pin: pin || '',
+        personId: personId || '',
+        src: params.src
+      });
+    });
+  }
+
+  /* ================= Card input auto-submit (fast when cache knows the card) ================= */
   let wedgeTimer = null;
   pinEl.addEventListener('input', ()=>{
     clearTimeout(wedgeTimer);
     wedgeTimer = setTimeout(()=>{
-      const d = digitsOnly(pinEl.value); if (d.length < 10) return;
-      const ten = d.slice(-10); if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-      submitPinOrId({ pin: ten, src: 'card' });
+      const d = digitsOnly(pinEl.value);
+      if (d.length < 10) return;
+
+      const ten = d.slice(-10);
+      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
+
+      const isIn = btnIn.classList.contains('active');
+
+      if (bootstrapReady) {
+        // 1) Student card we know from snapshot → fast VC
+        if (isIn && studentByLegacy.has(ten)) {
+          const rec   = studentByLegacy.get(ten);
+          const label = `${rec.firstName} ${rec.lastName}`.trim() || 'Student';
+          quickStudentInFromName({ legacyId: ten, label });
+        }
+        // 2) Faculty card we know from snapshot → fast toast/chime, log in bg
+        else if (facultyByPin.has(ten)) {
+          const rec   = facultyByPin.get(ten);
+          const label = `${rec.firstName} ${rec.lastName}`.trim() || 'Faculty';
+          quickFacultyAction({ pin: ten, label });
+        }
+        // 3) Unknown/brand-new card → safe slow path
+        else {
+          submitPinOrId({ pin: ten, src: 'card' });
+        }
+      } else {
+        // No bootstrap yet → slow path for everything
+        submitPinOrId({ pin: ten, src: 'card' });
+      }
+
       pinEl.value = '';
       focusPinSafely();
+      lastSubmitAt = Date.now();
     }, WEDGE_QUIET_MS);
   }, { passive:true });
 
@@ -414,7 +495,6 @@
     searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
     const box = $('#results'); box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
 
-    // Simple memo to cut latency on repeated queries
     const cacheKey = q.toLowerCase();
     const cached = cacheSearch.get(cacheKey);
     if (cached && (Date.now() - cached.t < 10000)) {
@@ -467,10 +547,11 @@
     if (facSorted.length) {
       frag.appendChild(sectionHeader('FACULTY'));
       facSorted.forEach(({ firstName, lastName, personId })=>{
+        const label = `${firstName} ${lastName}`.trim() || 'Faculty';
         frag.appendChild(resultRow(
-          `${firstName} ${lastName}`,
+          label,
           'Submit',
-          ()=> submitPinOrId({ personId, src:'name' })
+          ()=> quickFacultyAction({ personId, label })
         ));
       });
     }
@@ -478,11 +559,20 @@
     if (stuSorted.length) {
       frag.appendChild(sectionHeader('STUDENTS'));
       stuSorted.forEach(({ fullName, legacyId, _flip })=>{
-        const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim();
+        const label = (_flip.first ? `${_flip.first} ${_flip.last}` : fullName).trim() || 'Student';
         frag.appendChild(resultRow(
           label,
           'Submit',
-          ()=> quickStudentInFromName({ legacyId, label })   // FAST path
+          ()=> {
+            const isOut = btnOut.classList.contains('active');
+            if (isOut) {
+              // OUT → log to backend with normal path (no VC)
+              submitPinOrId({ pin: String(legacyId), src:'name' });
+            } else {
+              // IN → fast VC + background log
+              quickStudentInFromName({ legacyId: String(legacyId), label });
+            }
+          }
         ));
       });
     }
@@ -500,6 +590,7 @@
   document.addEventListener('DOMContentLoaded', ()=>{
     initTheme();
     updateNet();
+    loadBootstrap();                 // fetch IDs once for fast first swipe
     setAction('in');
     setTimeout(()=>{ pinEl.focus(); }, 0);
     if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
