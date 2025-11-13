@@ -416,7 +416,6 @@
   function setTheme(mode){
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
-    // Keep emoji + label
     themeBtn.innerHTML = dark ? '☀️ <span>Light</span>' : '🌙 <span>Dark</span>';
     if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
@@ -471,7 +470,7 @@
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  // NEW: if hash changes while page is open
+  // NEW: follow hash changes while open
   window.addEventListener('hashchange', applyHashAction);
 
   /* ================= De-dupe ================= */
@@ -623,7 +622,12 @@
 
   /* ================= API submit (slow/fallback paths) ================= */
   let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
+  async function submitPinOrId(
+    { pin, personId, src='', firstName='', lastName='', grade='' },
+    opts = {}
+  ) {
+    const { suppressSuccess = false } = opts;
+
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
@@ -660,13 +664,19 @@
 
       // Student flows (slow paths)
       if (data.status === 'student_in' && data.legacyId) {
-        const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
-        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        Toast.show(`${data.student||'Student'} — sent to Veracross`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+        if (!suppressSuccess) {
+          const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
+          window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+          Toast.show(`${data.student||'Student'} — sent to Veracross`, true);
+          Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+        }
         return;
       }
       if (data.status === 'student_out_recorded') {
-        Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+        if (!suppressSuccess) {
+          Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true);
+          Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+        }
         return;
       }
 
@@ -674,7 +684,10 @@
       const { status, firstName:fn, lastName:ln, time } = data || {};
       const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
       const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
-      Toast.show(line || 'Done.', true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+      if (!suppressSuccess) {
+        Toast.show(line || 'Done.', true);
+        Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
+      }
     }catch(err){
       Toast.show('Network error', false); Chime.fail();
       queueClientError('fetch_failed', {
@@ -688,7 +701,6 @@
 
   /* ================= FAST student IN ================= */
   function quickStudentIn({ legacyId, firstName, lastName, grade }) {
-    const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
     if (!canSendNow(key)) {
       Toast.show('Duplicate scan ignored (5s)', false);
@@ -697,39 +709,24 @@
 
     const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
-    // 1) Instant Veracross handoff
+    // 1) Instant Veracross handoff + UX
     const kioskURL = VC_BASE + encodeURIComponent(legacyId);
     window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
     Toast.show(`${label} — sent to Veracross`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    // 2) Background log
-    const body = new URLSearchParams({
-      action: act,
-      src: 'name_fast_student_in',
+    // 2) Reliable log using same code as slow path (no extra success toast)
+    submitPinOrId({
       pin: String(legacyId),
-      firstName: firstName||'',
-      lastName: lastName||'',
-      grade: grade||''
-    }).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('student_in_fast_failed', {
-        a: act,
-        pin: String(legacyId),
-        src: 'name_fast_student_in',
-        firstName, lastName, grade
-      });
-    });
+      src: 'name_fast_student_in',
+      firstName,
+      lastName,
+      grade
+    }, { suppressSuccess: true });
   }
 
   /* ================= FAST student OUT ================= */
   function quickStudentOut({ legacyId, firstName, lastName, grade }) {
-    const act = 'out';
     const key = makeKey({ pin: legacyId, personId: '' });
     if (!canSendNow(key)) {
       Toast.show('Duplicate scan ignored (5s)', false);
@@ -744,71 +741,42 @@
     Toast.show(`${who} — signed OUT — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
 
-    // Background log
-    const body = new URLSearchParams({
-      action: act,
-      src: 'student_out_fast',
+    // Reliable log
+    submitPinOrId({
       pin: String(legacyId),
-      firstName: firstName||'',
-      lastName: lastName||'',
-      grade: grade||''
-    }).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('student_out_fast_failed', {
-        a: act,
-        pin: String(legacyId),
-        src: 'student_out_fast',
-        firstName, lastName, grade
-      });
-    });
+      src: 'student_out_fast',
+      firstName,
+      lastName,
+      grade
+    }, { suppressSuccess: true });
   }
 
   /* ================= FAST faculty IN/OUT ================= */
   function quickFacultyAction({ personId, pin, firstName, lastName }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) {
       Toast.show('Duplicate scan ignored (5s)', false);
       return;
     }
 
+    const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
     const verb = act === 'in' ? 'IN' : 'OUT';
 
+    // Instant UX
     Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    const params = {
-      action: act,
-      src: pin ? 'card_fast_faculty' : 'name_fast_faculty'
-    };
-    if (pin) params.pin = pin;
-    if (personId) params.personId = personId;
-    if (firstName) params.firstName = firstName;
-    if (lastName) params.lastName = lastName;
-
-    const body = new URLSearchParams(params).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('faculty_fast_failed', {
-        a: act,
-        pin: pin || '',
-        personId: personId || '',
-        src: params.src,
-        firstName, lastName
-      });
-    });
+    // Reliable log
+    submitPinOrId({
+      pin: pin || '',
+      personId: personId || '',
+      src: pin ? 'card_fast_faculty' : 'name_fast_faculty',
+      firstName,
+      lastName
+    }, { suppressSuccess: true });
   }
 
   /* ================= FAST unknown-card error (instant) ================= */
@@ -825,7 +793,7 @@
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    // Background log to backend
+    // Background log to backend (ok if this fails silently)
     const body = new URLSearchParams({
       action: act,
       src: 'card_fast_unknown',
@@ -938,7 +906,7 @@
     const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
     btn.addEventListener('click', ()=>{
       onClick();
-      clearSearchUI();  // clear search box + results after submit
+      clearSearchUI();
     });
     row.appendChild(name); row.appendChild(btn);
     return row;
@@ -1116,7 +1084,7 @@
     showBootOverlay('Loading rosters…');
 
     try{
-      await loadBootstrap();   // will also save success + update label
+      await loadBootstrap();
       hideBootOverlay();
       Toast.show('Kiosk ready (fast mode)', true, 1400);
     }catch(e){
@@ -1134,10 +1102,9 @@
     pinEl.disabled = false;
     qEl.disabled   = false;
 
-    // NEW: use hash (#in / #out) if present
+    // Use URL hash (#in / #out) if present; default to IN
     applyHashAction();
     if (!btnIn.classList.contains('active') && !btnOut.classList.contains('active')) {
-      // default if no valid hash
       setAction('in');
     }
 
