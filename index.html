@@ -91,51 +91,54 @@
     white-space:nowrap;
   }
 
-  /* Net badge specific styling: colored pill */
-  .badge.net{
-    border:0;
-    font-weight:900;
-    padding:6px 14px;
-    border-radius:999px;
-    color:#ffffff;
-  }
-  .badge.net.online{
-    background:#16a34a; /* green */
-  }
-  .badge.net.offline{
-    background:#dc2626; /* red */
+/* Top row becomes a positioning container */
+.top-row{
+  position: relative;
+  margin-bottom: 16px;
+  padding-top: 34px;          /* space so header doesn't overlap badges */
+}
+
+/* Center block really centered */
+.top-center{
+  text-align: center;
+  max-width: 100%;
+}
+
+/* Pin badges to the sides instead of using flex layout spacing */
+.left-badges,
+.right-badges{
+  position: absolute;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Left edge */
+.left-badges{
+  left: 0;
+}
+
+/* Right edge */
+.right-badges{
+  right: 0;
+}
+
+/* Mobile: stack things so nothing gets squished */
+@media (max-width: 700px){
+  .top-row{
+    padding-top: 64px;   /* a bit more room for badges on small screens */
   }
 
-  .gear{
-    border:1px solid var(--border);
-    background:var(--card);
-    color:var(--text);
-    border-radius:10px;
-    padding:6px 10px;
-    cursor:pointer;
-    font-weight:800;
-    display:flex;
-    align-items:center;
-    gap:6px;
-    font-size:13px;
+  .top-center{
+    padding: 0 12px;
   }
-  .gear span{
-    font-size:12px;
-    letter-spacing:.08em;
-  }
-  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
 
-  @media (max-width:700px){
-    .top-row{
-      flex-direction:column;
-      align-items:center;
-      text-align:center;
-    }
-    .left-badges,
-    .right-badges{
-      justify-content:center;
-    }
+  .left-badges,
+  .right-badges{
+    top: 0;
   }
+}
 
   .toast{
     position:fixed;
