@@ -4,958 +4,548 @@
 <meta charset="utf-8" />
 <meta name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-
 <title>Guard Booth Attendance Kiosk</title>
-
-<meta name="description"
-      content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students IN → Veracross, OUT → logged to separate sheet." />
-
-<meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light dark">
 
 <style>
-/* -----------------------------------------------------------
-   ROOT + THEME
------------------------------------------------------------ */
-:root{
-  --bg:#f6f7fb;
-  --card:#ffffff;
-  --text:#0f172a;
-  --muted:#667085;
-  --border:#e5e7eb;
-
-  --in:#16a34a;
-  --out:#dc2626;
-  --blue:#2563eb;
-  --ok:#0f766e;
-  --err:#b91c1c;
-
-  --radius-lg:14px;
-  --radius-xl:18px;
-  --shadow-1:0 10px 30px rgba(0,0,0,.08);
-  --ring:0 0 0 6px rgba(59,130,246,.16);
-}
-
-body.dark{
-  --bg:#0b1020;
-  --card:#111827;
-  --text:#f3f4f6;
-  --muted:#cbd5e1;
-  --border:#374151;
-}
-
-*{
-  box-sizing:border-box;
-  -webkit-tap-highlight-color:transparent;
-}
-
-html, body{
-  height:100%;
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-}
-
-html{ overflow-x:hidden; }
-body{
-  min-height:100svh;
-  overscroll-behavior-y:contain;
-  overflow:auto;
-  -webkit-overflow-scrolling:touch;
-}
-
-/* -----------------------------------------------------------
-   WRAPPER
------------------------------------------------------------ */
-.wrap{
-  margin:auto;
-  width:min(1100px,96%);
-  background:var(--card);
-  border-radius:var(--radius-xl);
-  box-shadow:var(--shadow-1);
-  position:relative;
-  min-height:100svh;
-  padding:28px;
-  overflow:visible;
-  overflow-x:clip;
-}
-
-.top-center{
-  text-align:center;
-  margin-bottom:8px;
-}
-
-h1{
-  margin:0 0 6px;
-  font-weight:900;
-  font-size:30px;
-  letter-spacing:.2px;
-}
-
-.muted{ color:var(--muted); }
-
-/* -----------------------------------------------------------
-   BADGES AND CONTROLS
------------------------------------------------------------ */
-.badges{
-  position:absolute;
-  right:18px;
-  top:18px;
-  display:flex;
-  gap:8px;
-  align-items:center;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-  max-width:60%;
-}
-
-.badge{
-  font-size:12px;
-  font-weight:800;
-  padding:6px 10px;
-  border-radius:999px;
-  border:1px solid var(--border);
-  background:var(--card);
-  color:var(--text);
-  white-space:nowrap;
-}
-
-.gear{
-  border:1px solid var(--border);
-  background:var(--card);
-  color:var(--text);
-  border-radius:10px;
-  padding:6px 10px;
-  cursor:pointer;
-  font-weight:800;
-  display:flex;
-  align-items:center;
-  gap:6px;
-}
-.gear:focus-visible{
-  outline:none;
-  box-shadow:var(--ring);
-}
-/* -----------------------------------------------------------
-   TOAST
------------------------------------------------------------ */
-.toast{
-  position:fixed;
-  left:50%;
-  bottom:24px;
-  transform:translateX(-50%) translateY(20px);
-  opacity:0;
-  background:var(--card);
-  border:1px solid var(--border);
-  box-shadow:0 8px 30px rgba(0,0,0,.12);
-  border-radius:14px;
-  padding:18px 22px;
-  font-weight:900;
-  font-size:20px;
-  transition:all .18s ease;
-  pointer-events:none;
-  z-index:50;
-  text-align:center;
-}
-.toast.show{
-  opacity:1;
-  transform:translateX(-50%) translateY(0);
-}
-.toast.ok{ color:var(--ok); }
-.toast.err{ color:var(--err); }
-
-/* -----------------------------------------------------------
-   IN / OUT SEGMENT BUTTONS (STRONG COLORS)
------------------------------------------------------------ */
-.segment{
-  display:flex;
-  gap:14px;
-  width:100%;
-  margin:16px 0 20px;
-}
-
-.segment.segment-xl button{
-  flex:1 1 0;
-  border:2px solid #c7cdd9;
-  border-radius:16px;
-  font-weight:900;
-  font-size:42px;
-  min-height:96px;
-  padding:22px 24px;
-  cursor:pointer;
-
-  /* strong kiosk gradient */
-  background:linear-gradient(180deg,#dce3ed 0%,#c4d0df 100%);
-  color:#0f172a;
-  box-shadow:0 4px 10px rgba(0,0,0,.12);
-  transition:background .15s ease, box-shadow .15s ease;
-}
-
-.segment.segment-xl button#actIn.active{
-  background:linear-gradient(180deg,#15803d 0%,#0f5f31 100%);
-  color:#fff;
-  border-color:#15803d;
-  box-shadow:0 0 0 4px rgba(22,163,74,.25);
-}
-
-.segment.segment-xl button#actOut.active{
-  background:linear-gradient(180deg,#b91c1c 0%,#7f1212 100%);
-  color:#fff;
-  border-color:#b91c1c;
-  box-shadow:0 0 0 4px rgba(185,28,28,.25);
-}
-
-/* -----------------------------------------------------------
-   CARDS + INPUTS
------------------------------------------------------------ */
-.grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:18px;
-  align-items:stretch;
-}
-
-.card{
-  border:1px solid var(--border);
-  border-radius:14px;
-  background:var(--card);
-  padding:16px;
-  display:flex;
-  flex-direction:column;
-  height:100%;
-  overflow:hidden;
-  background-clip:padding-box;
-}
-
-.card h2{
-  margin:0 0 12px;
-  font-size:20px;
-  text-align:center;
-}
-
-input[type=password],
-input[type=search]{
-  width:100%;
-  padding:18px 20px;
-  font-size:24px;
-  border:1.5px solid var(--border);
-  border-radius:12px;
-  background:var(--card);
-  color:var(--text);
-}
-
-input[type=password]:focus-visible,
-input[type=search]:focus-visible{
-  border-color:#3b82f6;
-  box-shadow:var(--ring);
-  outline:none;
-}
-
-/* -----------------------------------------------------------
-   SEARCH RESULTS
------------------------------------------------------------ */
-.list{
-  display:grid;
-  gap:12px;
-  max-height:460px;
-  overflow:auto;
-  margin-top:14px;
-  background:var(--card);
-  background-clip:padding-box;
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior:contain;
-  flex:1 1 auto;
-  padding-right:16px;
-  scrollbar-gutter:stable both-edges;
-}
-
-.row{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  align-items:center;
-  gap:12px;
-  padding:14px 16px;
-  border:1px solid var(--border);
-  border-radius:12px;
-  background:var(--card);
-}
-
-.name{
-  min-width:0;
-  font-weight:800;
-  font-size:20px;
-  color:var(--text);
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.actionBtn{
-  --c: var(--blue);
-  background:linear-gradient(180deg,var(--c) 0%,color-mix(in srgb,var(--c) 80%,#000 20%) 100%);
-  color:#fff;
-  font-size:20px;
-  padding:16px 20px;
-  border:2px solid var(--c);
-  border-radius:14px;
-  font-weight:900;
-  cursor:pointer;
-  box-shadow:0 6px 14px rgba(0,0,0,.12);
-  justify-self:end;
-}
-
-.sectionHdr{
-  text-align:center;
-  font-weight:900;
-  font-size:14px;
-  letter-spacing:.12em;
-  color:var(--muted);
-  padding:10px 0 2px;
-}
-
-/* -----------------------------------------------------------
-   RESPONSIVE
------------------------------------------------------------ */
-@media (max-width:900px){
-  .grid{ grid-template-columns:1fr; }
-  .segment.segment-xl button{
-    font-size:36px;
-    min-height:88px;
+  /* ---------- THEME VARIABLES ---------- */
+  :root{
+    --bg:#f6f7fb;
+    --card:#ffffff;
+    --text:#0f172a;
+    --muted:#667085;
+    --border:#e5e7eb;
+    --in:#16a34a;
+    --out:#dc2626;
+    --blue:#2563eb;
+    --ok:#0f766e;
+    --err:#b91c1c;
+    --radius-lg:14px;
+    --radius-xl:18px;
+    --shadow-1:0 10px 30px rgba(0,0,0,.08);
+    --shadow-pressed:0 2px 4px rgba(0,0,0,.15) inset;
   }
-}
+  body.dark { --bg:#0b1020; --card:#111827; --text:#f3f4f6; --muted:#cbd5e1; --border:#374151; }
 
-/* -----------------------------------------------------------
-   BOOTSTRAP OVERLAY (ROSTER LOADING)
------------------------------------------------------------ */
-.boot-overlay{
-  position:fixed;
-  inset:0;
-  background:rgba(15,23,42,.78);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  z-index:60;
-}
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    min-height:100dvh;
+    overflow:hidden;
+  }
 
-.boot-overlay-inner{
-  background:var(--card);
-  color:var(--text);
-  padding:20px 26px;
-  border-radius:16px;
-  box-shadow:0 18px 40px rgba(0,0,0,.35);
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:10px;
-  min-width:260px;
-  text-align:center;
-}
+  /* ---------- CONTAINER ---------- */
+  .wrap{
+    margin:auto;
+    width:min(1050px,95%);
+    background:var(--card);
+    border-radius:var(--radius-xl);
+    box-shadow:var(--shadow-1);
+    padding:26px;
+    overflow:hidden;
+    position:relative;
+    min-height:100dvh;
+  }
 
-.boot-spinner{
-  width:32px;
-  height:32px;
-  border-radius:999px;
-  border:3px solid rgba(148,163,184,.7);
-  border-top-color:var(--blue);
-  animation:spin .7s linear infinite;
-}
+  .top-center { text-align:center; margin-bottom:8px; }
+  h1{ margin:0; font-weight:900; font-size:28px; }
 
-.boot-text{
-  font-weight:800;
-  font-size:16px;
-}
+  /* ---------- BADGES ---------- */
+  .badges{
+    position:absolute;
+    right:18px;
+    top:18px;
+    display:flex;
+    gap:10px;
+  }
+  .badge{
+    font-size:13px;
+    font-weight:800;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background:var(--card);
+    white-space:nowrap;
+  }
+  .gear{
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:6px 10px;
+    background:var(--card);
+    font-weight:800;
+    cursor:pointer;
+  }
 
-@keyframes spin{
-  to{ transform:rotate(360deg); }
-}
+  /* ---------- TOAST ---------- */
+  .toast{
+    position:fixed;
+    left:50%; bottom:24px;
+    transform:translateX(-50%) translateY(20px);
+    opacity:0;
+    transition:all .18s ease;
+    background:var(--card);
+    border:1px solid var(--border);
+    box-shadow:0 8px 30px rgba(0,0,0,.12);
+    border-radius:14px;
+    padding:18px 22px;
+    font-size:20px;
+    font-weight:900;
+    pointer-events:none;
+    z-index:90;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.ok{ color:var(--ok); }
+  .toast.err{ color:var(--err); }
+
+  /* ---------- IN / OUT SEGMENT ---------- */
+  .segment{
+    display:flex;
+    gap:14px;
+    margin:16px 0 20px;
+  }
+  .segment button{
+    flex:1;
+    border-radius:16px;
+    font-weight:900;
+    font-size:36px;
+    padding:22px 24px;
+    cursor:pointer;
+    border:3px solid #cbd5e1;
+    background:linear-gradient(180deg,#e2e8f0 0%,#cbd5e1 100%);
+    color:#1e293b;
+    transition:all .1s ease;
+    box-shadow:0 4px 10px rgba(0,0,0,.05);
+  }
+  .segment button.active#actIn{
+    background:linear-gradient(180deg,#16a34a 0%,#15803d 100%);
+    border-color:#16a34a;
+    color:white;
+    box-shadow:0 0 0 4px rgba(22,163,74,.25);
+  }
+  .segment button.active#actOut{
+    background:linear-gradient(180deg,#dc2626 0%,#991b1b 100%);
+    border-color:#dc2626;
+    color:white;
+    box-shadow:0 0 0 4px rgba(220,38,38,.25);
+  }
+
+  /* ---------- INPUT CARD + SEARCH GRID ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:18px;
+  }
+  @media(max-width:900px){
+    .grid{ grid-template-columns:1fr; }
+  }
+
+  .card{
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+    background:var(--card);
+  }
+  .card h2{ margin:0 0 12px; text-align:center; }
+
+  /* ---------- INPUTS ---------- */
+  input[type=password], input[type=search]{
+    width:100%;
+    padding:18px;
+    font-size:22px;
+    border:2px solid var(--border);
+    border-radius:12px;
+    background:var(--card);
+  }
+  input:focus-visible{
+    border-color:#3b82f6;
+    box-shadow:0 0 0 6px rgba(59,130,246,.18);
+    outline:none;
+  }
+
+  /* ---------- SEARCH RESULTS ---------- */
+  .list{
+    overflow:auto;
+    max-height:420px;
+    margin-top:14px;
+    display:grid;
+    gap:12px;
+    padding-right:16px;
+  }
+  .row{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    align-items:center;
+    padding:14px 16px;
+    border:1px solid var(--border);
+    border-radius:12px;
+  }
+  .name{
+    font-weight:800;
+    font-size:18px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .actionBtn{
+    background:var(--blue);
+    color:white;
+    padding:14px 18px;
+    border-radius:12px;
+    border:2px solid var(--blue);
+    font-weight:900;
+    cursor:pointer;
+    font-size:18px;
+  }
+
+  .sectionHdr{
+    text-align:center;
+    margin-top:8px;
+    font-size:14px;
+    font-weight:900;
+    color:var(--muted);
+  }
+
+  /* ---------- BOOTSTRAP OVERLAY ---------- */
+  .boot-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.6);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:99;
+  }
+  .boot-card{
+    background:var(--card);
+    padding:24px;
+    border-radius:14px;
+    text-align:center;
+    box-shadow:var(--shadow-1);
+  }
+  .spinner{
+    width:36px;
+    height:36px;
+    border:4px solid rgba(148,163,184,.6);
+    border-top-color:var(--blue);
+    border-radius:50%;
+    margin:auto;
+    animation:spin 0.7s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); }}
+
 </style>
 </head>
 
 <body>
+
 <div class="wrap">
-  
-  <!-- BADGES -->
   <div class="badges">
     <div id="netBadge" class="badge">Online</div>
-    <div id="rosterStatus" class="badge">⏳ Roster: waiting…</div>
+    <div id="rosterStatus" class="badge">Roster: ⏳</div>
     <button id="themeBtn" class="gear">🌙 Dark</button>
   </div>
 
   <div class="top-center">
     <h1>Guard Booth Attendance Kiosk</h1>
-    <p class="muted">Select <b>IN</b> or <b>OUT</b>, then swipe card or search name.</p>
   </div>
 
-  <!-- IN/OUT -->
-  <div class="segment segment-xl">
+  <!-- IN/OUT toggle -->
+  <div class="segment">
     <button id="actIn" class="active">IN</button>
     <button id="actOut">OUT</button>
   </div>
 
-  <!-- CARD + SEARCH -->
   <div class="grid">
     <div class="card">
       <h2>Cougar Card</h2>
-      <input id="pin" type="password" maxlength="32"
-             inputmode="numeric" autocomplete="one-time-code"
-             placeholder="Tap or swipe card…" />
+      <input id="pin" type="password" placeholder="Tap/swipe…" autocomplete="off">
     </div>
 
     <div class="card">
-      <h2>Lookup by Name</h2>
-      <input id="q" type="search"
-             placeholder="Search faculty or students" />
+      <h2>Lookup</h2>
+      <input id="q" type="search" placeholder="Search faculty or students">
       <div id="results" class="list"></div>
     </div>
   </div>
 
+  <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <!-- BOOTSTRAP OVERLAY -->
+  <!-- Boot overlay -->
   <div id="bootOverlay" class="boot-overlay">
-    <div class="boot-overlay-inner">
-      <div class="boot-spinner"></div>
-      <div class="boot-text">Loading rosters…</div>
+    <div class="boot-card">
+      <div class="spinner"></div>
+      <p><b>Loading Rosters…</b></p>
     </div>
   </div>
+</div>
 
 <script>
-/* -----------------------------------------------------------
-   START JS
------------------------------------------------------------ */
 (() => {
-  'use strict';
-/*************************************************************
- * CONSTANTS
- *************************************************************/
-const ENDPOINT =
-  'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+const ENDPOINT = "https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec";
+const VC_BASE  = "https://checkin.veracross.com/frisch/kiosk/entrance?legacy=";
 
-const VC_BASE = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
+const pinEl = document.querySelector("#pin");
+const qEl   = document.querySelector("#q");
+const toast = document.querySelector("#toast");
+const rosterStatus = document.querySelector("#rosterStatus");
+const bootOverlay = document.querySelector("#bootOverlay");
 
-const COOLDOWN_MS = 250;
-const DEDUPE_MS   = 5000;
-const WEDGE_QUIET_MS = 100;
-
-/*************************************************************
- * DOM SHORTCUTS
- *************************************************************/
-const $ = s => document.querySelector(s);
-
-const pinEl  = $('#pin');
-const qEl    = $('#q');
-const toastEl = $('#toast');
-
-const btnIn  = $('#actIn');
-const btnOut = $('#actOut');
-
-const netBadge = $('#netBadge');
-const rosterBadge = $('#rosterStatus');
-
-const bootOverlay = $('#bootOverlay');
-
-/*************************************************************
- * TOAST
- *************************************************************/
-const Toast = (() => {
-  let timer = null;
-  function show(msg, ok=true, dur=2000){
-    toastEl.textContent = msg;
-    toastEl.classList.toggle('ok', ok);
-    toastEl.classList.toggle('err', !ok);
-    toastEl.classList.add('show');
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      toastEl.classList.remove('show');
-    }, dur);
-  }
-  return { show };
-})();
-
-/*************************************************************
- * CHIMES (same as original)
- *************************************************************/
-const Chime = (() => {
-  let ctx=null, ready=false, master=null, dist=null, comp=null;
-  function init(){
-    if(ready) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    ctx = new AC();
-
-    comp = ctx.createDynamicsCompressor();
-    dist = ctx.createWaveShaper();
-    master = ctx.createGain();
-
-    master.connect(comp).connect(ctx.destination);
-
-    dist.curve = (function(amount=60){
-      const n=44100, c=new Float32Array(n), deg=Math.PI/180;
-      for(let i=0;i<n;i++){
-        const x=(i*2)/n - 1;
-        c[i] = (3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));
-      }
-      return c;
-    })();
-    dist.oversample = '4x';
-
-    ready = true;
-    window.addEventListener('pointerdown', () => ctx.resume(), {once:true});
-  }
-
-  function tone({f=880,dur=0.15,t=ctx.currentTime,type='sine',g=1,distOn=false}){
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = type;
-    osc.frequency.setValueAtTime(f, t);
-
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(g, t+0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-
-    if(distOn) osc.connect(gain).connect(dist).connect(master);
-    else osc.connect(gain).connect(master);
-
-    osc.start(t);
-    osc.stop(t+dur+0.02);
-  }
-
-  function ok(){
-    init();
-    const t0 = ctx.currentTime+0.01;
-    tone({f:659,dur:0.14,t:t0});
-    tone({f:830,dur:0.14,t:t0+0.12});
-    tone({f:987,dur:0.16,t:t0+0.24});
-  }
-
-  function fail(){
-    init();
-    const t0 = ctx.currentTime+0.01;
-    tone({f:440,dur:0.16,t:t0,type:'square',distOn:true});
-    tone({f:370,dur:0.16,t:t0+0.12,type:'square',distOn:true});
-  }
-
-  return { ok, fail };
-})();
-
-/*************************************************************
- * THEME
- *************************************************************/
-function setTheme(mode){
-  const dark = mode === 'dark';
-  document.body.classList.toggle('dark', dark);
-  $('#themeBtn').textContent = dark ? '☀️ Light' : '🌙 Dark';
-  localStorage.setItem('theme', dark?'dark':'light');
+function focusCard() {
+    pinEl.focus();
+    pinEl.select?.();
 }
-function initTheme(){
-  const saved = localStorage.getItem('theme');
-  if(saved){
-    setTheme(saved);
-  } else {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setTheme(prefersDark?'dark':'light');
-  }
-}
-$('#themeBtn').addEventListener('click', () => {
-  setTheme(document.body.classList.contains('dark')?'light':'dark');
+document.addEventListener("click", e=>{
+    if (!qEl.contains(e.target)) setTimeout(focusCard, 50);
 });
 
-/*************************************************************
- * NETWORK BADGE
- *************************************************************/
-function updateNet(){
-  if(navigator.onLine){
-    netBadge.textContent = 'Online';
-    netBadge.style.background = 'var(--card)';
-    netBadge.style.color = 'var(--text)';
-  } else {
-    netBadge.textContent = 'Offline';
-    netBadge.style.background = '#fee2e2';
-    netBadge.style.color = '#991b1b';
-  }
-}
-window.addEventListener('online', updateNet);
-window.addEventListener('offline', updateNet);
-
-/*************************************************************
- * ROSTER BADGE: SUCCESS + FAILURE STATUS
- *************************************************************/
-const LS_BOOT_SUCCESS = 'kiosk_boot_s';
-const LS_BOOT_FAIL    = 'kiosk_boot_f';
-
-let lastBootSuccess = null;
-let lastBootFail    = null;
-
-function loadBootMeta(){
-  try{ lastBootSuccess = JSON.parse(localStorage.getItem(LS_BOOT_SUCCESS)||'null'); }catch(_){}
-  try{ lastBootFail = JSON.parse(localStorage.getItem(LS_BOOT_FAIL)||'null'); }catch(_){}
+/* ---- Toast ---- */
+function showToast(msg, ok=true) {
+    toast.textContent = msg;
+    toast.classList.toggle("ok", ok);
+    toast.classList.toggle("err", !ok);
+    toast.classList.add("show");
+    setTimeout(()=>toast.classList.remove("show"), 2200);
 }
 
-function saveBootSuccess(ts){
-  const entry = { clientTs:Date.now(), serverTs:ts };
-  lastBootSuccess = entry;
-  localStorage.setItem(LS_BOOT_SUCCESS, JSON.stringify(entry));
+/* ---- Theme ---- */
+const themeBtn = document.querySelector("#themeBtn");
+themeBtn.onclick = () => {
+    document.body.classList.toggle("dark");
+    themeBtn.textContent = document.body.classList.contains("dark")
+      ? "☀️ Light" : "🌙 Dark";
+    focusCard();
+};
+
+/* ---- Network badge ---- */
+const netBadge = document.querySelector("#netBadge");
+function updateNet(){ netBadge.textContent = navigator.onLine ? "Online" : "Offline"; }
+window.addEventListener("online", updateNet);
+window.addEventListener("offline", updateNet);
+updateNet();
+
+/* ---- IN/OUT toggle ---- */
+const actIn = document.querySelector("#actIn");
+const actOut= document.querySelector("#actOut");
+function setAction(a){
+  actIn.classList.toggle("active", a==="in");
+  actOut.classList.toggle("active", a==="out");
+  focusCard();
+}
+actIn.onclick = ()=>setAction("in");
+actOut.onclick = ()=>setAction("out");
+
+/* ---- Bootstrap roster ---- */
+let facultyList=[], facultyPins={}, studentList=[], studentByLegacy={}, fastMode=false;
+
+function loadRoster() {
+  return fetch(ENDPOINT + "?action=bootstrap")
+    .then(r=>r.json())
+    .then(data=>{
+      facultyList = data.facultyList;
+      facultyPins = data.facultyPins;
+      studentList = data.studentList;
+      studentByLegacy = data.studentByLegacy;
+      rosterStatus.textContent = "Roster: ⚡ Ready";
+      fastMode = true;
+    })
+    .catch(()=>{
+      rosterStatus.textContent = "Roster: ⚠️ Fallback";
+      fastMode = false;
+    });
 }
 
-function saveBootFail(msg){
-  const entry = { clientTs:Date.now(), message:msg };
-  lastBootFail = entry;
-  localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(entry));
-}
-
-function fmt(ts){
-  const d = new Date(ts);
-  return d.toLocaleString('en-US',{
-    month:'short', day:'numeric',
-    hour:'numeric', minute:'2-digit'
-  });
-}
-
-function updateRosterBadge(ready){
-  if(ready && lastBootSuccess){
-    rosterBadge.textContent = `⚡ Roster OK · ${fmt(lastBootSuccess.clientTs)}`;
-    rosterBadge.style.background = '#dcfce7';
-    rosterBadge.style.color = '#166534';
-    return;
-  }
-  if(!ready && lastBootSuccess){
-    rosterBadge.textContent = `⚠️ Roster fallback · ${fmt(lastBootSuccess.clientTs)}`;
-    rosterBadge.style.background = '#fef9c3';
-    rosterBadge.style.color = '#854d0e';
-    return;
-  }
-  if(lastBootFail){
-    rosterBadge.textContent = `❌ Roster failed`;
-    rosterBadge.style.background = '#fee2e2';
-    rosterBadge.style.color = '#991b1b';
-    return;
-  }
-  // default
-  rosterBadge.textContent = '⏳ Roster: waiting…';
-  rosterBadge.style.background = 'var(--card)';
-  rosterBadge.style.color = 'var(--text)';
-}
-
-/*************************************************************
- * LOCAL ROSTER CACHE
- *************************************************************/
-let bootstrapReady = false;
-
-let facultyList = [];
-let studentList = [];
-
-let facultyPinMap = new Map();   // pin -> faculty
-let studentLegacyMap = new Map(); // legacyId -> student
-
-async function loadBootstrap(){
-  const res = await fetch(ENDPOINT+'?action=bootstrap');
-  if(!res.ok) throw new Error('Bootstrap failed: '+res.status);
-  const data = await res.json();
-
-  facultyList = data.facultyList || [];
-  studentList = data.studentList || [];
-
-  facultyPinMap = new Map(Object.entries(data.facultyPins||{}));
-  studentLegacyMap = new Map(Object.entries(data.studentByLegacy||{}));
-
-  bootstrapReady = true;
-  saveBootSuccess(data.ts || Date.now());
-}
-
-/*************************************************************
- * IN/OUT LOGIC HELPERS
- *************************************************************/
-function makeKey({pin,personId}){
-  return pin ? 'p:'+pin : 'id:'+personId;
-}
-
-const lastSeen = new Map();
-function canSend(key){
-  const now = Date.now();
-  const last = lastSeen.get(key)||0;
-  if(now-last < DEDUPE_MS) return false;
-  lastSeen.set(key, now);
-  return true;
-}
-
-/*************************************************************
- * FAST PATHS
- *************************************************************/
-function quickStudentIn(legacyId, label){
-  const url = VC_BASE + encodeURIComponent(legacyId);
-  window.open(url,'_blank','width=480,height=820,noopener');
-  Toast.show(label+' — sent to Veracross',true);
-  Chime.ok();
-
-  // background log
-  const body = new URLSearchParams({
-    action:'in',
-    pin:String(legacyId),
-    src:'fast_student_in'
-  });
-  fetch(ENDPOINT,{method:'POST',body,headers:{'Content-Type':'application/x-www-form-urlencoded'}})
-    .catch(()=>{});
-}
-
-function quickStudentOut(legacyId, label){
-  const t = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  Toast.show(label+' — signed OUT — '+t,true);
-  Chime.ok();
-
-  const body = new URLSearchParams({
-    action:'out',
-    pin:String(legacyId),
-    src:'fast_student_out'
-  });
-  fetch(ENDPOINT,{method:'POST',body,headers:{'Content-Type':'application/x-www-form-urlencoded'}})
-    .catch(()=>{});
-}
-
-function quickFaculty(personId, pin, label){
-  const act = btnIn.classList.contains('active') ? 'in':'out';
-  const t = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  Toast.show(label+' signed '+act.toUpperCase()+' — '+t,true);
-  Chime.ok();
-
-  const body = new URLSearchParams({
-    action:act,
-    src:'fast_faculty',
-    ...(personId?{personId}:{pin})
-  });
-  fetch(ENDPOINT,{method:'POST',body,headers:{'Content-Type':'application/x-www-form-urlencoded'}})
-    .catch(()=>{});
-}
-
-/*************************************************************
- * SLOW SUBMIT PATH
- *************************************************************/
-async function submitSlow({pin,personId}){
-  const act = btnIn.classList.contains('active') ? 'in':'out';
-  const body = new URLSearchParams({
-    action:act,
-    ...(pin?{pin}:{personId})
-  });
-
-  try{
-    const res = await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-    const text = await res.text();
-    let data=null; try{data=JSON.parse(text);}catch(_){}
-
-    if(!res.ok || (data&&data.error)){
-      Toast.show(data?.error||('Error '+res.status),false);
-      Chime.fail();
-      return;
-    }
-
-    // Student flows
-    if(data.status==='student_in'){
-      const url = VC_BASE+encodeURIComponent(data.legacyId);
-      window.open(url,'_blank','width=480,height=820,noopener');
-      Toast.show(data.student+' — sent to Veracross',true);
-      Chime.ok();
-      return;
-    }
-    if(data.status==='student_out_recorded'){
-      Toast.show(data.student+' — signed OUT at '+data.time,true);
-      Chime.ok();
-      return;
-    }
-
-    // Faculty
-    const ln = data.firstName+' '+data.lastName;
-    Toast.show(ln+' signed '+data.status.toUpperCase()+' — '+data.time,true);
-    Chime.ok();
-
-  }catch(e){
-    Toast.show('Network error',false);
-    Chime.fail();
-  }
-}
-
-/*************************************************************
- * CARD INPUT (SWIPE)
- *************************************************************/
-let wedgeTimer=null;
-pinEl.addEventListener('input',()=>{
-  clearTimeout(wedgeTimer);
-  wedgeTimer = setTimeout(()=>{
-    const raw = pinEl.value.replace(/\D+/g,'');
-    if(raw.length<10) return;
-    const ten = raw.slice(-10);
-    pinEl.value='';
-
-    const key = makeKey({pin:ten});
-    if(!canSend(key)) return;
-
-    if(bootstrapReady){
-      // student?
-      if(studentLegacyMap.has(ten)){
-        const r = studentLegacyMap.get(ten);
-        const label = r.firstName+' '+r.lastName;
-        if(btnIn.classList.contains('active')){
-          quickStudentIn(ten,label);
-        }else{
-          quickStudentOut(ten,label);
-        }
-        return;
-      }
-      // faculty?
-      if(facultyPinMap.has(ten)){
-        const r = facultyPinMap.get(ten);
-        const label = r.firstName+' '+r.lastName;
-        quickFaculty(r.personId,ten,label);
-        return;
-      }
-    }
-
-    // slow fallback
-    submitSlow({pin:ten});
-  },WEDGE_QUIET_MS);
-});
-
-/*************************************************************
- * SEARCH
- *************************************************************/
+/* ---- Search ---- */
 function normalize(s){
-  return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  return (s||"").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"");
 }
 
-function score(q,first,last){
-  const nq=normalize(q), nf=normalize(first), nl=normalize(last);
-  if(nf===nq || nl===nq) return 900;
-  let s=0;
-  if(nf.startsWith(nq)) s+=120;
-  if(nl.startsWith(nq)) s+=110;
-  if(nf.includes(nq)) s+=30;
-  if(nl.includes(nq)) s+=28;
-  return s;
-}
+function renderSearchResults(q){
+  const box = document.querySelector("#results");
+  box.innerHTML = "";
 
-function renderResults(q){
-  const box = $('#results');
-  box.innerHTML='';
+  q = q.trim();
+  if (!q) return;
 
-  const fac=[];
-  for(const f of facultyList){
-    const s = score(q,f.firstName,f.lastName);
-    if(s>0) fac.push({...f,_s:s});
-  }
-  fac.sort((a,b)=>b._s-a._s);
-  fac.length=30;
+  const nq = normalize(q);
 
-  const stu=[];
-  for(const s of studentList){
-    const full = s.firstName+' '+s.lastName;
-    const sc = score(q,s.firstName,s.lastName);
-    if(sc>0) stu.push({...s,_s:sc});
-  }
-  stu.sort((a,b)=>b._s-a._s);
-  stu.length=30;
+  let facRes = facultyList.filter(f=>{
+    return normalize(f.firstName + " " + f.lastName).includes(nq);
+  });
 
-  const frag = document.createDocumentFragment();
+  let stuRes = studentList.filter(s=>{
+    return normalize(s.firstName + " " + s.lastName).includes(nq);
+  });
 
-  if(fac.length){
-    const h = document.createElement('div');
-    h.className='sectionHdr';
-    h.textContent='FACULTY';
-    frag.appendChild(h);
+  if (facRes.length) {
+    const hdr=document.createElement("div");
+    hdr.className="sectionHdr";
+    hdr.textContent="FACULTY";
+    box.appendChild(hdr);
 
-    fac.forEach(f=>{
-      const row  = document.createElement('div'); row.className='row';
-      const name = document.createElement('div'); name.className='name';
-      name.textContent = f.firstName+' '+f.lastName;
-
-      const btn  = document.createElement('button'); btn.className='actionBtn';
-      btn.textContent='Submit';
-      btn.onclick=()=>{
-        const k = makeKey({personId:f.personId});
-        if(!canSend(k)) return;
-        quickFaculty(f.personId,null,f.firstName+' '+f.lastName);
+    facRes.forEach(f=>{
+      const row=document.createElement("div");
+      row.className="row";
+      const label=`${f.firstName} ${f.lastName}`;
+      row.innerHTML=`<div class="name">${label}</div>`;
+      const btn=document.createElement("button");
+      btn.className="actionBtn";
+      btn.textContent="Submit";
+      btn.onclick = ()=>{
+        submitFaculty(f);
+        setTimeout(focusCard,150);
       };
-
-      row.append(name,btn);
-      frag.appendChild(row);
+      row.appendChild(btn);
+      box.appendChild(row);
     });
   }
 
-  if(stu.length){
-    const h = document.createElement('div');
-    h.className='sectionHdr';
-    h.textContent='STUDENTS';
-    frag.appendChild(h);
+  if (stuRes.length) {
+    const hdr=document.createElement("div");
+    hdr.className="sectionHdr";
+    hdr.textContent="STUDENTS";
+    box.appendChild(hdr);
 
-    stu.forEach(s=>{
-      const label = s.firstName+' '+s.lastName;
-      const row  = document.createElement('div'); row.className='row';
-
-      const name = document.createElement('div'); name.className='name';
-      name.textContent = label;
-
-      const btn  = document.createElement('button'); btn.className='actionBtn';
-      btn.textContent='Submit';
-      btn.onclick=()=>{
-        const k=makeKey({pin:s.legacyId});
-        if(!canSend(k)) return;
-        if(btnIn.classList.contains('active')){
-          quickStudentIn(s.legacyId,label);
-        }else{
-          quickStudentOut(s.legacyId,label);
-        }
+    stuRes.forEach(s=>{
+      const row=document.createElement("div");
+      row.className="row";
+      const label=`${s.firstName} ${s.lastName}`;
+      row.innerHTML=`<div class="name">${label}</div>`;
+      const btn=document.createElement("button");
+      btn.className="actionBtn";
+      btn.textContent="Submit";
+      btn.onclick = ()=>{
+        submitStudent(s);
+        setTimeout(focusCard,150);
       };
-
-      row.append(name,btn);
-      frag.appendChild(row);
+      row.appendChild(btn);
+      box.appendChild(row);
     });
   }
 
-  if(!fac.length && !stu.length){
-    box.innerHTML='<div class="muted" style="text-align:center;">No matches found.</div>';
-  } else {
-    box.appendChild(frag);
+  if (!facRes.length && !stuRes.length) {
+    box.innerHTML = "<div class='muted' style='text-align:center;'>No matches</div>";
   }
 }
 
-qEl.addEventListener('input',()=>{
-  const q = qEl.value.trim();
-  if(!q){ $('#results').innerHTML=''; return; }
-  renderResults(q);
+qEl.addEventListener("input",()=>{
+  renderSearchResults(qEl.value);
 });
 
-/*************************************************************
- * INIT
- *************************************************************/
-document.addEventListener('DOMContentLoaded', async ()=>{
-  initTheme();
-  updateNet();
-  loadBootMeta();
-  updateRosterBadge(false);
+/* ---- Submit Student ---- */
+function submitStudent(stu){
+  const isOut = actOut.classList.contains("active");
 
-  pinEl.disabled = true;
-  qEl.disabled   = true;
-
-  // try bootstrap
-  try{
-    await loadBootstrap();
-    bootstrapReady = true;
-    updateRosterBadge(true);
-    bootOverlay.style.display='none';
-    Toast.show('Kiosk ready',true);
-  }catch(e){
-    bootstrapReady = false;
-    saveBootFail(e.message||'failed');
-    updateRosterBadge(false);
-    bootOverlay.style.display='none';
-    Toast.show('Fallback mode (slower)',false);
+  if (!isOut) {
+    // FAST student IN
+    const url = VC_BASE + encodeURIComponent(stu.legacyId);
+    window.open(url,"_blank","width=480,height=820");
+    showToast(`${stu.firstName} ${stu.lastName} — sent to Veracross`, true);
   }
 
-  pinEl.disabled = false;
-  qEl.disabled   = false;
-  pinEl.focus();
+  const form = new URLSearchParams();
+  form.append("action", isOut?"out":"in");
+  form.append("pin", stu.legacyId);
+  form.append("src", "name_fast");
+
+  fetch(ENDPOINT, {method:"POST", body:form})
+    .catch(()=>{});
+}
+
+/* ---- Submit Faculty ---- */
+function submitFaculty(f){
+  const isOut = actOut.classList.contains("active");
+
+  showToast(`${f.firstName} ${f.lastName} signed ${isOut?"OUT":"IN"}`, true);
+
+  const form = new URLSearchParams();
+  form.append("action", isOut?"out":"in");
+  form.append("personId", f.personId);
+  form.append("src", "name_fast_faculty");
+
+  fetch(ENDPOINT, {method:"POST", body:form})
+    .catch(()=>{});
+}
+
+/* ---- Card input ---- */
+pinEl.addEventListener("input",()=>{
+  let d = pinEl.value.replace(/\D+/g,"");
+  if (d.length < 10) return;
+  d = d.slice(-10);
+
+  const isOut = actOut.classList.contains("active");
+
+  if (fastMode){
+    // Student?
+    if (studentByLegacy[d]) {
+      const s = studentByLegacy[d];
+      const label = `${s.firstName} ${s.lastName}`;
+
+      if (!isOut) {
+        const url = VC_BASE + encodeURIComponent(s.legacyId);
+        window.open(url,"_blank","width=480,height=820");
+        showToast(`${label} — sent to Veracross`, true);
+      }
+      const body=new URLSearchParams();
+      body.append("action", isOut?"out":"in");
+      body.append("pin", d);
+      body.append("src","card_fast");
+      fetch(ENDPOINT,{method:"POST",body});
+      pinEl.value="";
+      focusCard();
+      return;
+    }
+
+    // Faculty?
+    if (facultyPins[d]) {
+      const f = facultyPins[d];
+      showToast(`${f.firstName} ${f.lastName} signed ${isOut?"OUT":"IN"}`, true);
+
+      const body=new URLSearchParams();
+      body.append("action", isOut?"out":"in");
+      body.append("pin", d);
+      body.append("src","card_fast_faculty");
+      fetch(ENDPOINT,{method:"POST",body});
+      pinEl.value="";
+      focusCard();
+      return;
+    }
+  }
+
+  // Slow fallback
+  const form=new URLSearchParams();
+  form.append("action", isOut?"out":"in");
+  form.append("pin", d);
+  form.append("src","card");
+  fetch(ENDPOINT,{method:"POST",body:form})
+    .then(r=>r.json())
+    .then(data=>{
+      if (data.error){
+        showToast(data.error,false);
+      } else if (data.status==="student_in"){
+        window.open(VC_BASE + encodeURIComponent(data.legacyId));
+        showToast(`${data.student} — sent to Veracross`,true);
+      } else if (data.status==="student_out_recorded"){
+        showToast(`${data.student} — signed OUT`,true);
+      }
+    });
+
+  pinEl.value="";
+  focusCard();
 });
+
+
+/* ---- Init ---- */
+focusCard();
+loadRoster().finally(()=> bootOverlay.style.display="none");
+
 })();
 </script>
-
-</div>
 </body>
 </html>
