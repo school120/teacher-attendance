@@ -472,6 +472,7 @@
     const dark = mode === 'dark';
     document.body.classList.toggle('dark', dark);
     themeBtn.innerHTML = dark ? '☀️ <span>Light</span>' : '🌙 <span>Dark</span>';
+    const metaTheme = document.getElementById('meta-theme');
     if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }
@@ -569,9 +570,6 @@
   });
 
   /* ================= Bootstrap meta (last success/fail) ================= */
-  const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
-  const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
-
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -582,9 +580,6 @@
       minute:'2-digit'
     });
   }
-
-  let lastBootSuccess = null;
-  let lastBootFail    = null;
 
   function loadBootstrapMetaFromStorage(){
     try{
