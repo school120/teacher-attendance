@@ -407,7 +407,7 @@
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn');
   const rosterStatusEl = $('#rosterStatus');
   const bootOverlay = $('#bootOverlay');
 
@@ -564,9 +564,46 @@
     }
     try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
   }
+
+  /* ================= Pending scan queue (offline attendance) ================= */
+  function queuePendingScan(payload){
+    try{
+      const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
+      q.push(payload);
+      localStorage.setItem('pending_scans', JSON.stringify(q));
+    }catch(_){}
+  }
+
+  async function flushPendingScans(){
+    let q = [];
+    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
+    if (!q.length) return;
+
+    const remaining = [];
+    for (const p of q){
+      try{
+        const body = new URLSearchParams(p).toString();
+        const res = await fetch(ENDPOINT, {
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body
+        });
+        if (!res.ok) throw new Error('HTTP '+res.status);
+      }catch(_){
+        remaining.push(p); // keep if still failing
+      }
+    }
+    try { localStorage.setItem('pending_scans', JSON.stringify(remaining)); } catch(_){}
+  }
+
   window.addEventListener('online', () => {
-    if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
-    else setTimeout(flushClientErrors, 500);
+    if (window.requestIdleCallback) {
+      requestIdleCallback(flushClientErrors);
+      requestIdleCallback(flushPendingScans);
+    } else {
+      setTimeout(flushClientErrors, 500);
+      setTimeout(flushPendingScans, 800);
+    }
   });
 
   /* ================= Bootstrap meta (last success/fail) ================= */
@@ -680,9 +717,12 @@
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
 
+    const eventTs = Date.now();
+
     const bodyObj = {
       action: act,
-      src: src || (pin ? 'card' : 'name')
+      src: src || (pin ? 'card' : 'name'),
+      clientTs: String(eventTs)
     };
     if (pin) bodyObj.pin = pin;
     if (personId) bodyObj.personId = personId;
@@ -706,6 +746,15 @@
         queueClientError(msg, {
           a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
           firstName, lastName, grade
+        });
+        // queue as pending scan
+        queuePendingScan({
+          action: act,
+          src: bodyObj.src,
+          pin: pin || '',
+          personId: personId || '',
+          firstName, lastName, grade,
+          clientTs: String(eventTs)
         });
         return;
       }
@@ -731,6 +780,15 @@
         a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
         firstName, lastName, grade
       });
+      // queue as pending scan
+      queuePendingScan({
+        action: act,
+        src: bodyObj.src,
+        pin: pin || '',
+        personId: personId || '',
+        firstName, lastName, grade,
+        clientTs: String(eventTs)
+      });
     }finally{
       lastSubmitAt = Date.now(); focusPinSafely();
     }
@@ -745,6 +803,7 @@
       return;
     }
 
+    const eventTs = Date.now();
     const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
     const kioskURL = VC_BASE + encodeURIComponent(legacyId);
@@ -758,7 +817,8 @@
       pin: String(legacyId),
       firstName: firstName||'',
       lastName: lastName||'',
-      grade: grade||''
+      grade: grade||'',
+      clientTs: String(eventTs)
     }).toString();
 
     fetch(ENDPOINT, {
@@ -772,6 +832,14 @@
         src: 'name_fast_student_in',
         firstName, lastName, grade
       });
+      queuePendingScan({
+        action: act,
+        src: 'name_fast_student_in',
+        pin: String(legacyId),
+        personId: '',
+        firstName, lastName, grade,
+        clientTs: String(eventTs)
+      });
     });
   }
 
@@ -784,7 +852,8 @@
       return;
     }
 
-    const now = new Date();
+    const eventTs = Date.now();
+    const now = new Date(eventTs);
     const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     const who = `${firstName||''} ${lastName||''}`.trim() || 'Student';
 
@@ -797,7 +866,8 @@
       pin: String(legacyId),
       firstName: firstName||'',
       lastName: lastName||'',
-      grade: grade||''
+      grade: grade||'',
+      clientTs: String(eventTs)
     }).toString();
 
     fetch(ENDPOINT, {
@@ -811,6 +881,14 @@
         src: 'student_out_fast',
         firstName, lastName, grade
       });
+      queuePendingScan({
+        action: act,
+        src: 'student_out_fast',
+        pin: String(legacyId),
+        personId: '',
+        firstName, lastName, grade,
+        clientTs: String(eventTs)
+      });
     });
   }
 
@@ -823,7 +901,8 @@
       return;
     }
 
-    const now = new Date();
+    const eventTs = Date.now();
+    const now = new Date(eventTs);
     const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
     const verb = act === 'in' ? 'IN' : 'OUT';
@@ -833,7 +912,8 @@
 
     const params = {
       action: act,
-      src: pin ? 'card_fast_faculty' : 'name_fast_faculty'
+      src: pin ? 'card_fast_faculty' : 'name_fast_faculty',
+      clientTs: String(eventTs)
     };
     if (pin) params.pin = pin;
     if (personId) params.personId = personId;
@@ -854,6 +934,15 @@
         src: params.src,
         firstName, lastName
       });
+      queuePendingScan({
+        action: act,
+        src: params.src,
+        pin: pin || '',
+        personId: personId || '',
+        firstName, lastName,
+        grade: '',
+        clientTs: String(eventTs)
+      });
     });
   }
 
@@ -871,9 +960,10 @@
     try { navigator.vibrate?.(40); } catch(_){}
 
     const body = new URLSearchParams({
-      action: act,
+      action: 'client_error',
       src: 'card_fast_unknown',
-      pin: String(pin)
+      pin: String(pin),
+      note: 'card_not_found'
     }).toString();
 
     fetch(ENDPOINT, {
@@ -1178,8 +1268,14 @@
     applyHashAction();
 
     setTimeout(()=>{ pinEl.focus(); }, 0);
-    if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
-    else setTimeout(flushClientErrors, 500);
+
+    if (window.requestIdleCallback) {
+      requestIdleCallback(flushClientErrors);
+      requestIdleCallback(flushPendingScans);
+    } else {
+      setTimeout(flushClientErrors, 500);
+      setTimeout(flushPendingScans, 800);
+    }
   });
 })();
 </script>
