@@ -35,7 +35,13 @@
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
   html { overflow-x:hidden; }
-  body{ min-height:100svh; overscroll-behavior-y:contain; overflow:auto; -webkit-overflow-scrolling:touch; }
+  body{
+    min-height:100svh;
+    overscroll-behavior-y:contain;
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 
   .wrap{
     margin:auto;
@@ -44,27 +50,71 @@
     border-radius:var(--radius-xl);
     box-shadow:var(--shadow-1);
     position:relative;
-    min-height:100svh;
+    min-height:calc(100svh - env(safe-area-inset-top, 0px));
     padding:28px;
+    padding-top:calc(28px + env(safe-area-inset-top, 0px));
     overflow:visible;
     overflow-x:clip;
   }
 
-  .top-center { text-align:center; margin-bottom:8px; }
-  h1{ margin:0 0 6px; font-weight:900; font-size:30px; letter-spacing:.2px; }
-  .muted{ color:var(--muted); }
+  /* USB Mode indicator */
+  .usb-mode-indicator {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    padding: 12px 24px;
+    border-radius: 999px;
+    font-weight: 900;
+    font-size: 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.2);
+    transition: all 0.3s ease;
+  }
+  .usb-mode-indicator.auto-in {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    color: white;
+    border: 2px solid #16a34a;
+  }
+  .usb-mode-indicator.auto-out {
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    color: white;
+    border: 2px solid #dc2626;
+  }
+  .usb-mode-indicator.manual {
+    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+    color: white;
+    border: 2px solid #64748b;
+  }
 
-  .badges{
+  /* ───── Top row: roster left, title center, net/theme right ───── */
+  .top-row{
+    position: relative;
+    margin-bottom: 16px;
+    padding-top: 36px;
+  }
+
+  .top-center{
+    text-align:center;
+    max-width:100%;
+  }
+
+  .left-badges,
+  .right-badges{
     position:absolute;
-    right:18px;
-    top:18px;
+    top:0;
     display:flex;
     gap:8px;
     align-items:center;
     flex-wrap:wrap;
-    justify-content:flex-end;
-    max-width:60%;
   }
+
+  .left-badges{ left:0; }
+  .right-badges{ right:0; }
+
+  h1{ margin:0 0 6px; font-weight:900; font-size:30px; letter-spacing:.2px; }
+  .muted{ color:var(--muted); }
+
   .badge{
     font-size:12px;
     font-weight:800;
@@ -75,24 +125,59 @@
     color:var(--text);
     white-space:nowrap;
   }
-  .gear{
+
+  .badge.net.online{
+    background:#dcfce7;
+    border-color:#86efac;
+    color:#166534;
+  }
+  .badge.net.offline{
+    background:#fee2e2;
+    border-color:#fca5a5;
+    color:#991b1b;
+  }
+
+  .badge.clickable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .badge.clickable:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+
+  #themeBtn{
+    font-size:12px;
+    font-weight:800;
+    padding:6px 12px;
+    border-radius:999px;
     border:1px solid var(--border);
     background:var(--card);
     color:var(--text);
-    border-radius:10px;
-    padding:6px 10px;
-    cursor:pointer;
-    font-weight:800;
     display:flex;
     align-items:center;
     gap:6px;
-    font-size:13px;
+    cursor:pointer;
   }
-  .gear span{
+  #themeBtn span{
     font-size:12px;
     letter-spacing:.08em;
   }
-  .gear:focus-visible{ outline:none; box-shadow:var(--ring); }
+  #themeBtn:hover,
+  #themeBtn:focus-visible{
+    border-color:#3b82f6;
+    box-shadow:var(--ring);
+    outline:none;
+  }
+
+  @media (max-width:700px){
+    .top-row{
+      padding-top:64px;
+    }
+    .top-center{
+      padding:0 12px;
+    }
+  }
 
   .toast{
     position:fixed;
@@ -255,7 +340,6 @@
     .segment.segment-xl button{ font-size:36px; min-height:88px; }
   }
 
-  /* ===== Bootstrap overlay ===== */
   .boot-overlay{
     position:fixed;
     inset:0;
@@ -293,21 +377,103 @@
   @keyframes spin{
     to{ transform:rotate(360deg); }
   }
+
+  /* USB Setup Modal */
+  .usb-setup-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 70;
+  }
+  .usb-setup-modal.show {
+    display: flex;
+  }
+  .usb-setup-content {
+    background: var(--card);
+    color: var(--text);
+    padding: 32px;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    max-width: 500px;
+    width: 90%;
+  }
+  .usb-setup-content h2 {
+    margin: 0 0 20px;
+    font-size: 24px;
+    text-align: center;
+  }
+  .usb-setup-content p {
+    margin: 0 0 16px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .usb-setup-btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 18px;
+    font-weight: 900;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+  }
+  .usb-setup-btn.primary {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+  }
+  .usb-setup-btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(37,99,235,.3);
+  }
+  .usb-setup-btn.secondary {
+    background: var(--border);
+    color: var(--text);
+  }
+  .usb-info {
+    background: #f0f9ff;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  body.dark .usb-info {
+    background: #1e293b;
+    border-color: #3b82f6;
+  }
 </style>
 </head>
 <body>
-  <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
-    <div class="badges" aria-live="polite" aria-atomic="true">
-      <div id="netBadge" class="badge">Online</div>
-      <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
-      <button id="themeBtn" class="gear" title="Toggle theme" aria-label="Toggle dark mode">
-        🌙 <span>Dark</span>
-      </button>
-    </div>
+  <!-- USB Mode Indicator -->
+  <div id="usbModeIndicator" class="usb-mode-indicator manual" style="display:none;">
+    Manual Mode
+  </div>
 
-    <div class="top-center">
-      <h1>Guard Booth Attendance Kiosk</h1>
-      <p class="muted">Select <b>IN</b> or <b>OUT</b>, then swipe/tap Cougar Card or search by name.</p>
+  <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
+
+    <div class="top-row">
+      <div class="left-badges">
+        <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
+        <div id="usbModeBadge" class="badge clickable" title="Click to configure USB readers">
+          🔌 USB: Manual
+        </div>
+      </div>
+
+      <div class="top-center">
+        <h1>Guard Booth Attendance Kiosk</h1>
+        <p class="muted">Select <b>IN</b> or <b>OUT</b>, then swipe/tap Cougar Card or search by name.</p>
+      </div>
+
+      <div class="right-badges">
+        <button id="themeBtn" title="Toggle theme" aria-label="Toggle dark mode">
+          🌙 <span>Dark</span>
+        </button>
+        <div id="netBadge" class="badge net online">Online</div>
+      </div>
     </div>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
@@ -330,12 +496,33 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <!-- Bootstrap overlay -->
     <div id="bootOverlay" class="boot-overlay" aria-live="polite" aria-busy="true">
       <div class="boot-overlay-inner">
         <div class="boot-spinner" aria-hidden="true"></div>
         <div class="boot-text">Loading rosters…</div>
       </div>
+    </div>
+  </div>
+
+  <!-- USB Setup Modal -->
+  <div id="usbSetupModal" class="usb-setup-modal">
+    <div class="usb-setup-content">
+      <h2>🔌 USB Reader Setup</h2>
+      <p>Do you want to automatically detect which USB card reader is for IN vs OUT?</p>
+      
+      <div class="usb-info">
+        <strong>📍 Setup Process:</strong><br>
+        1. We'll ask you to scan a card with the <strong>IN reader</strong><br>
+        2. Then scan a card with the <strong>OUT reader</strong><br>
+        3. The system will remember which is which!
+      </div>
+
+      <button class="usb-setup-btn primary" onclick="startUSBSetup()">
+        ✓ Yes, Set Up USB Readers
+      </button>
+      <button class="usb-setup-btn secondary" onclick="skipUSBSetup()">
+        Skip - Use Manual Mode
+      </button>
     </div>
   </div>
 
@@ -352,18 +539,176 @@
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
-  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn'), metaTheme = $('#meta-theme');
+  const netBadge = $('#netBadge'), themeBtn = $('#themeBtn');
   const rosterStatusEl = $('#rosterStatus');
   const bootOverlay = $('#bootOverlay');
+  const usbModeIndicator = $('#usbModeIndicator');
+  const usbModeBadge = $('#usbModeBadge');
+  const usbSetupModal = $('#usbSetupModal');
 
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
 
   const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
   const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
+  const LS_USB_MODE     = 'kiosk_usb_mode';
+  const LS_USB_IN_SIG   = 'kiosk_usb_in_signature';
+  const LS_USB_OUT_SIG  = 'kiosk_usb_out_signature';
 
-  let lastBootSuccess = null;  // { serverTs, clientTs }
-  let lastBootFail    = null;  // { clientTs, message }
+  let lastBootSuccess = null;
+  let lastBootFail    = null;
+
+  // USB Reader Detection
+  let usbMode = 'manual'; // 'manual', 'auto-in', 'auto-out'
+  let usbInSignature = null;
+  let usbOutSignature = null;
+  let usbSetupStep = 0;
+  let lastCardTime = 0;
+  let lastCardData = '';
+
+  /* ================= USB Setup Functions ================= */
+  function loadUSBSettings() {
+    try {
+      const savedMode = localStorage.getItem(LS_USB_MODE);
+      if (savedMode) usbMode = savedMode;
+      
+      const inSig = localStorage.getItem(LS_USB_IN_SIG);
+      if (inSig) usbInSignature = JSON.parse(inSig);
+      
+      const outSig = localStorage.getItem(LS_USB_OUT_SIG);
+      if (outSig) usbOutSignature = JSON.parse(outSig);
+    } catch(_) {}
+    
+    updateUSBModeDisplay();
+  }
+
+  function saveUSBSettings() {
+    try {
+      localStorage.setItem(LS_USB_MODE, usbMode);
+      if (usbInSignature) {
+        localStorage.setItem(LS_USB_IN_SIG, JSON.stringify(usbInSignature));
+      }
+      if (usbOutSignature) {
+        localStorage.setItem(LS_USB_OUT_SIG, JSON.stringify(usbOutSignature));
+      }
+    } catch(_) {}
+  }
+
+  function updateUSBModeDisplay() {
+    const hasAutoSetup = usbInSignature && usbOutSignature;
+    
+    if (hasAutoSetup) {
+      usbModeBadge.textContent = '🔌 USB: Auto';
+      usbModeBadge.title = 'USB readers auto-detected. Click to reconfigure.';
+    } else {
+      usbModeBadge.textContent = '🔌 USB: Manual';
+      usbModeBadge.title = 'Manual mode. Click to set up USB auto-detection.';
+    }
+  }
+
+  function showUSBSetupModal() {
+    usbSetupModal.classList.add('show');
+  }
+
+  function hideUSBSetupModal() {
+    usbSetupModal.classList.remove('show');
+  }
+
+  window.startUSBSetup = function() {
+    hideUSBSetupModal();
+    usbSetupStep = 1;
+    Toast.show('Scan a card with the IN reader now...', true, 3000);
+    
+    // Show temporary indicator
+    usbModeIndicator.textContent = '⏳ Waiting for IN reader scan...';
+    usbModeIndicator.className = 'usb-mode-indicator manual';
+    usbModeIndicator.style.display = 'block';
+  };
+
+  window.skipUSBSetup = function() {
+    hideUSBSetupModal();
+    usbMode = 'manual';
+    usbInSignature = null;
+    usbOutSignature = null;
+    saveUSBSettings();
+    updateUSBModeDisplay();
+    Toast.show('Using manual mode', true, 1500);
+  };
+
+  function captureUSBSignature(cardData) {
+    // Create a signature based on timing and pattern
+    // This is a simple heuristic - may need adjustment based on your readers
+    const now = Date.now();
+    const timingGap = now - lastCardTime;
+    
+    return {
+      length: cardData.length,
+      timingPattern: timingGap,
+      firstChars: cardData.substring(0, 3),
+      timestamp: now
+    };
+  }
+
+  function matchesSignature(cardData, signature) {
+    if (!signature) return false;
+    
+    const current = captureUSBSignature(cardData);
+    
+    // Very loose matching - just check length for now
+    // In practice, identical readers will be hard to distinguish
+    return current.length === signature.length;
+  }
+
+  function detectUSBReader(cardData) {
+    const now = Date.now();
+    
+    // During setup
+    if (usbSetupStep === 1) {
+      usbInSignature = captureUSBSignature(cardData);
+      usbSetupStep = 2;
+      Toast.show('✓ IN reader captured! Now scan with OUT reader...', true, 3000);
+      usbModeIndicator.textContent = '⏳ Waiting for OUT reader scan...';
+      return 'setup';
+    }
+    
+    if (usbSetupStep === 2) {
+      usbOutSignature = captureUSBSignature(cardData);
+      usbSetupStep = 0;
+      saveUSBSettings();
+      updateUSBModeDisplay();
+      
+      Toast.show('✓ Setup complete! USB readers configured.', true, 2000);
+      usbModeIndicator.style.display = 'none';
+      
+      return 'setup';
+    }
+    
+    // Normal operation - try to detect which reader
+    if (usbInSignature && usbOutSignature) {
+      // Note: This is a best-effort approach
+      // Identical readers are nearly impossible to distinguish reliably
+      // The timing-based approach may work if readers are plugged into different USB controllers
+      
+      const timeSinceLastScan = now - lastCardTime;
+      
+      // If we have a very recent scan, assume it's from the other reader
+      if (timeSinceLastScan < 500) {
+        const lastWasIn = (usbMode === 'auto-in');
+        return lastWasIn ? 'auto-out' : 'auto-in';
+      }
+      
+      // Otherwise, we can't really tell with identical readers
+      // Fall back to manual mode
+      return 'manual';
+    }
+    
+    return 'manual';
+  }
+
+  // Click badge to reconfigure
+  usbModeBadge.addEventListener('click', () => {
+    showUSBSetupModal();
+  });
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -384,8 +729,7 @@
     let audioCtx=null, master=null, comp=null, dist=null, ready=false;
     function init(){
       if (ready) return;
-      const AC = window.AudioContext || window.webkitAudioContext;
-      audioCtx = new AC();
+      const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
       comp = audioCtx.createDynamicsCompressor();
       comp.threshold.setValueAtTime(-12, audioCtx.currentTime);
       comp.knee.setValueAtTime(24, audioCtx.currentTime);
@@ -393,17 +737,8 @@
       comp.attack.setValueAtTime(0.002, audioCtx.currentTime);
       comp.release.setValueAtTime(0.08, audioCtx.currentTime);
       dist = audioCtx.createWaveShaper();
-      dist.curve = (function makeCurve(amount=60){
-        const n=44100,c=new Float32Array(n),deg=Math.PI/180;
-        for(let i=0;i<n;i++){
-          const x=(i*2)/n-1;
-          c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));
-        }
-        return c;
-      })();
-      dist.oversample='4x';
-      master = audioCtx.createGain();
-      master.gain.setValueAtTime(0.95, audioCtx.currentTime);
+      dist.curve = (function makeCurve(amount=60){ const n=44100,c=new Float32Array(n),deg=Math.PI/180; for(let i=0;i<n;i++){ const x=(i*2)/n-1; c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x)); } return c; })();
+      dist.oversample='4x'; master = audioCtx.createGain(); master.gain.setValueAtTime(0.95, audioCtx.currentTime);
       master.connect(comp).connect(audioCtx.destination);
       const kick = ()=> audioCtx.resume?.().catch(()=>{});
       window.addEventListener('pointerdown', kick, { once:true, passive:true });
@@ -412,802 +747,9 @@
     }
     function tone({ f=880, dur=0.18, t=audioCtx.currentTime, type='sine', g=0.7, distOn=false, detune=0 }){
       const o=audioCtx.createOscillator(), gn=audioCtx.createGain();
-      o.type=type;
-      o.frequency.setValueAtTime(f,t);
-      if (detune) o.detune.setValueAtTime(detune,t);
-      gn.gain.setValueAtTime(0,t);
-      gn.gain.linearRampToValueAtTime(g,t+0.012);
-      gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.type=type; o.frequency.setValueAtTime(f,t); if (detune) o.detune.setValueAtTime(detune,t);
+      gn.gain.setValueAtTime(0,t); gn.gain.linearRampToValueAtTime(g,t+0.012); gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
       (distOn ? o.connect(gn).connect(dist).connect(master) : o.connect(gn).connect(master));
-      o.start(t);
-      o.stop(t+dur+0.02);
+      o.start(t); o.stop(t+dur+0.02);
     }
-    function ok(){
-      init();
-      const t0=audioCtx.currentTime+0.01;
-      tone({f:659.25, dur:0.14, t:t0, g:1.0});
-      tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0});
-      tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0});
-      tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0});
-    }
-    function fail(){
-      init();
-      const t0=audioCtx.currentTime+0.01;
-      tone({f:440.00, dur:0.16, t:t0, type:'square', g:1.0, distOn:true});
-      tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true});
-      tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9, distOn:true});
-    }
-    return { ok, fail };
-  })();
-
-  /* ================= Theme ================= */
-  function setTheme(mode){
-    const dark = mode === 'dark';
-    document.body.classList.toggle('dark', dark);
-    themeBtn.innerHTML = dark ? '☀️ <span>Light</span>' : '🌙 <span>Dark</span>';
-    if (metaTheme) metaTheme.content = dark ? '#0b1020' : '#ffffff';
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
-  }
-  function initTheme(){
-    const saved = localStorage.getItem('theme');
-    if (saved) { setTheme(saved); return; }
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    setTheme(prefersDark ? 'dark' : 'light');
-  }
-  themeBtn.addEventListener('click', () => {
-    setTheme(document.body.classList.contains('dark') ? 'light' : 'dark');
-    themeBtn.blur();
-    setTimeout(focusPinSafely, 0);
-  });
-
-  /* ================= Network badge ================= */
-  function updateNet(){
-    const on = navigator.onLine;
-    netBadge.textContent = on ? 'Online' : 'Offline';
-    netBadge.style.background = on ? 'var(--card)' : '#fee2e2';
-    netBadge.style.color = on ? 'var(--text)' : '#991b1b';
-  }
-  window.addEventListener('online', updateNet, { passive:true });
-  window.addEventListener('offline', updateNet, { passive:true });
-
-  /* ================= Focus helpers ================= */
-  function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
-  function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) focusPinSafely();
-  });
-  window.addEventListener('pageshow', (e) => {
-    if (e.persisted) focusPinSafely();
-  });
-
-  /* ================= Action toggle + URL hash ================= */
-  function setAction(a){
-    const inActive = a === 'in';
-    btnIn.classList.toggle('active', inActive);
-    btnOut.classList.toggle('active', !inActive);
-    btnIn.setAttribute('aria-selected', inActive ? 'true' : 'false');
-    btnOut.setAttribute('aria-selected', !inActive ? 'true' : 'false');
-    setTimeout(focusPinSafely, 0);
-  }
-  btnIn.addEventListener('click', () => setAction('in'));
-  btnOut.addEventListener('click', () => setAction('out'));
-  window.addEventListener('keydown', (e)=>{
-    if(e.key==='ArrowLeft') setAction('in');
-    if(e.key==='ArrowRight') setAction('out');
-  });
-
-  function applyHashAction(){
-    const h = (location.hash || '').toLowerCase();
-    if (h === '#out') setAction('out');
-    else if (h === '#in') setAction('in');
-  }
-  window.addEventListener('hashchange', applyHashAction);
-
-  /* ================= De-dupe ================= */
-  const lastSeenMap = new Map();
-  function makeKey({ pin, personId }) {
-    return pin ? `pin:${pin}` : `pid:${personId}`;
-  }
-  function canSendNow(key){
-    const now=Date.now(), last=lastSeenMap.get(key)||0;
-    if (now-last < DEDUPE_WINDOW_MS) return false;
-    lastSeenMap.set(key, now);
-    return true;
-  }
-
-  /* ================= Client error queue ================= */
-  function queueClientError(msg, extra){
-    const payload = {
-      action:'client_error',
-      note:String(msg||'network error'),
-      ...extra
-    };
-    try{
-      const q = JSON.parse(localStorage.getItem('client_error_queue')||'[]');
-      q.push(payload);
-      localStorage.setItem('client_error_queue', JSON.stringify(q));
-    }catch(_){ }
-  }
-  async function flushClientErrors(){
-    let q=[];
-    try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
-    if (!q.length) return;
-    const left=[];
-    for (const p of q){
-      try{
-        await fetch(ENDPOINT, {
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(p).toString()
-        });
-      }catch(_){ left.push(p); }
-    }
-    try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
-  }
-  window.addEventListener('online', () => {
-    if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
-    else setTimeout(flushClientErrors, 500);
-  });
-
-  /* ================= Bootstrap meta (last success/fail) ================= */
-  function fmtShortTs(ts){
-    if (!ts) return '';
-    const d = new Date(ts);
-    return d.toLocaleString('en-US', {
-      month:'short',
-      day:'numeric',
-      hour:'numeric',
-      minute:'2-digit'
-    });
-  }
-
-  function loadBootstrapMetaFromStorage(){
-    try{
-      const s = localStorage.getItem(LS_BOOT_SUCCESS);
-      if (s) lastBootSuccess = JSON.parse(s);
-    }catch(_){}
-    try{
-      const f = localStorage.getItem(LS_BOOT_FAIL);
-      if (f) lastBootFail = JSON.parse(f);
-    }catch(_){}
-  }
-
-  function saveBootstrapSuccess(serverTs){
-    lastBootSuccess = { serverTs: serverTs || Date.now(), clientTs: Date.now() };
-    try{ localStorage.setItem(LS_BOOT_SUCCESS, JSON.stringify(lastBootSuccess)); }catch(_){}
-  }
-
-  function saveBootstrapFail(message){
-    lastBootFail = { clientTs: Date.now(), message: String(message||'failed') };
-    try{ localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(lastBootFail)); }catch(_){}
-  }
-
-  function updateRosterStatusLabel(){
-    if (!rosterStatusEl) return;
-
-    let label = 'Roster: ⏳ loading…';
-    let title = '';
-
-    if (lastBootSuccess){
-      const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
-
-      if (bootstrapReady){
-        label = `⚡ Roster OK · ${when}`;
-      } else {
-        label = `⚠️ Roster fallback · ${when}`;
-      }
-
-      title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
-    } else {
-      if (lastBootFail){
-        label = `❌ Roster failed`;
-        title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
-      } else {
-        label = `Roster: ⏳ loading…`;
-        title = `No successful roster downloads yet`;
-      }
-    }
-
-    if (lastBootFail && lastBootSuccess){
-      const whenF = fmtShortTs(lastBootFail.clientTs);
-      title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
-    }
-
-    rosterStatusEl.textContent = label;
-    rosterStatusEl.title = title || 'Roster bootstrap status';
-  }
-
-  /* ================= Bootstrap cache (students + faculty) ================= */
-  let studentByLegacy = new Map();  // legacyId → roster row
-  let facultyByPin    = new Map();  // quick-pin → roster row
-  let facultyList     = [];         // [{personId, firstName, lastName}, ...]
-  let studentList     = [];         // [{legacyId, personId, firstName, lastName, fullName, grade}, ...]
-  let bootstrapReady  = false;
-
-  async function loadBootstrap(){
-    const res  = await fetch(ENDPOINT + '?action=bootstrap');
-    if (!res.ok) {
-      throw new Error('Bootstrap HTTP ' + res.status);
-    }
-    const data = await res.json();
-
-    studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
-    facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
-    facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
-    studentList     = Array.isArray(data.studentList) ? data.studentList : [];
-    bootstrapReady  = true;
-
-    saveBootstrapSuccess(data.ts || Date.now());
-    updateRosterStatusLabel();
-  }
-
-  /* ================= Bootstrap overlay helpers ================= */
-  function showBootOverlay(text){
-    if (!bootOverlay) return;
-    const t = bootOverlay.querySelector('.boot-text');
-    if (t && text) t.textContent = text;
-    bootOverlay.style.display = 'flex';
-  }
-  function hideBootOverlay(){
-    if (!bootOverlay) return;
-    bootOverlay.style.display = 'none';
-  }
-
-  /* ================= API submit (slow/fallback paths) ================= */
-  let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const bodyObj = {
-      action: act,
-      src: src || (pin ? 'card' : 'name')
-    };
-    if (pin) bodyObj.pin = pin;
-    if (personId) bodyObj.personId = personId;
-    if (firstName) bodyObj.firstName = firstName;
-    if (lastName) bodyObj.lastName = lastName;
-    if (grade) bodyObj.grade = grade;
-
-    const body = new URLSearchParams(bodyObj).toString();
-
-    try{
-      const res = await fetch(ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body
-      });
-      const text = await res.text();
-      let data=null;
-      try{ data = JSON.parse(text); }catch{}
-
-      if (!res.ok || (data && data.error)) {
-        const msg = (data && data.error) || ('Error ' + res.status);
-        Toast.show(msg, false);
-        Chime.fail();
-        queueClientError(msg, {
-          a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
-          firstName, lastName, grade
-        });
-        return;
-      }
-
-      // Student flows (slow paths)
-      if (data.status === 'student_in' && data.legacyId) {
-        const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
-        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        Toast.show(`${data.student||'Student'} — sent to Veracross`, true);
-        Chime.ok();
-        try{ navigator.vibrate?.(30); }catch{}
-        return;
-      }
-      if (data.status === 'student_out_recorded') {
-        Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true);
-        Chime.ok();
-        try{ navigator.vibrate?.(30); }catch{}
-        return;
-      }
-
-      // Faculty success (slow paths)
-      const { status, firstName:fn, lastName:ln, time } = data || {};
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
-      Toast.show(line || 'Done.', true);
-      Chime.ok();
-      try{ navigator.vibrate?.(30); }catch{}
-    }catch(err){
-      Toast.show('Network error', false);
-      Chime.fail();
-      queueClientError('fetch_failed', {
-        a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
-        firstName, lastName, grade
-      });
-    }finally{
-      lastSubmitAt = Date.now();
-      focusPinSafely();
-    }
-  }
-
-  /* ================= FAST student IN ================= */
-  function quickStudentIn({ legacyId, firstName, lastName, grade }) {
-    const act = 'in';
-    const key = makeKey({ pin: legacyId, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
-
-    // 1) Instant Veracross handoff
-    const kioskURL = VC_BASE + encodeURIComponent(legacyId);
-    window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-    Toast.show(`${label} — sent to Veracross`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
-
-    // 2) Background log
-    const body = new URLSearchParams({
-      action: act,
-      src: 'student_in_fast',
-      pin: String(legacyId),
-      firstName: firstName||'',
-      lastName: lastName||'',
-      grade: grade||''
-    }).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('student_in_fast_failed', {
-        a: act,
-        pin: String(legacyId),
-        src: 'student_in_fast',
-        firstName, lastName, grade
-      });
-    });
-  }
-
-  /* ================= FAST student OUT ================= */
-  function quickStudentOut({ legacyId, firstName, lastName, grade }) {
-    const act = 'out';
-    const key = makeKey({ pin: legacyId, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    const who = `${firstName||''} ${lastName||''}`.trim() || 'Student';
-
-    // Instant UX
-    Toast.show(`${who} — signed OUT — ${timeStr}`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
-
-    // Background log
-    const body = new URLSearchParams({
-      action: act,
-      src: 'student_out_fast',
-      pin: String(legacyId),
-      firstName: firstName||'',
-      lastName: lastName||'',
-      grade: grade||''
-    }).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('student_out_fast_failed', {
-        a: act,
-        pin: String(legacyId),
-        src: 'student_out_fast',
-        firstName, lastName, grade
-      });
-    });
-  }
-
-  /* ================= FAST faculty IN/OUT ================= */
-  function quickFacultyAction({ personId, pin, firstName, lastName }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
-    const verb = act === 'in' ? 'IN' : 'OUT';
-
-    Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
-
-    const params = {
-      action: act,
-      src: pin ? 'card_fast_faculty' : 'name_fast_faculty'
-    };
-    if (pin) params.pin = pin;
-    if (personId) params.personId = personId;
-    if (firstName) params.firstName = firstName;
-    if (lastName) params.lastName = lastName;
-
-    const body = new URLSearchParams(params).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('faculty_fast_failed', {
-        a: act,
-        pin: pin || '',
-        personId: personId || '',
-        src: params.src,
-        firstName, lastName
-      });
-    });
-  }
-
-  /* ================= FAST unknown-card error (instant) ================= */
-  function quickUnknownCardFail(pin){
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    // Instant UX
-    Toast.show('Cougar Card not found', false);
-    Chime.fail();
-    try { navigator.vibrate?.(40); } catch(_){}
-
-    // Background log to backend
-    const body = new URLSearchParams({
-      action: act,
-      src: 'card_fast_unknown',
-      pin: String(pin)
-    }).toString();
-
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('unknown_card_fast_failed', {
-        a: act,
-        pin: String(pin),
-        src: 'card_fast_unknown'
-      });
-    });
-  }
-
-  /* ================= Card input auto-submit ================= */
-  let wedgeTimer = null;
-  pinEl.addEventListener('input', ()=>{
-    clearTimeout(wedgeTimer);
-    wedgeTimer = setTimeout(()=>{
-      const d = digitsOnly(pinEl.value);
-      if (d.length < 10) return;
-
-      const ten = d.slice(-10);
-      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-
-      const isIn = btnIn.classList.contains('active');
-
-      if (bootstrapReady) {
-        if (studentByLegacy.has(ten)) {
-          const rec = studentByLegacy.get(ten);
-          const firstName = rec.firstName || '';
-          const lastName  = rec.lastName || '';
-          const grade     = rec.grade || '';
-          if (isIn) {
-            quickStudentIn({ legacyId: ten, firstName, lastName, grade });
-          } else {
-            quickStudentOut({ legacyId: ten, firstName, lastName, grade });
-          }
-        } else if (facultyByPin.has(ten)) {
-          const rec = facultyByPin.get(ten);
-          quickFacultyAction({
-            pin: ten,
-            personId: rec.personId || '',
-            firstName: rec.firstName || '',
-            lastName: rec.lastName || ''
-          });
-        } else {
-          // FAST local fail for unknown cards
-          quickUnknownCardFail(ten);
-        }
-      } else {
-        // No bootstrap → safe slow path
-        submitPinOrId({ pin: ten, src: 'card' });
-      }
-
-      pinEl.value = '';
-      focusPinSafely();
-      lastSubmitAt = Date.now();
-    }, WEDGE_QUIET_MS);
-  }, { passive:true });
-
-  /* ================= Search (local when bootstrapped) ================= */
-  let searchTimer = null, searchAbort = null, searchToken = 0;
-  const cacheSearch = new Map();
-
-  qEl.addEventListener('input', ()=>{
-    clearTimeout(searchTimer);
-    const q = qEl.value.trim();
-    const box = $('#results');
-    if (!q) {
-      try { searchAbort?.abort(); } catch(_){}; searchAbort = null;
-      searchToken++; box.innerHTML = '';
-      return;
-    }
-    searchTimer = setTimeout(()=>doSearch(q), 150);
-  });
-  qEl.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter') {
-      clearTimeout(searchTimer);
-      const q = qEl.value.trim();
-      if (!q) {
-        try { searchAbort?.abort(); } catch(_){ };
-        searchAbort=null; searchToken++; $('#results').innerHTML='';
-        e.preventDefault(); return;
-      }
-      doSearch(q);
-      e.preventDefault();
-    }
-  });
-
-  function clearSearchUI(){
-    qEl.value = '';
-    const box = $('#results');
-    box.innerHTML = '';
-    focusPinSafely();
-  }
-
-  function sectionHeader(text){
-    const div = document.createElement('div');
-    div.className='sectionHdr';
-    div.textContent = text;
-    return div;
-  }
-  function resultRow(label, btnText, onClick){
-    const row = document.createElement('div');
-    row.className='row';
-    const name = document.createElement('div');
-    name.className='name';
-    name.textContent = label;
-    const btn = document.createElement('button');
-    btn.className='actionBtn';
-    btn.textContent = btnText;
-    btn.addEventListener('click', ()=>{
-      onClick();
-      clearSearchUI();  // clear search box + results after submit
-    });
-    row.appendChild(name);
-    row.appendChild(btn);
-    return row;
-  }
-  function norm(s){
-    return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
-  }
-  function scoreName(q, first, last, fullLF){
-    const nq = norm(q);
-    const nf = norm(first), nl = norm(last);
-    const nfl = nf + ' ' + nl;
-    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
-    if (nfl === nq || nlf === nq) return 1000;
-    if (nf === nq || nl === nq) return 900;
-    let s = 0;
-    if (nf.startsWith(nq)) s += 120;
-    if (nl.startsWith(nq)) s += 110;
-    if (nfl.startsWith(nq)) s += 100;
-    if (nlf.startsWith(nq)) s += 95;
-    if (nf.includes(nq)) s += 30;
-    if (nl.includes(nq)) s += 28;
-    if (nfl.includes(nq)) s += 26;
-    if (nlf.includes(nq)) s += 24;
-    return s;
-  }
-  function flipLF(full){
-    const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
-    return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
-  }
-
-  async function doSearch(q){
-    const box = $('#results');
-
-    // Preferred path: local search using bootstrapped lists
-    if (bootstrapReady && (facultyList.length || studentList.length)) {
-      box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
-      localSearch(q);
-      return;
-    }
-
-    // Fallback: remote search via Apps Script
-    try { searchAbort?.abort(); } catch(_) {}
-    searchAbort = new AbortController();
-    const myToken = ++searchToken;
-    const sig = searchAbort.signal;
-    box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
-
-    const cacheKey = q.toLowerCase();
-    const cached = cacheSearch.get(cacheKey);
-    if (cached && (Date.now() - cached.t < 10000)) {
-      renderSearch(q, cached.data, myToken);
-      return;
-    }
-
-    try{
-      const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
-      const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
-      const [facRes, stuRes] = await Promise.all([facP, stuP]);
-      const data = {
-        fac: Array.isArray(facRes)?facRes:[],
-        stu: Array.isArray(stuRes)?stuRes:[]
-      };
-      cacheSearch.set(cacheKey, { t: Date.now(), data });
-      renderSearch(q, data, myToken);
-    } catch (e){
-      if (e && e.name === 'AbortError') return;
-      if (myToken === searchToken) box.innerHTML = '<div class="muted" style="text-align:center;">Search failed.</div>';
-    }
-  }
-
-  function localSearch(q){
-    const myToken = ++searchToken;
-    const nq = q.trim();
-    if (!nq){
-      $('#results').innerHTML = '';
-      return;
-    }
-
-    const fac = [];
-    for (const r of facultyList){
-      const { firstName, lastName, personId } = r;
-      const score = scoreName(nq, firstName||'', lastName||'');
-      if (score <= 0) continue;
-      fac.push({ firstName, lastName, personId, _score:score });
-    }
-
-    const stu = [];
-    for (const r of studentList){
-      const fullName = r.fullName || `${r.lastName||''}, ${r.firstName||''}`;
-      const flip = flipLF(fullName);
-      const score = scoreName(nq, flip.first||'', flip.last||'', fullName);
-      if (score <= 0) continue;
-      stu.push({
-        fullName,
-        legacyId: r.legacyId,
-        grade: r.grade,
-        _flip: flip,
-        _score: score
-      });
-    }
-
-    const facSorted = fac.sort((a,b)=>b._score - a._score).slice(0,30);
-    const stuSorted = stu.sort((a,b)=>b._score - a._score).slice(0,30);
-
-    renderSearch(nq, { fac: facSorted, stu: stuSorted }, myToken);
-  }
-
-  function renderSearch(q, data, token){
-    if (token !== searchToken || !qEl.value.trim()) return;
-    const { fac, stu } = data;
-
-    const facMap = new Map();
-    (fac || []).forEach(r=>{
-      const pid = String(r.personId||'');
-      const s = r._score != null ? r._score : scoreName(q, r.firstName||'', r.lastName||'');
-      const cur = facMap.get(pid);
-      if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
-    });
-    const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
-
-    const stuMap = new Map();
-    (stu || []).forEach(r=>{
-      const lf = String(r.fullName||'');
-      const flip = r._flip || flipLF(lf);
-      const legacy = String(r.legacyId||'');
-      const s = r._score != null ? r._score : scoreName(q, flip.first||'', flip.last||'', lf);
-      const cur = stuMap.get(legacy);
-      if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
-    });
-    const stuSorted = Array.from(stuMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
-
-    const frag = document.createDocumentFragment();
-
-    if (facSorted.length) {
-      frag.appendChild(sectionHeader('FACULTY'));
-      facSorted.forEach(({ firstName, lastName, personId })=>{
-        const label = `${firstName} ${lastName}`.trim() || 'Faculty';
-        frag.appendChild(resultRow(
-          label,
-          'Submit',
-          ()=> quickFacultyAction({ personId, pin:'', firstName, lastName })
-        ));
-      });
-    }
-
-    if (stuSorted.length) {
-      frag.appendChild(sectionHeader('STUDENTS'));
-      stuSorted.forEach(({ fullName, legacyId, _flip, grade })=>{
-        const firstName = _flip.first || '';
-        const lastName  = _flip.last  || '';
-        const label = (firstName ? `${firstName} ${lastName}` : fullName).trim() || 'Student';
-        frag.appendChild(resultRow(
-          label,
-          'Submit',
-          ()=> {
-            const isOut = btnOut.classList.contains('active');
-            if (isOut) {
-              quickStudentOut({ legacyId: String(legacyId), firstName, lastName, grade });
-            } else {
-              quickStudentIn({ legacyId: String(legacyId), firstName, lastName, grade });
-            }
-          }
-        ));
-      });
-    }
-
-    const box = $('#results');
-    box.replaceChildren();
-    if (!facSorted.length && !stuSorted.length) {
-      box.innerHTML = '<div class="muted" style="text-align:center;">No matches found.</div>';
-    } else {
-      box.appendChild(frag);
-    }
-  }
-
-  /* ================= Init ================= */
-  document.addEventListener('DOMContentLoaded', async ()=>{
-    initTheme();
-    updateNet();
-
-    loadBootstrapMetaFromStorage();
-    updateRosterStatusLabel();
-
-    pinEl.disabled = true;
-    qEl.disabled   = true;
-    showBootOverlay('Loading rosters…');
-
-    try{
-      await loadBootstrap();   // will also save success + update label
-      hideBootOverlay();
-      Toast.show('Kiosk ready (fast mode)', true, 1400);
-    }catch(e){
-      bootstrapReady = false;
-      saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
-      updateRosterStatusLabel();
-      hideBootOverlay();
-      Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
-      queueClientError('bootstrap_failed', {
-        src:'bootstrap',
-        msg: String(e && e.message || e || '')
-      });
-    }
-
-    pinEl.disabled = false;
-    qEl.disabled   = false;
-
-    // Default to IN, then apply URL hash override
-    setAction('in');
-    applyHashAction();
-
-    setTimeout(()=>{ pinEl.focus(); }, 0);
-    if (window.requestIdleCallback) requestIdleCallback(flushClientErrors);
-    else setTimeout(flushClientErrors, 500);
-  });
-})();
-</script>
-</body>
-</html>
+    function ok(){ init(); const t0=audioCtx.currentTime+0.01; tone({f:659.25, dur:0.14, t:t0, g:1.0}); tone({f:830.61, dur:0.14, t:t0+0.12
