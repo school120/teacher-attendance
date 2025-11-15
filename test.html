@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Guard Booth Attendance Kiosk</title>
-<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students IN → Veracross, OUT → logged to separate sheet." />
+<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -31,6 +31,20 @@
     --muted:#cbd5e1;
     --border:#374151;
   }
+  
+  /* URL Mode Styling */
+  body.url-mode-in {
+    background: linear-gradient(135deg, #dcfce7 0%, #f6f7fb 100%);
+  }
+  body.url-mode-out {
+    background: linear-gradient(135deg, #fee2e2 0%, #f6f7fb 100%);
+  }
+  body.dark.url-mode-in {
+    background: linear-gradient(135deg, #064e3b 0%, #0b1020 100%);
+  }
+  body.dark.url-mode-out {
+    background: linear-gradient(135deg, #7f1d1d 0%, #0b1020 100%);
+  }
 
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
@@ -55,6 +69,33 @@
     padding-top:calc(28px + env(safe-area-inset-top, 0px));
     overflow:visible;
     overflow-x:clip;
+  }
+
+  /* URL Mode Banner */
+  .url-mode-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 20px;
+    text-align: center;
+    font-weight: 900;
+    font-size: 24px;
+    letter-spacing: 1px;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,.15);
+    display: none;
+  }
+  .url-mode-banner.active {
+    display: block;
+  }
+  .url-mode-banner.mode-in {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    color: white;
+  }
+  .url-mode-banner.mode-out {
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    color: white;
   }
 
   .top-row{
@@ -182,6 +223,12 @@
     transition:transform .06s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease, color .2s ease;
     box-shadow:0 4px 10px rgba(0,0,0,.08);
   }
+  
+  /* Hide buttons when URL mode is active */
+  body.url-locked .segment.segment-xl {
+    display: none;
+  }
+  
   .segment.segment-xl button.active#actIn{
     background:linear-gradient(180deg, #16a34a 0%, #15803d 100%);
     color:#fff;
@@ -340,6 +387,9 @@
 </style>
 </head>
 <body>
+  <!-- URL Mode Banner -->
+  <div id="urlModeBanner" class="url-mode-banner"></div>
+
   <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
 
     <div class="top-row">
@@ -388,7 +438,6 @@
     </div>
   </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <script>
 (() => {
   'use strict';
@@ -405,6 +454,7 @@
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn');
   const rosterStatusEl = $('#rosterStatus');
   const bootOverlay = $('#bootOverlay');
+  const urlModeBanner = $('#urlModeBanner');
 
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
@@ -414,6 +464,40 @@
 
   let lastBootSuccess = null;
   let lastBootFail    = null;
+  
+  // URL Mode detection
+  let urlMode = null; // 'in', 'out', or null (manual)
+
+  /* ================= URL Mode Setup ================= */
+  function detectURLMode() {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    
+    if (mode === 'in' || mode === 'out') {
+      urlMode = mode;
+      applyURLMode(mode);
+      return true;
+    }
+    return false;
+  }
+
+  function applyURLMode(mode) {
+    // Lock to this mode
+    setAction(mode);
+    
+    // Visual indicators
+    document.body.classList.add('url-locked');
+    document.body.classList.add(`url-mode-${mode}`);
+    
+    // Show banner
+    urlModeBanner.textContent = mode === 'in' ? '🟢 IN STATION' : '🔴 OUT STATION';
+    urlModeBanner.classList.add('active', `mode-${mode}`);
+    
+    // Adjust wrap padding for banner
+    document.querySelector('.wrap').style.paddingTop = 'calc(68px + env(safe-area-inset-top, 0px))';
+    
+    console.log(`🔒 URL Mode locked to: ${mode.toUpperCase()}`);
+  }
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -509,11 +593,18 @@
     setTimeout(focusPinSafely, 0);
   }
 
-  btnIn.addEventListener('click', () => setAction('in'));
-  btnOut.addEventListener('click', () => setAction('out'));
-  window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+  // Only allow manual toggle if not in URL mode
+  btnIn.addEventListener('click', () => { if (!urlMode) setAction('in'); });
+  btnOut.addEventListener('click', () => { if (!urlMode) setAction('out'); });
+  window.addEventListener('keydown', (e)=>{ 
+    if (!urlMode) {
+      if(e.key==='ArrowLeft') setAction('in'); 
+      if(e.key==='ArrowRight') setAction('out'); 
+    }
+  });
 
   function applyHashAction(){
+    if (urlMode) return; // URL mode takes precedence
     const h = (location.hash || '').toLowerCase();
     if (h === '#out') setAction('out');
     else if (h === '#in') setAction('in');
@@ -559,7 +650,7 @@
     try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
   }
 
-  /* ================= Pending scan queue (offline attendance) ================= */
+  /* ================= Pending scan queue ================= */
   function queuePendingScan(payload){
     try{
       const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
@@ -600,7 +691,7 @@
     }
   });
 
-  /* ================= Bootstrap meta (last success/fail) ================= */
+  /* ================= Bootstrap meta ================= */
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -629,82 +720,4 @@
   }
 
   function saveBootstrapFail(message){
-    lastBootFail = { clientTs: Date.now(), message: String(message||'failed') };
-    try{ localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(lastBootFail)); }catch(_){}
-  }
-
-  function updateRosterStatusLabel(){
-    if (!rosterStatusEl) return;
-
-    let label = 'Roster: ⏳ loading…';
-    let title = '';
-
-    if (lastBootSuccess){
-      const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
-
-      if (bootstrapReady){
-        label = `⚡ Roster OK · ${when}`;
-      } else {
-        label = `⚠️ Roster fallback · ${when}`;
-      }
-
-      title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
-    } else {
-      if (lastBootFail){
-        label = `❌ Roster failed`;
-        title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
-      } else {
-        label = `Roster: ⏳ loading…`;
-        title = `No successful roster downloads yet`;
-      }
-    }
-
-    if (lastBootFail && lastBootSuccess){
-      const whenF = fmtShortTs(lastBootFail.clientTs);
-      title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
-    }
-
-    rosterStatusEl.textContent = label;
-    rosterStatusEl.title = title || 'Roster bootstrap status';
-  }
-
-  /* ================= Bootstrap cache (students + faculty) ================= */
-  let studentByLegacy = new Map();
-  let facultyByPin    = new Map();
-  let facultyList     = [];
-  let studentList     = [];
-  let bootstrapReady  = false;
-
-  async function loadBootstrap(){
-    const res  = await fetch(ENDPOINT + '?action=bootstrap');
-    if (!res.ok) {
-      throw new Error('Bootstrap HTTP ' + res.status);
-    }
-    const data = await res.json();
-
-    studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
-    facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
-    facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
-    studentList     = Array.isArray(data.studentList) ? data.studentList : [];
-    bootstrapReady  = true;
-
-    saveBootstrapSuccess(data.ts || Date.now());
-    updateRosterStatusLabel();
-  }
-
-  /* ================= Bootstrap overlay helpers ================= */
-  function showBootOverlay(text){
-    if (!bootOverlay) return;
-    const t = bootOverlay.querySelector('.boot-text');
-    if (t && text) t.textContent = text;
-    bootOverlay.style.display = 'flex';
-  }
-  function hideBootOverlay(){
-    if (!bootOverlay) return;
-    bootOverlay.style.display = 'none';
-  }
-
-  /* ================= API submit (slow/fallback paths) ================= */
-  let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out
+    lastBoot
