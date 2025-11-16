@@ -527,6 +527,17 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
+  // Click anywhere (except search box) refocuses pin input
+  document.addEventListener('click', (e) => {
+    // Don't refocus if clicking on search input or its results
+    if (e.target === qEl || qEl.contains(e.target)) return;
+    if (e.target.closest('#results')) return;
+    if (e.target.closest('.list')) return;
+    
+    // Allow clicks on buttons/badges to work normally
+    setTimeout(focusPinSafely, 0);
+  }, true);
+
   /* ================= Action toggle ================= */
   function setAction(a){
     const inActive = a === 'in';
