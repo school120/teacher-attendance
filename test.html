@@ -356,7 +356,7 @@
 
     <div class="top-row">
       <div class="left-badges">
-        <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
+        <div id="rosterStatus" class="badge clickable" title="Click to refresh roster">Roster: ⏳ loading…</div>
         <div id="queueStatus" class="badge clickable" title="Click to force sync">Queue ✅</div>
       </div>
 
@@ -967,7 +967,7 @@
     }
   }
 
-  /* ================= FAST student IN (queue-first) ================= */
+  /* ================= FAST student IN (immediate write + queue for retry) ================= */
   function quickStudentIn({ legacyId, firstName, lastName, grade, src }) {
     const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -995,10 +995,11 @@
       clientTs: String(eventTs)
     };
 
-    queuePendingScan(payload);
+    // Send immediately in background (fire-and-forget for UX)
+    sendImmediately(payload);
   }
 
-  /* ================= FAST student OUT (queue-first) ================= */
+  /* ================= FAST student OUT (immediate write + queue for retry) ================= */
   function quickStudentOut({ legacyId, firstName, lastName, grade, src }) {
     const act = 'out';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -1026,10 +1027,11 @@
       clientTs: String(eventTs)
     };
 
-    queuePendingScan(payload);
+    // Send immediately in background (fire-and-forget for UX)
+    sendImmediately(payload);
   }
 
-  /* ================= FAST faculty IN/OUT (queue-first) ================= */
+  /* ================= FAST faculty IN/OUT (immediate write + queue for retry) ================= */
   function quickFacultyAction({ personId, pin, firstName, lastName, src }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
@@ -1060,10 +1062,11 @@
       clientTs: String(eventTs)
     };
 
-    queuePendingScan(payload);
+    // Send immediately in background (fire-and-forget for UX)
+    sendImmediately(payload);
   }
 
-  /* ================= FAST unknown-card error (queue-first) ================= */
+  /* ================= FAST unknown-card error (immediate write + queue for retry) ================= */
   function quickUnknownCardFail(pin){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId: '' });
@@ -1095,7 +1098,36 @@
       clientTs: String(eventTs)
     };
 
-    queuePendingScan(payload);
+    // Send immediately in background (fire-and-forget for UX)
+    sendImmediately(payload);
+  }
+
+  /* ================= Immediate send (with background retry on failure) ================= */
+  async function sendImmediately(payload) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      
+      const body = new URLSearchParams(payload).toString();
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status);
+      }
+      
+      // Success - no further action needed
+      
+    } catch (err) {
+      // Failed - queue for retry in background
+      queuePendingScan(payload);
+    }
   }
 
   /* ================= Card input auto-submit ================= */
