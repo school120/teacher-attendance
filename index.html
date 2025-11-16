@@ -518,7 +518,6 @@
   btnOut.addEventListener('click', () => setAction('out'));
   window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
 
-  // Hash → action: #in or #out
   function applyHashAction(){
     const h = (location.hash || '').toLowerCase();
     if (h === '#out') setAction('out');
@@ -565,7 +564,7 @@
     try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
   }
 
-  /* ================= Pending scan queue (offline attendance) ================= */
+  /* ================= Pending scan queue ================= */
   function queuePendingScan(payload){
     try{
       const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
@@ -590,7 +589,7 @@
         });
         if (!res.ok) throw new Error('HTTP '+res.status);
       }catch(_){
-        remaining.push(p); // keep if still failing
+        remaining.push(p);
       }
     }
     try { localStorage.setItem('pending_scans', JSON.stringify(remaining)); } catch(_){}
@@ -606,7 +605,7 @@
     }
   });
 
-  /* ================= Bootstrap meta (last success/fail) ================= */
+  /* ================= Bootstrap meta ================= */
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -674,7 +673,7 @@
     rosterStatusEl.title = title || 'Roster bootstrap status';
   }
 
-  /* ================= Bootstrap cache (students + faculty) ================= */
+  /* ================= Bootstrap cache ================= */
   let studentByLegacy = new Map();
   let facultyByPin    = new Map();
   let facultyList     = [];
@@ -698,7 +697,7 @@
     updateRosterStatusLabel();
   }
 
-  /* ================= Bootstrap overlay helpers ================= */
+  /* ================= Bootstrap overlay ================= */
   function showBootOverlay(text){
     if (!bootOverlay) return;
     const t = bootOverlay.querySelector('.boot-text');
@@ -721,7 +720,7 @@
 
     const bodyObj = {
       action: act,
-      src: src || (pin ? 'card' : 'name'),
+      src: src || (pin ? 'tap_unknown' : 'search_unknown'),
       clientTs: String(eventTs)
     };
     if (pin) bodyObj.pin = pin;
@@ -747,7 +746,6 @@
           a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
           firstName, lastName, grade
         });
-        // queue as pending scan
         queuePendingScan({
           action: act,
           src: bodyObj.src,
@@ -780,7 +778,6 @@
         a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
         firstName, lastName, grade
       });
-      // queue as pending scan
       queuePendingScan({
         action: act,
         src: bodyObj.src,
@@ -795,7 +792,7 @@
   }
 
   /* ================= FAST student IN ================= */
-  function quickStudentIn({ legacyId, firstName, lastName, grade }) {
+  function quickStudentIn({ legacyId, firstName, lastName, grade, src }) {
     const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
     if (!canSendNow(key)) {
@@ -813,7 +810,7 @@
 
     const body = new URLSearchParams({
       action: act,
-      src: 'name_fast_student_in',
+      src: src || 'tap_student',
       pin: String(legacyId),
       firstName: firstName||'',
       lastName: lastName||'',
@@ -829,12 +826,12 @@
       queueClientError('student_in_fast_failed', {
         a: act,
         pin: String(legacyId),
-        src: 'name_fast_student_in',
+        src: src || 'tap_student',
         firstName, lastName, grade
       });
       queuePendingScan({
         action: act,
-        src: 'name_fast_student_in',
+        src: src || 'tap_student',
         pin: String(legacyId),
         personId: '',
         firstName, lastName, grade,
@@ -844,7 +841,7 @@
   }
 
   /* ================= FAST student OUT ================= */
-  function quickStudentOut({ legacyId, firstName, lastName, grade }) {
+  function quickStudentOut({ legacyId, firstName, lastName, grade, src }) {
     const act = 'out';
     const key = makeKey({ pin: legacyId, personId: '' });
     if (!canSendNow(key)) {
@@ -862,7 +859,7 @@
 
     const body = new URLSearchParams({
       action: act,
-      src: 'student_out_fast',
+      src: src || 'tap_student',
       pin: String(legacyId),
       firstName: firstName||'',
       lastName: lastName||'',
@@ -878,12 +875,12 @@
       queueClientError('student_out_fast_failed', {
         a: act,
         pin: String(legacyId),
-        src: 'student_out_fast',
+        src: src || 'tap_student',
         firstName, lastName, grade
       });
       queuePendingScan({
         action: act,
-        src: 'student_out_fast',
+        src: src || 'tap_student',
         pin: String(legacyId),
         personId: '',
         firstName, lastName, grade,
@@ -893,7 +890,7 @@
   }
 
   /* ================= FAST faculty IN/OUT ================= */
-  function quickFacultyAction({ personId, pin, firstName, lastName }) {
+  function quickFacultyAction({ personId, pin, firstName, lastName, src }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
     if (!canSendNow(key)) {
@@ -910,9 +907,11 @@
     Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
+    const finalSrc = src || (pin ? 'tap_faculty' : 'search_faculty');
+
     const params = {
       action: act,
-      src: pin ? 'card_fast_faculty' : 'name_fast_faculty',
+      src: finalSrc,
       clientTs: String(eventTs)
     };
     if (pin) params.pin = pin;
@@ -931,12 +930,12 @@
         a: act,
         pin: pin || '',
         personId: personId || '',
-        src: params.src,
+        src: finalSrc,
         firstName, lastName
       });
       queuePendingScan({
         action: act,
-        src: params.src,
+        src: finalSrc,
         pin: pin || '',
         personId: personId || '',
         firstName, lastName,
@@ -946,7 +945,7 @@
     });
   }
 
-  /* ================= FAST unknown-card error (instant) ================= */
+  /* ================= FAST unknown-card error ================= */
   function quickUnknownCardFail(pin){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId: '' });
@@ -961,7 +960,7 @@
 
     const body = new URLSearchParams({
       action: 'client_error',
-      src: 'card_fast_unknown',
+      src: 'tap_unknown',
       pin: String(pin),
       note: 'card_not_found'
     }).toString();
@@ -974,7 +973,7 @@
       queueClientError('unknown_card_fast_failed', {
         a: act,
         pin: String(pin),
-        src: 'card_fast_unknown'
+        src: 'tap_unknown'
       });
     });
   }
@@ -999,9 +998,9 @@
           const lastName  = rec.lastName || '';
           const grade     = rec.grade || '';
           if (isIn) {
-            quickStudentIn({ legacyId: ten, firstName, lastName, grade });
+            quickStudentIn({ legacyId: ten, firstName, lastName, grade, src: 'tap_student' });
           } else {
-            quickStudentOut({ legacyId: ten, firstName, lastName, grade });
+            quickStudentOut({ legacyId: ten, firstName, lastName, grade, src: 'tap_student' });
           }
         } else if (facultyByPin.has(ten)) {
           const rec = facultyByPin.get(ten);
@@ -1009,13 +1008,15 @@
             pin: ten,
             personId: rec.personId || '',
             firstName: rec.firstName || '',
-            lastName: rec.lastName || ''
+            lastName: rec.lastName || '',
+            src: 'tap_faculty'
           });
         } else {
           quickUnknownCardFail(ten);
         }
       } else {
-        submitPinOrId({ pin: ten, src: 'card' });
+        // fallback: just a raw tap, unknown type
+        submitPinOrId({ pin: ten, src: 'tap_unknown' });
       }
 
       pinEl.value = '';
@@ -1198,7 +1199,13 @@
         frag.appendChild(resultRow(
           label,
           'Submit',
-          ()=> quickFacultyAction({ personId, pin:'', firstName, lastName })
+          ()=> quickFacultyAction({
+            personId,
+            pin: '',
+            firstName,
+            lastName,
+            src: 'search_faculty'
+          })
         ));
       });
     }
@@ -1215,9 +1222,21 @@
           ()=> {
             const isOut = btnOut.classList.contains('active');
             if (isOut) {
-              quickStudentOut({ legacyId: String(legacyId), firstName, lastName, grade });
+              quickStudentOut({
+                legacyId: String(legacyId),
+                firstName,
+                lastName,
+                grade,
+                src: 'search_student'
+              });
             } else {
-              quickStudentIn({ legacyId: String(legacyId), firstName, lastName, grade });
+              quickStudentIn({
+                legacyId: String(legacyId),
+                firstName,
+                lastName,
+                grade,
+                src: 'search_student'
+              });
             }
           }
         ));
