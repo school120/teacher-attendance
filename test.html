@@ -100,10 +100,16 @@
   .badge.clickable{
     cursor:pointer;
     user-select:none;
+    transition: border-color 0.2s ease, transform 0.1s ease;
   }
 
   .badge.clickable:hover{
     border-color:#3b82f6;
+    transform: translateY(-1px);
+  }
+
+  .badge.clickable:active{
+    transform: translateY(0);
   }
 
   .badge.net.online{
@@ -432,6 +438,8 @@
   let lastBootFail    = null;
   let batchFlushTimer = null;
   let isFlushingQueue = false;
+  let isRefreshingRoster = false;
+  let dailySyncTimer = null;
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -830,7 +838,7 @@
   let studentList     = [];
   let bootstrapReady  = false;
 
-  async function loadBootstrap(){
+  async function loadBootstrap(isManualRefresh = false){
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     
@@ -857,6 +865,54 @@
 
     saveBootstrapSuccess(data.ts || Date.now());
     updateRosterStatusLabel();
+    
+    if (isManualRefresh) {
+      Toast.show('Roster refreshed successfully', true, 1800);
+    }
+  }
+
+  // Manual roster refresh
+  rosterStatusEl.addEventListener('click', async () => {
+    if (isRefreshingRoster) {
+      Toast.show('Already refreshing...', false, 1000);
+      return;
+    }
+    
+    isRefreshingRoster = true;
+    const originalText = rosterStatusEl.textContent;
+    rosterStatusEl.textContent = '🔄 Refreshing...';
+    Toast.show('Refreshing roster...', true, 1200);
+    
+    try {
+      await loadBootstrap(true);
+    } catch (e) {
+      Toast.show('Refresh failed: ' + (e.message || 'unknown error'), false, 2500);
+      saveBootstrapFail(e && e.message ? e.message : 'refresh failed');
+      updateRosterStatusLabel();
+    } finally {
+      isRefreshingRoster = false;
+      if (rosterStatusEl.textContent === '🔄 Refreshing...') {
+        rosterStatusEl.textContent = originalText;
+      }
+    }
+  });
+
+  // Daily auto-sync (24 hours)
+  function scheduleDailySync() {
+    clearTimeout(dailySyncTimer);
+    dailySyncTimer = setTimeout(async () => {
+      if (!isRefreshingRoster && bootstrapReady) {
+        try {
+          console.log('Auto-syncing roster (daily)...');
+          await loadBootstrap(false);
+          console.log('Daily roster sync completed');
+        } catch (e) {
+          console.error('Daily roster sync failed:', e);
+        }
+      }
+      // Schedule next sync
+      scheduleDailySync();
+    }, 24 * 60 * 60 * 1000); // 24 hours
   }
 
   /* ================= Bootstrap overlay ================= */
@@ -1451,6 +1507,9 @@
       await loadBootstrap();
       hideBootOverlay();
       Toast.show('Kiosk ready (fast mode)', true, 1400);
+      
+      // Start daily auto-sync timer
+      scheduleDailySync();
     }catch(e){
       bootstrapReady = false;
       saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
