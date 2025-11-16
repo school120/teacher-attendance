@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Guard Booth Attendance Kiosk</title>
-<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students IN → Veracross, OUT → logged to separate sheet." />
+<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup." />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -60,7 +60,7 @@
   .top-row{
     position: relative;
     margin-bottom: 16px;
-    padding-top: 36px; /* room for badges */
+    padding-top: 36px;
   }
 
   .top-center{
@@ -94,6 +94,16 @@
     color:var(--text);
     white-space:nowrap;
     font-family:inherit;
+    cursor:default;
+  }
+
+  .badge.clickable{
+    cursor:pointer;
+    user-select:none;
+  }
+
+  .badge.clickable:hover{
+    border-color:#3b82f6;
   }
 
   .badge.net.online{
@@ -344,11 +354,10 @@
 <body>
   <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
 
-    <!-- Top row: roster left, title center, theme + net right -->
     <div class="top-row">
       <div class="left-badges">
         <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
-        <div id="queueStatus" class="badge">Queue ✅</div>
+        <div id="queueStatus" class="badge clickable" title="Click to force sync">Queue ✅</div>
       </div>
 
       <div class="top-center">
@@ -384,7 +393,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <!-- Bootstrap overlay -->
     <div id="bootOverlay" class="boot-overlay" aria-live="polite" aria-busy="true">
       <div class="boot-overlay-inner">
         <div class="boot-spinner" aria-hidden="true"></div>
@@ -402,6 +410,9 @@
   const COOLDOWN_MS = 250;
   const DEDUPE_WINDOW_MS = 5000;
   const WEDGE_QUIET_MS = 100;
+  const BATCH_SIZE = 10;
+  const BATCH_DELAY_MS = 2000;
+  const REQUEST_TIMEOUT_MS = 15000;
 
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
@@ -419,6 +430,8 @@
 
   let lastBootSuccess = null;
   let lastBootFail    = null;
+  let batchFlushTimer = null;
+  let isFlushingQueue = false;
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -535,7 +548,7 @@
     return true;
   }
 
-  /* ================= Queue status (visual badge) ================= */
+  /* ================= Queue management ================= */
   function getQueueCounts(){
     let pending = 0, errors = 0;
     try{
@@ -554,20 +567,35 @@
     const { pending, errors } = getQueueCounts();
 
     let parts = ['Queue'];
-    let title = '';
+    let title = 'Click to force sync';
 
     if (pending === 0 && errors === 0) {
       parts.push('✅');
-      title = 'No pending scans or errors.';
+      title = 'No pending scans or errors. Click to force sync.';
     } else {
       if (pending > 0) parts.push(`🕒${pending}`);
       if (errors > 0)  parts.push(`⚠️${errors}`);
-      title = 'Pending scans and errors are stored locally and will retry automatically when online.';
+      title = `Pending: ${pending}, Errors: ${errors}. Click to force sync now.`;
     }
 
     queueStatusEl.textContent = parts.join(' ');
     queueStatusEl.title = title;
   }
+
+  // Manual sync trigger
+  queueStatusEl.addEventListener('click', () => {
+    if (isFlushingQueue) {
+      Toast.show('Already syncing...', false, 1000);
+      return;
+    }
+    const { pending, errors } = getQueueCounts();
+    if (pending === 0 && errors === 0) {
+      Toast.show('Nothing to sync', true, 1200);
+      return;
+    }
+    Toast.show('Syncing queue...', true, 1500);
+    scheduleBatchFlush(0); // Immediate
+  });
 
   /* ================= Client error queue ================= */
   function queueClientError(msg, extra){
@@ -587,21 +615,36 @@
   async function flushClientErrors(){
     let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
     if (!q.length) { updateQueueStatusLabel(); return; }
-    const left=[];
-    for (const p of q){
-      try{
+    
+    // Process one at a time
+    while (q.length > 0) {
+      const item = q[0];
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        
         await fetch(ENDPOINT, {
           method:'POST',
           headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(p).toString()
+          body:new URLSearchParams(item).toString(),
+          signal: controller.signal
         });
-      }catch(_){ left.push(p); }
+        
+        clearTimeout(timeoutId);
+        
+        // Success - remove from queue
+        q.shift();
+        localStorage.setItem('client_error_queue', JSON.stringify(q));
+      } catch(_) {
+        // Failed - stop and keep remaining
+        break;
+      }
     }
-    try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
+    
     updateQueueStatusLabel();
   }
 
-  /* ================= Pending scan queue (queue-first) ================= */
+  /* ================= Pending scan queue (batch processing) ================= */
   function queuePendingScan(payload){
     try{
       const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
@@ -609,42 +652,110 @@
       localStorage.setItem('pending_scans', JSON.stringify(q));
     }catch(_){}
     updateQueueStatusLabel();
+    scheduleBatchFlush();
   }
 
-  async function flushPendingScans(){
+  function scheduleBatchFlush(delay = BATCH_DELAY_MS) {
+    clearTimeout(batchFlushTimer);
+    batchFlushTimer = setTimeout(() => {
+      if (navigator.onLine && !isFlushingQueue) {
+        flushPendingScans();
+      }
+    }, delay);
+  }
+
+  async function flushPendingScans() {
+    if (isFlushingQueue) return;
+    isFlushingQueue = true;
+
     let q = [];
     try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
-    if (!q.length) { updateQueueStatusLabel(); return; }
+    if (!q.length) { 
+      isFlushingQueue = false;
+      updateQueueStatusLabel(); 
+      return; 
+    }
 
-    const remaining = [];
-    for (const p of q){
-      try{
-        const body = new URLSearchParams(p).toString();
+    // Try batch processing first
+    if (q.length >= BATCH_SIZE) {
+      const batch = q.slice(0, BATCH_SIZE);
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        
         const res = await fetch(ENDPOINT, {
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ batch: true, scans: batch }),
+          signal: controller.signal
         });
-        if (!res.ok) throw new Error('HTTP '+res.status);
-      }catch(_){
-        remaining.push(p);
+        
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          const result = await res.json();
+          
+          // Remove successfully processed items
+          if (result.results && Array.isArray(result.results)) {
+            const successCount = result.results.filter(r => r.success).length;
+            q = q.slice(successCount);
+            localStorage.setItem('pending_scans', JSON.stringify(q));
+          }
+        }
+      } catch (batchErr) {
+        // Batch failed, fall through to single processing
       }
     }
-    try { localStorage.setItem('pending_scans', JSON.stringify(remaining)); } catch(_){}
+
+    // Process remaining items one at a time
+    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
+    
+    while (q.length > 0) {
+      const item = q[0];
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        
+        const body = new URLSearchParams(item).toString();
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          // Success - remove from queue
+          q.shift();
+          localStorage.setItem('pending_scans', JSON.stringify(q));
+        } else {
+          // Failed - stop and keep remaining
+          break;
+        }
+      } catch(_) {
+        // Network error - stop and keep remaining
+        break;
+      }
+    }
+
+    isFlushingQueue = false;
     updateQueueStatusLabel();
   }
 
   window.addEventListener('online', () => {
+    scheduleBatchFlush(500);
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
-      requestIdleCallback(flushPendingScans);
     } else {
-      setTimeout(flushClientErrors, 500);
-      setTimeout(flushPendingScans, 800);
+      setTimeout(flushClientErrors, 800);
     }
   });
 
-  /* ================= Bootstrap meta (last success/fail) ================= */
+  /* ================= Bootstrap meta ================= */
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -712,7 +823,7 @@
     rosterStatusEl.title = title || 'Roster bootstrap status';
   }
 
-  /* ================= Bootstrap cache (students + faculty) ================= */
+  /* ================= Bootstrap cache ================= */
   let studentByLegacy = new Map();
   let facultyByPin    = new Map();
   let facultyList     = [];
@@ -720,11 +831,23 @@
   let bootstrapReady  = false;
 
   async function loadBootstrap(){
-    const res  = await fetch(ENDPOINT + '?action=bootstrap');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    
+    const res = await fetch(ENDPOINT + '?action=bootstrap', {
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
     if (!res.ok) {
       throw new Error('Bootstrap HTTP ' + res.status);
     }
     const data = await res.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
 
     studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
     facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
@@ -736,7 +859,7 @@
     updateRosterStatusLabel();
   }
 
-  /* ================= Bootstrap overlay helpers ================= */
+  /* ================= Bootstrap overlay ================= */
   function showBootOverlay(text){
     if (!bootOverlay) return;
     const t = bootOverlay.querySelector('.boot-text');
@@ -748,7 +871,7 @@
     bootOverlay.style.display = 'none';
   }
 
-  /* ================= API submit (slow/fallback paths) ================= */
+  /* ================= API submit (with timeout) ================= */
   let lastSubmitAt = 0;
   async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
@@ -771,12 +894,21 @@
     const body = new URLSearchParams(bodyObj).toString();
 
     try{
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      
       const res = await fetch(ENDPOINT, {
         method:'POST',
         headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body
+        body,
+        signal: controller.signal
       });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
+      
+      clearTimeout(timeoutId);
+      
+      const text = await res.text(); 
+      let data=null; 
+      try{ data = JSON.parse(text); }catch{}
 
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
@@ -812,8 +944,13 @@
       const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
       Toast.show(line || 'Done.', true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
     }catch(err){
-      Toast.show('Network error', false); Chime.fail();
-      queueClientError('fetch_failed', {
+      if (err.name === 'AbortError') {
+        Toast.show('Request timeout', false);
+      } else {
+        Toast.show('Network error', false);
+      }
+      Chime.fail();
+      queueClientError(err.name === 'AbortError' ? 'timeout' : 'fetch_failed', {
         a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
         firstName, lastName, grade
       });
@@ -859,14 +996,6 @@
     };
 
     queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
   }
 
   /* ================= FAST student OUT (queue-first) ================= */
@@ -898,14 +1027,6 @@
     };
 
     queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
   }
 
   /* ================= FAST faculty IN/OUT (queue-first) ================= */
@@ -940,14 +1061,6 @@
     };
 
     queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
   }
 
   /* ================= FAST unknown-card error (queue-first) ================= */
@@ -965,14 +1078,12 @@
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    // Count as client error for badge
     queueClientError('card_not_found', {
       a: act,
       pin: String(pin),
       src: 'tap_unknown'
     });
 
-    // Queue an attendance event so backend logs it in Raw + Errors
     const payload = {
       action: act,
       src: 'tap_unknown',
@@ -985,14 +1096,6 @@
     };
 
     queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
   }
 
   /* ================= Card input auto-submit ================= */
@@ -1041,9 +1144,10 @@
     }, WEDGE_QUIET_MS);
   }, { passive:true });
 
-  /* ================= Search (local when bootstrapped) ================= */
+  /* ================= Search (local when bootstrapped, with memoization) ================= */
   let searchTimer = null, searchAbort = null, searchToken = 0;
   const cacheSearch = new Map();
+  const SEARCH_CACHE_SIZE = 50;
 
   qEl.addEventListener('input', ()=>{
     clearTimeout(searchTimer);
@@ -1053,8 +1157,9 @@
       searchToken++; box.innerHTML = '';
       return;
     }
-    searchTimer = setTimeout(()=>doSearch(q), 150);
+    searchTimer = setTimeout(()=>doSearch(q), 250);
   });
+  
   qEl.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter') {
       clearTimeout(searchTimer);
@@ -1081,6 +1186,7 @@
     div.textContent = text;
     return div;
   }
+  
   function resultRow(label, btnText, onClick){
     const row = document.createElement('div'); row.className='row';
     const name = document.createElement('div'); name.className='name'; name.textContent = label;
@@ -1092,7 +1198,9 @@
     row.appendChild(name); row.appendChild(btn);
     return row;
   }
+  
   function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
+  
   function scoreName(q, first, last, fullLF){
     const nq = norm(q); const nf = norm(first), nl = norm(last);
     const nfl = nf + ' ' + nl; const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
@@ -1104,6 +1212,7 @@
     if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24;
     return s;
   }
+  
   function flipLF(full){
     const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
     return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
@@ -1118,13 +1227,14 @@
       return;
     }
 
+    box.innerHTML = '<div class="muted" style="text-align:center;">🐌 Searching online (slow mode)…</div>';
+
     try { searchAbort?.abort(); } catch(_) {}
     searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
-    box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
 
     const cacheKey = q.toLowerCase();
     const cached = cacheSearch.get(cacheKey);
-    if (cached && (Date.now() - cached.t < 10000)) {
+    if (cached && (Date.now() - cached.t < 30000)) {
       renderSearch(q, cached.data, myToken);
       return;
     }
@@ -1137,7 +1247,14 @@
         fac: Array.isArray(facRes)?facRes:[],
         stu: Array.isArray(stuRes)?stuRes:[]
       };
+      
+      // Cache with LRU eviction
       cacheSearch.set(cacheKey, { t: Date.now(), data });
+      if (cacheSearch.size > SEARCH_CACHE_SIZE) {
+        const firstKey = cacheSearch.keys().next().value;
+        cacheSearch.delete(firstKey);
+      }
+      
       renderSearch(q, data, myToken);
     } catch (e){
       if (e && e.name === 'AbortError') return;
@@ -1150,6 +1267,14 @@
     const nq = q.trim();
     if (!nq){
       $('#results').innerHTML = '';
+      return;
+    }
+
+    // Check cache first
+    const cacheKey = nq.toLowerCase();
+    const cached = cacheSearch.get(cacheKey);
+    if (cached && Date.now() - cached.time < 30000) {
+      renderSearch(nq, cached.data, myToken);
       return;
     }
 
@@ -1179,7 +1304,16 @@
     const facSorted = fac.sort((a,b)=>b._score - a._score).slice(0,30);
     const stuSorted = stu.sort((a,b)=>b._score - a._score).slice(0,30);
 
-    renderSearch(nq, { fac: facSorted, stu: stuSorted }, myToken);
+    const data = { fac: facSorted, stu: stuSorted };
+    
+    // Cache with LRU eviction
+    cacheSearch.set(cacheKey, { data, time: Date.now() });
+    if (cacheSearch.size > SEARCH_CACHE_SIZE) {
+      const firstKey = cacheSearch.keys().next().value;
+      cacheSearch.delete(firstKey);
+    }
+
+    renderSearch(nq, data, myToken);
   }
 
   function renderSearch(q, data, token){
@@ -1305,12 +1439,13 @@
 
     setTimeout(()=>{ pinEl.focus(); }, 0);
 
+    // Initial queue flush
+    scheduleBatchFlush(1000);
+    
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
-      requestIdleCallback(flushPendingScans);
     } else {
-      setTimeout(flushClientErrors, 500);
-      setTimeout(flushPendingScans, 800);
+      setTimeout(flushClientErrors, 1500);
     }
   });
 })();
