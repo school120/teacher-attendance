@@ -348,7 +348,8 @@
     <div class="top-row">
       <div class="left-badges">
         <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
-        <div id="queueStatus" class="badge">✅0</div>
+        <!-- Queue badge: label + emojis + numbers -->
+        <div id="queueStatus" class="badge">Queue ✅0</div>
       </div>
 
       <div class="top-center">
@@ -553,11 +554,11 @@
     if (!queueStatusEl) return;
     const { pending, errors } = getQueueCounts();
 
-    let label = '✅0';
+    let label = 'Queue ✅0';
     let title = 'No pending scans or errors.';
 
     if (pending > 0 || errors > 0) {
-      label = `🕒${pending} ⚠️${errors}`;
+      label = `Queue 🕒${pending} ⚠️${errors}`;
       title = 'Pending scans and errors are stored locally and will retry automatically when online.';
     }
 
@@ -946,7 +947,7 @@
     }
   }
 
-  /* ================= FAST unknown-card error (queue-first, logs in raw) ================= */
+  /* ================= FAST unknown-card error (queue-first, logs in raw + error count) ================= */
   function quickUnknownCardFail(pin){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId: '' });
@@ -961,6 +962,13 @@
     Toast.show('Cougar Card not found', false);
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
+
+    // Count as an "error" for the queue badge
+    queueClientError('card_not_found', {
+      a: act,
+      pin: String(pin),
+      src: 'tap_unknown'
+    });
 
     // Queue a NORMAL attendance scan so backend logs in Raw + Errors
     const payload = {
