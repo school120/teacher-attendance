@@ -93,6 +93,7 @@
     background:var(--card);
     color:var(--text);
     white-space:nowrap;
+    font-family:inherit;
   }
 
   .badge.net.online{
@@ -118,6 +119,7 @@
     align-items:center;
     gap:6px;
     cursor:pointer;
+    font-family:inherit;
   }
   #themeBtn span{
     font-size:12px;
@@ -346,7 +348,7 @@
     <div class="top-row">
       <div class="left-badges">
         <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
-        <div id="queueStatus" class="badge">Queue: ✅ empty</div>
+        <div id="queueStatus" class="badge">✅0</div>
       </div>
 
       <div class="top-center">
@@ -551,12 +553,12 @@
     if (!queueStatusEl) return;
     const { pending, errors } = getQueueCounts();
 
-    let label = 'Queue: ✅ empty';
+    let label = '✅0';
     let title = 'No pending scans or errors.';
 
     if (pending > 0 || errors > 0) {
-      label = `Queue: 🕒 ${pending} scans, ⚠️ ${errors} errors`;
-      title = 'These items are stored locally and will be retried automatically when online.';
+      label = `🕒${pending} ⚠️${errors}`;
+      title = 'Pending scans and errors are stored locally and will retry automatically when online.';
     }
 
     queueStatusEl.textContent = label;
@@ -944,7 +946,7 @@
     }
   }
 
-  /* ================= FAST unknown-card error (instant) ================= */
+  /* ================= FAST unknown-card error (queue-first, logs in raw) ================= */
   function quickUnknownCardFail(pin){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId: '' });
@@ -953,28 +955,34 @@
       return;
     }
 
+    const eventTs = Date.now();
+
+    // Instant UI feedback
     Toast.show('Cougar Card not found', false);
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    const body = new URLSearchParams({
-      action: 'client_error',
+    // Queue a NORMAL attendance scan so backend logs in Raw + Errors
+    const payload = {
+      action: act,
       src: 'tap_unknown',
       pin: String(pin),
-      note: 'card_not_found'
-    }).toString();
+      personId: '',
+      firstName: '',
+      lastName: '',
+      grade: '',
+      clientTs: String(eventTs)
+    };
 
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('unknown_card_fast_failed', {
-        a: act,
-        pin: String(pin),
-        src: 'tap_unknown'
-      });
-    });
+    queuePendingScan(payload);
+
+    if (navigator.onLine) {
+      if (window.requestIdleCallback) {
+        requestIdleCallback(flushPendingScans);
+      } else {
+        setTimeout(flushPendingScans, 150);
+      }
+    }
   }
 
   /* ================= Card input auto-submit ================= */
