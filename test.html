@@ -1148,11 +1148,8 @@
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    queueClientError('card_not_found', {
-      a: act,
-      pin: String(pin),
-      src: 'tap_unknown'
-    });
+    // Don't queue as client error - backend will log to Error sheet
+    // Just send the scan attempt
 
     const payload = {
       action: act,
