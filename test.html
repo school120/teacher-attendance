@@ -765,4 +765,673 @@
     const pending = State.queue.pending.length;
     const errors = State.queue.errors.length;
 
-    let label = '
+    let label = 'Queue ✅0';
+    let title = 'No pending scans or errors.';
+
+    if (State.queue.syncing) {
+      label = `Queue ⏳ syncing...`;
+      title = 'Syncing pending scans to server...';
+      queueStatusEl.classList.add('syncing');
+    } else {
+      queueStatusEl.classList.remove('syncing');
+      if (pending > 0 || errors > 0) {
+        label = `Queue 🕒${pending} ⚠️${errors}`;
+        title = 'Pending scans and errors are stored locally and will retry automatically when online.';
+      }
+    }
+
+    queueStatusEl.textContent = label;
+    queueStatusEl.title = title;
+  }
+
+  /* ================= Bootstrap Roster ================= */
+  async function loadBootstrap(){
+    try {
+      const res = await fetch(ENDPOINT + '?action=bootstrap', {
+        signal: AbortSignal.timeout(10000)
+      });
+      
+      if (!res.ok) {
+        throw new Error('Bootstrap HTTP ' + res.status);
+      }
+      
+      const data = await res.json();
+      State.updateRoster(data);
+      updateRosterStatusLabel();
+      return true;
+    } catch(e) {
+      State.recordSyncFailure(e.message || 'bootstrap failed');
+      updateRosterStatusLabel();
+      throw e;
+    }
+  }
+
+  /* ================= Queue Processing with Batching ================= */
+  let batchTimer = null;
+
+  async function processQueues() {
+    if (!navigator.onLine || State.queue.syncing) return;
+    
+    const hasPending = State.queue.pending.length > 0;
+    const hasErrors = State.queue.errors.length > 0;
+    
+    if (!hasPending && !hasErrors) {
+      updateQueueStatusLabel();
+      return;
+    }
+
+    State.queue.syncing = true;
+    updateQueueStatusLabel();
+
+    // Process errors first (they're logged, not actual scans)
+    await processBatchErrors();
+    
+    // Then process pending scans
+    await processBatchScans();
+
+    State.queue.syncing = false;
+    updateQueueStatusLabel();
+  }
+
+  async function processBatchErrors() {
+    if (State.queue.errors.length === 0) return;
+
+    const batch = State.queue.errors.slice(0, BATCH_SIZE);
+    const toRemove = [];
+
+    for (const item of batch) {
+      try {
+        const body = new URLSearchParams({
+          action: 'client_error',
+          note: item.note || 'client_error',
+          ...item
+        }).toString();
+
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body,
+          signal: AbortSignal.timeout(5000)
+        });
+
+        if (res.ok) {
+          toRemove.push(item.id);
+        } else if (item.attempts >= MAX_RETRY_ATTEMPTS) {
+          toRemove.push(item.id);
+        } else {
+          item.attempts = (item.attempts || 0) + 1;
+        }
+      } catch(e) {
+        if (item.attempts >= MAX_RETRY_ATTEMPTS) {
+          toRemove.push(item.id);
+        } else {
+          item.attempts = (item.attempts || 0) + 1;
+        }
+      }
+    }
+
+    toRemove.forEach(id => State.removeError(id));
+  }
+
+  async function processBatchScans() {
+    if (State.queue.pending.length === 0) return;
+
+    // Sort by priority (timestamp)
+    State.queue.pending.sort((a, b) => a.priority - b.priority);
+
+    const batch = State.queue.pending.slice(0, BATCH_SIZE);
+    
+    // Try to send as a batch first
+    if (batch.length > 1) {
+      try {
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: new URLSearchParams({
+            action: 'batch',
+            scans: JSON.stringify(batch.map(s => ({
+              action: s.action,
+              src: s.src,
+              pin: s.pin || '',
+              personId: s.personId || '',
+              firstName: s.firstName || '',
+              lastName: s.lastName || '',
+              grade: s.grade || '',
+              clientTs: s.clientTs
+            })))
+          }).toString(),
+          signal: AbortSignal.timeout(10000)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && Array.isArray(data.results)) {
+            // Remove successful ones
+            data.results.forEach((result, i) => {
+              if (result.success !== false) {
+                State.removeScan(batch[i].id);
+              }
+            });
+            return;
+          }
+        }
+      } catch(e) {
+        // Batch failed, fall through to individual processing
+      }
+    }
+
+    // Process individually with retry logic
+    const toRemove = [];
+    for (const item of batch) {
+      const shouldRetry = await processSingleScan(item);
+      if (!shouldRetry) {
+        toRemove.push(item.id);
+      }
+    }
+
+    toRemove.forEach(id => State.removeScan(id));
+  }
+
+  async function processSingleScan(item) {
+    const backoff = Math.min(
+      RETRY_BACKOFF_BASE * Math.pow(2, item.attempts || 0),
+      30000
+    );
+
+    if (item.attempts > 0) {
+      await new Promise(resolve => setTimeout(resolve, backoff));
+    }
+
+    try {
+      const body = new URLSearchParams({
+        action: item.action,
+        src: item.src || '',
+        pin: item.pin || '',
+        personId: item.personId || '',
+        firstName: item.firstName || '',
+        lastName: item.lastName || '',
+        grade: item.grade || '',
+        clientTs: item.clientTs || String(Date.now())
+      }).toString();
+
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body,
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (res.ok) {
+        return false; // Success, remove from queue
+      }
+
+      if (res.status >= 400 && res.status < 500) {
+        // Client error, don't retry
+        return false;
+      }
+
+      // Server error, retry
+      item.attempts = (item.attempts || 0) + 1;
+      return item.attempts < MAX_RETRY_ATTEMPTS;
+
+    } catch(e) {
+      item.attempts = (item.attempts || 0) + 1;
+      return item.attempts < MAX_RETRY_ATTEMPTS;
+    }
+  }
+
+  // Schedule batch processing
+  function scheduleBatchProcessing() {
+    clearTimeout(batchTimer);
+    batchTimer = setTimeout(() => {
+      if (navigator.onLine) {
+        processQueues();
+      }
+    }, BATCH_DELAY_MS);
+  }
+
+  /* ================= Fast Scan Handlers ================= */
+  function quickStudentIn({ legacyId, firstName, lastName, grade, src }) {
+    const key = State.makeKey({ pin: legacyId, personId: '' });
+    if (!State.canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const eventTs = Date.now();
+    const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
+
+    const kioskURL = VC_BASE + encodeURIComponent(legacyId);
+    window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
+    Toast.show(`${label} — sent to Veracross`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
+
+    State.queueScan({
+      action: 'in',
+      src: src || 'tap_student',
+      pin: String(legacyId),
+      personId: '',
+      firstName: firstName||'',
+      lastName: lastName||'',
+      grade: grade||'',
+      clientTs: String(eventTs)
+    });
+
+    updateQueueStatusLabel();
+    scheduleBatchProcessing();
+  }
+
+  function quickStudentOut({ legacyId, firstName, lastName, grade, src }) {
+    const key = State.makeKey({ pin: legacyId, personId: '' });
+    if (!State.canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const eventTs = Date.now();
+    const now = new Date(eventTs);
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const who = `${firstName||''} ${lastName||''}`.trim() || 'Student';
+
+    Toast.show(`${who} — signed OUT — ${timeStr}`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
+
+    State.queueScan({
+      action: 'out',
+      src: src || 'tap_student',
+      pin: String(legacyId),
+      personId: '',
+      firstName: firstName||'',
+      lastName: lastName||'',
+      grade: grade||'',
+      clientTs: String(eventTs)
+    });
+
+    updateQueueStatusLabel();
+    scheduleBatchProcessing();
+  }
+
+  function quickFacultyAction({ personId, pin, firstName, lastName, src }) {
+    const act = State.action;
+    const key = State.makeKey({ pin, personId });
+    if (!State.canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const eventTs = Date.now();
+    const now = new Date(eventTs);
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
+    const verb = act === 'in' ? 'IN' : 'OUT';
+
+    Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
+    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
+
+    State.queueScan({
+      action: act,
+      src: src || (pin ? 'tap_faculty' : 'search_faculty'),
+      pin: pin || '',
+      personId: personId || '',
+      firstName: firstName || '',
+      lastName: lastName || '',
+      grade: '',
+      clientTs: String(eventTs)
+    });
+
+    updateQueueStatusLabel();
+    scheduleBatchProcessing();
+  }
+
+  function quickUnknownCardFail(pin){
+    const key = State.makeKey({ pin, personId: '' });
+    if (!State.canSendNow(key)) {
+      Toast.show('Duplicate scan ignored (5s)', false);
+      return;
+    }
+
+    const eventTs = Date.now();
+    Toast.show('Cougar Card not found', false);
+    Chime.fail();
+    try { navigator.vibrate?.(40); } catch(_){}
+
+    State.queueError({
+      action: 'client_error',
+      note: 'card_not_found',
+      a: State.action,
+      pin: String(pin),
+      src: 'tap_unknown'
+    });
+
+    State.queueScan({
+      action: State.action,
+      src: 'tap_unknown',
+      pin: String(pin),
+      personId: '',
+      firstName: '',
+      lastName: '',
+      grade: '',
+      clientTs: String(eventTs)
+    });
+
+    updateQueueStatusLabel();
+    scheduleBatchProcessing();
+  }
+
+  /* ================= Card Input ================= */
+  let wedgeTimer = null;
+  pinEl.addEventListener('input', ()=>{
+    clearTimeout(wedgeTimer);
+    wedgeTimer = setTimeout(()=>{
+      const d = digitsOnly(pinEl.value);
+      if (d.length < 10) return;
+
+      const ten = d.slice(-10);
+      if (Date.now() - State.lastSubmit < COOLDOWN_MS) return;
+
+      const isIn = State.action === 'in';
+      const hasRoster = State.roster.students.size > 0 || State.roster.faculty.size > 0;
+
+      if (hasRoster) {
+        if (State.roster.students.has(ten)) {
+          const rec = State.roster.students.get(ten);
+          if (isIn) {
+            quickStudentIn({
+              legacyId: ten,
+              firstName: rec.firstName || '',
+              lastName: rec.lastName || '',
+              grade: rec.grade || '',
+              src: 'tap_student'
+            });
+          } else {
+            quickStudentOut({
+              legacyId: ten,
+              firstName: rec.firstName || '',
+              lastName: rec.lastName || '',
+              grade: rec.grade || '',
+              src: 'tap_student'
+            });
+          }
+        } else if (State.roster.faculty.has(ten)) {
+          const rec = State.roster.faculty.get(ten);
+          quickFacultyAction({
+            pin: ten,
+            personId: rec.personId || '',
+            firstName: rec.firstName || '',
+            lastName: rec.lastName || '',
+            src: 'tap_faculty'
+          });
+        } else {
+          quickUnknownCardFail(ten);
+        }
+      } else {
+        // Fallback: queue with unknown
+        quickUnknownCardFail(ten);
+      }
+
+      pinEl.value = '';
+      focusPinSafely();
+      State.lastSubmit = Date.now();
+    }, WEDGE_QUIET_MS);
+  }, { passive:true });
+
+  /* ================= Search ================= */
+  let searchTimer = null;
+  const searchCache = new Map();
+
+  qEl.addEventListener('input', ()=>{
+    clearTimeout(searchTimer);
+    const q = qEl.value.trim();
+    const box = $('#results');
+    if (!q) {
+      box.innerHTML = '';
+      return;
+    }
+    searchTimer = setTimeout(()=>doSearch(q), 150);
+  });
+
+  qEl.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter') {
+      clearTimeout(searchTimer);
+      const q = qEl.value.trim();
+      if (!q) {
+        $('#results').innerHTML = '';
+        e.preventDefault();
+        return;
+      }
+      doSearch(q);
+      e.preventDefault();
+    }
+  });
+
+  function clearSearchUI(){
+    qEl.value = '';
+    $('#results').innerHTML = '';
+    focusPinSafely();
+  }
+
+  function sectionHeader(text){
+    const div = document.createElement('div');
+    div.className='sectionHdr';
+    div.textContent = text;
+    return div;
+  }
+
+  function resultRow(label, btnText, onClick){
+    const row = document.createElement('div');
+    row.className='row';
+    const name = document.createElement('div');
+    name.className='name';
+    name.textContent = label;
+    const btn = document.createElement('button');
+    btn.className='actionBtn';
+    btn.textContent = btnText;
+    btn.addEventListener('click', ()=>{
+      onClick();
+      clearSearchUI();
+    });
+    row.appendChild(name);
+    row.appendChild(btn);
+    return row;
+  }
+
+  function norm(s){
+    return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  }
+
+  function scoreName(q, first, last, fullLF){
+    const nq = norm(q);
+    const nf = norm(first), nl = norm(last);
+    const nfl = nf + ' ' + nl;
+    const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
+    
+    if (nfl === nq || nlf === nq) return 1000;
+    if (nf === nq || nl === nq) return 900;
+    
+    let s = 0;
+    if (nf.startsWith(nq)) s += 120;
+    if (nl.startsWith(nq)) s += 110;
+    if (nfl.startsWith(nq)) s += 100;
+    if (nlf.startsWith(nq)) s += 95;
+    if (nf.includes(nq)) s += 30;
+    if (nl.includes(nq)) s += 28;
+    if (nfl.includes(nq)) s += 26;
+    if (nlf.includes(nq)) s += 24;
+    return s;
+  }
+
+  function flipLF(full){
+    const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
+    return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
+  }
+
+  function doSearch(q){
+    const box = $('#results');
+    const hasRoster = State.roster.studentList.length > 0 || State.roster.facultyList.length > 0;
+
+    if (hasRoster) {
+      box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
+      localSearch(q);
+    } else {
+      box.innerHTML = '<div class="muted" style="text-align:center;">Roster not loaded</div>';
+    }
+  }
+
+  function localSearch(q){
+    const nq = q.trim();
+    if (!nq){
+      $('#results').innerHTML = '';
+      return;
+    }
+
+    const fac = [];
+    for (const r of State.roster.facultyList){
+      const { firstName, lastName, personId } = r;
+      const score = scoreName(nq, firstName||'', lastName||'');
+      if (score <= 0) continue;
+      fac.push({ firstName, lastName, personId, _score:score });
+    }
+
+    const stu = [];
+    for (const r of State.roster.studentList){
+      const fullName = r.fullName || `${r.lastName||''}, ${r.firstName||''}`;
+      const flip = flipLF(fullName);
+      const score = scoreName(nq, flip.first||'', flip.last||'', fullName);
+      if (score <= 0) continue;
+      stu.push({
+        fullName,
+        legacyId: r.legacyId,
+        grade: r.grade,
+        _flip: flip,
+        _score: score
+      });
+    }
+
+    const facSorted = fac.sort((a,b)=>b._score - a._score).slice(0,30);
+    const stuSorted = stu.sort((a,b)=>b._score - a._score).slice(0,30);
+
+    renderSearch(facSorted, stuSorted);
+  }
+
+  function renderSearch(facSorted, stuSorted){
+    const frag = document.createDocumentFragment();
+
+    if (facSorted.length) {
+      frag.appendChild(sectionHeader('FACULTY'));
+      facSorted.forEach(({ firstName, lastName, personId })=>{
+        const label = `${firstName} ${lastName}`.trim() || 'Faculty';
+        frag.appendChild(resultRow(
+          label,
+          'Submit',
+          ()=> quickFacultyAction({
+            personId,
+            pin: '',
+            firstName,
+            lastName,
+            src: 'search_faculty'
+          })
+        ));
+      });
+    }
+
+    if (stuSorted.length) {
+      frag.appendChild(sectionHeader('STUDENTS'));
+      stuSorted.forEach(({ fullName, legacyId, _flip, grade })=>{
+        const firstName = _flip.first || '';
+        const lastName  = _flip.last  || '';
+        const label = (firstName ? `${firstName} ${lastName}` : fullName).trim() || 'Student';
+        frag.appendChild(resultRow(
+          label,
+          'Submit',
+          ()=> {
+            const isOut = State.action === 'out';
+            if (isOut) {
+              quickStudentOut({
+                legacyId: String(legacyId),
+                firstName,
+                lastName,
+                grade,
+                src: 'search_student'
+              });
+            } else {
+              quickStudentIn({
+                legacyId: String(legacyId),
+                firstName,
+                lastName,
+                grade,
+                src: 'search_student'
+              });
+            }
+          }
+        ));
+      });
+    }
+
+    const box = $('#results');
+    box.replaceChildren();
+    if (!facSorted.length && !stuSorted.length) {
+      box.innerHTML = '<div class="muted" style="text-align:center;">No matches found.</div>';
+    } else {
+      box.appendChild(frag);
+    }
+  }
+
+  /* ================= Overlay helpers ================= */
+  function showBootOverlay(text){
+    if (!bootOverlay) return;
+    const t = bootOverlay.querySelector('.boot-text');
+    if (t && text) t.textContent = text;
+    bootOverlay.style.display = 'flex';
+  }
+
+  function hideBootOverlay(){
+    if (!bootOverlay) return;
+    bootOverlay.style.display = 'none';
+  }
+
+  /* ================= Init ================= */
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    initTheme();
+    updateNet();
+    State.load();
+
+    updateRosterStatusLabel();
+    updateQueueStatusLabel();
+
+    pinEl.disabled = true;
+    qEl.disabled   = true;
+    showBootOverlay('Loading rosters…');
+
+    try{
+      await loadBootstrap();
+      hideBootOverlay();
+      Toast.show('Kiosk ready (fast mode)', true, 1400);
+    }catch(e){
+      hideBootOverlay();
+      Toast.show('Using cached roster — will retry sync in background', false, 2600);
+    }
+
+    pinEl.disabled = false;
+    qEl.disabled   = false;
+
+    setAction(State.action);
+    applyHashAction();
+
+    setTimeout(()=>{ pinEl.focus(); }, 0);
+
+    // Process any pending queues
+    if (navigator.onLine) {
+      setTimeout(processQueues, 1000);
+    }
+
+    // Periodic queue processing
+    setInterval(() => {
+      if (navigator.onLine && !State.queue.syncing) {
+        processQueues();
+      }
+    }, 60000); // Every minute
+  });
+})();
+</script>
+</body>
+</html>
