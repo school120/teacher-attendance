@@ -1117,11 +1117,23 @@
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
     const finalSrc = src || (pin ? 'tap_faculty' : 'search_faculty');
+    
+    // If searched by name, look up their Quick PIN from the roster
+    let quickPin = pin || '';
+    if (!quickPin && personId && facultyByPin) {
+      // Search through facultyByPin to find matching personId
+      for (const [pinKey, fac] of facultyByPin.entries()) {
+        if (fac.personId === personId) {
+          quickPin = pinKey;
+          break;
+        }
+      }
+    }
 
     const payload = {
       action: act,
       src: finalSrc,
-      pin: pin || '',
+      pin: quickPin || '',
       personId: personId || '',
       firstName: firstName || '',
       lastName: lastName || '',
