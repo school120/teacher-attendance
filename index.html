@@ -57,7 +57,6 @@
     overflow-x:clip;
   }
 
-  /* ───── Top row: roster left, title center, net/theme right ───── */
   .top-row{
     position: relative;
     margin-bottom: 16px;
@@ -94,9 +93,9 @@
     background:var(--card);
     color:var(--text);
     white-space:nowrap;
+    font-family:inherit;
   }
 
-  /* Online / offline color pills */
   .badge.net.online{
     background:#dcfce7;
     border-color:#86efac;
@@ -108,7 +107,6 @@
     color:#991b1b;
   }
 
-  /* Theme toggle styled like a badge */
   #themeBtn{
     font-size:12px;
     font-weight:800;
@@ -121,6 +119,7 @@
     align-items:center;
     gap:6px;
     cursor:pointer;
+    font-family:inherit;
   }
   #themeBtn span{
     font-size:12px;
@@ -303,7 +302,6 @@
     .segment.segment-xl button{ font-size:36px; min-height:88px; }
   }
 
-  /* ===== Bootstrap overlay ===== */
   .boot-overlay{
     position:fixed;
     inset:0;
@@ -350,6 +348,7 @@
     <div class="top-row">
       <div class="left-badges">
         <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
+        <div id="queueStatus" class="badge">Queue ✅</div>
       </div>
 
       <div class="top-center">
@@ -409,6 +408,7 @@
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn');
   const rosterStatusEl = $('#rosterStatus');
+  const queueStatusEl = $('#queueStatus');
   const bootOverlay = $('#bootOverlay');
 
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
@@ -535,6 +535,40 @@
     return true;
   }
 
+  /* ================= Queue status (visual badge) ================= */
+  function getQueueCounts(){
+    let pending = 0, errors = 0;
+    try{
+      const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
+      pending = Array.isArray(q) ? q.length : 0;
+    }catch(_){}
+    try{
+      const e = JSON.parse(localStorage.getItem('client_error_queue') || '[]');
+      errors = Array.isArray(e) ? e.length : 0;
+    }catch(_){}
+    return { pending, errors };
+  }
+
+  function updateQueueStatusLabel(){
+    if (!queueStatusEl) return;
+    const { pending, errors } = getQueueCounts();
+
+    let parts = ['Queue'];
+    let title = '';
+
+    if (pending === 0 && errors === 0) {
+      parts.push('✅');
+      title = 'No pending scans or errors.';
+    } else {
+      if (pending > 0) parts.push(`🕒${pending}`);
+      if (errors > 0)  parts.push(`⚠️${errors}`);
+      title = 'Pending scans and errors are stored locally and will retry automatically when online.';
+    }
+
+    queueStatusEl.textContent = parts.join(' ');
+    queueStatusEl.title = title;
+  }
+
   /* ================= Client error queue ================= */
   function queueClientError(msg, extra){
     const payload = {
@@ -547,10 +581,12 @@
       q.push(payload);
       localStorage.setItem('client_error_queue', JSON.stringify(q));
     }catch(_){ }
+    updateQueueStatusLabel();
   }
+
   async function flushClientErrors(){
     let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
-    if (!q.length) return;
+    if (!q.length) { updateQueueStatusLabel(); return; }
     const left=[];
     for (const p of q){
       try{
@@ -562,21 +598,23 @@
       }catch(_){ left.push(p); }
     }
     try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
+    updateQueueStatusLabel();
   }
 
-  /* ================= Pending scan queue ================= */
+  /* ================= Pending scan queue (queue-first) ================= */
   function queuePendingScan(payload){
     try{
       const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
       q.push(payload);
       localStorage.setItem('pending_scans', JSON.stringify(q));
     }catch(_){}
+    updateQueueStatusLabel();
   }
 
   async function flushPendingScans(){
     let q = [];
     try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
-    if (!q.length) return;
+    if (!q.length) { updateQueueStatusLabel(); return; }
 
     const remaining = [];
     for (const p of q){
@@ -593,6 +631,7 @@
       }
     }
     try { localStorage.setItem('pending_scans', JSON.stringify(remaining)); } catch(_){}
+    updateQueueStatusLabel();
   }
 
   window.addEventListener('online', () => {
@@ -605,7 +644,7 @@
     }
   });
 
-  /* ================= Bootstrap meta ================= */
+  /* ================= Bootstrap meta (last success/fail) ================= */
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
@@ -673,7 +712,7 @@
     rosterStatusEl.title = title || 'Roster bootstrap status';
   }
 
-  /* ================= Bootstrap cache ================= */
+  /* ================= Bootstrap cache (students + faculty) ================= */
   let studentByLegacy = new Map();
   let facultyByPin    = new Map();
   let facultyList     = [];
@@ -697,7 +736,7 @@
     updateRosterStatusLabel();
   }
 
-  /* ================= Bootstrap overlay ================= */
+  /* ================= Bootstrap overlay helpers ================= */
   function showBootOverlay(text){
     if (!bootOverlay) return;
     const t = bootOverlay.querySelector('.boot-text');
@@ -791,7 +830,7 @@
     }
   }
 
-  /* ================= FAST student IN ================= */
+  /* ================= FAST student IN (queue-first) ================= */
   function quickStudentIn({ legacyId, firstName, lastName, grade, src }) {
     const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -808,39 +847,29 @@
     Toast.show(`${label} — sent to Veracross`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
 
-    const body = new URLSearchParams({
+    const payload = {
       action: act,
       src: src || 'tap_student',
       pin: String(legacyId),
+      personId: '',
       firstName: firstName||'',
       lastName: lastName||'',
       grade: grade||'',
       clientTs: String(eventTs)
-    }).toString();
+    };
 
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('student_in_fast_failed', {
-        a: act,
-        pin: String(legacyId),
-        src: src || 'tap_student',
-        firstName, lastName, grade
-      });
-      queuePendingScan({
-        action: act,
-        src: src || 'tap_student',
-        pin: String(legacyId),
-        personId: '',
-        firstName, lastName, grade,
-        clientTs: String(eventTs)
-      });
-    });
+    queuePendingScan(payload);
+
+    if (navigator.onLine) {
+      if (window.requestIdleCallback) {
+        requestIdleCallback(flushPendingScans);
+      } else {
+        setTimeout(flushPendingScans, 150);
+      }
+    }
   }
 
-  /* ================= FAST student OUT ================= */
+  /* ================= FAST student OUT (queue-first) ================= */
   function quickStudentOut({ legacyId, firstName, lastName, grade, src }) {
     const act = 'out';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -857,39 +886,29 @@
     Toast.show(`${who} — signed OUT — ${timeStr}`, true);
     try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
 
-    const body = new URLSearchParams({
+    const payload = {
       action: act,
       src: src || 'tap_student',
       pin: String(legacyId),
+      personId: '',
       firstName: firstName||'',
       lastName: lastName||'',
       grade: grade||'',
       clientTs: String(eventTs)
-    }).toString();
+    };
 
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('student_out_fast_failed', {
-        a: act,
-        pin: String(legacyId),
-        src: src || 'tap_student',
-        firstName, lastName, grade
-      });
-      queuePendingScan({
-        action: act,
-        src: src || 'tap_student',
-        pin: String(legacyId),
-        personId: '',
-        firstName, lastName, grade,
-        clientTs: String(eventTs)
-      });
-    });
+    queuePendingScan(payload);
+
+    if (navigator.onLine) {
+      if (window.requestIdleCallback) {
+        requestIdleCallback(flushPendingScans);
+      } else {
+        setTimeout(flushPendingScans, 150);
+      }
+    }
   }
 
-  /* ================= FAST faculty IN/OUT ================= */
+  /* ================= FAST faculty IN/OUT (queue-first) ================= */
   function quickFacultyAction({ personId, pin, firstName, lastName, src }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
@@ -909,43 +928,29 @@
 
     const finalSrc = src || (pin ? 'tap_faculty' : 'search_faculty');
 
-    const params = {
+    const payload = {
       action: act,
       src: finalSrc,
+      pin: pin || '',
+      personId: personId || '',
+      firstName: firstName || '',
+      lastName: lastName || '',
+      grade: '',
       clientTs: String(eventTs)
     };
-    if (pin) params.pin = pin;
-    if (personId) params.personId = personId;
-    if (firstName) params.firstName = firstName;
-    if (lastName) params.lastName = lastName;
 
-    const body = new URLSearchParams(params).toString();
+    queuePendingScan(payload);
 
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('faculty_fast_failed', {
-        a: act,
-        pin: pin || '',
-        personId: personId || '',
-        src: finalSrc,
-        firstName, lastName
-      });
-      queuePendingScan({
-        action: act,
-        src: finalSrc,
-        pin: pin || '',
-        personId: personId || '',
-        firstName, lastName,
-        grade: '',
-        clientTs: String(eventTs)
-      });
-    });
+    if (navigator.onLine) {
+      if (window.requestIdleCallback) {
+        requestIdleCallback(flushPendingScans);
+      } else {
+        setTimeout(flushPendingScans, 150);
+      }
+    }
   }
 
-  /* ================= FAST unknown-card error ================= */
+  /* ================= FAST unknown-card error (queue-first) ================= */
   function quickUnknownCardFail(pin){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId: '' });
@@ -954,28 +959,40 @@
       return;
     }
 
+    const eventTs = Date.now();
+
     Toast.show('Cougar Card not found', false);
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    const body = new URLSearchParams({
-      action: 'client_error',
+    // Count as client error for badge
+    queueClientError('card_not_found', {
+      a: act,
+      pin: String(pin),
+      src: 'tap_unknown'
+    });
+
+    // Queue an attendance event so backend logs it in Raw + Errors
+    const payload = {
+      action: act,
       src: 'tap_unknown',
       pin: String(pin),
-      note: 'card_not_found'
-    }).toString();
+      personId: '',
+      firstName: '',
+      lastName: '',
+      grade: '',
+      clientTs: String(eventTs)
+    };
 
-    fetch(ENDPOINT, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    }).catch(() => {
-      queueClientError('unknown_card_fast_failed', {
-        a: act,
-        pin: String(pin),
-        src: 'tap_unknown'
-      });
-    });
+    queuePendingScan(payload);
+
+    if (navigator.onLine) {
+      if (window.requestIdleCallback) {
+        requestIdleCallback(flushPendingScans);
+      } else {
+        setTimeout(flushPendingScans, 150);
+      }
+    }
   }
 
   /* ================= Card input auto-submit ================= */
@@ -1015,7 +1032,6 @@
           quickUnknownCardFail(ten);
         }
       } else {
-        // fallback: just a raw tap, unknown type
         submitPinOrId({ pin: ten, src: 'tap_unknown' });
       }
 
@@ -1259,6 +1275,7 @@
 
     loadBootstrapMetaFromStorage();
     updateRosterStatusLabel();
+    updateQueueStatusLabel();
 
     pinEl.disabled = true;
     qEl.disabled   = true;
