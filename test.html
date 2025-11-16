@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Guard Booth Attendance Kiosk</title>
-<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup. Faculty handled in-app; students IN → Veracross, OUT → logged to separate sheet." />
+<meta name="description" content="Guard kiosk for IN/OUT with card swipe/tap or name lookup" />
 <meta name="color-scheme" content="light dark">
 <meta id="meta-theme" name="theme-color" content="#ffffff">
 <style>
@@ -60,7 +60,7 @@
   .top-row{
     position: relative;
     margin-bottom: 16px;
-    padding-top: 36px; /* room for badges */
+    padding-top: 36px;
   }
 
   .top-center{
@@ -105,6 +105,12 @@
     background:#fee2e2;
     border-color:#fca5a5;
     color:#991b1b;
+  }
+
+  .badge.syncing{
+    background:#fef3c7;
+    border-color:#fcd34d;
+    color:#92400e;
   }
 
   #themeBtn{
@@ -344,11 +350,9 @@
 <body>
   <div class="wrap" role="application" aria-label="Guard Booth Attendance Kiosk">
 
-    <!-- Top row: roster left, title center, theme + net right -->
     <div class="top-row">
       <div class="left-badges">
         <div id="rosterStatus" class="badge">Roster: ⏳ loading…</div>
-        <!-- Queue badge: label + emojis + numbers -->
         <div id="queueStatus" class="badge">Queue ✅0</div>
       </div>
 
@@ -366,26 +370,25 @@
     </div>
 
     <div class="segment segment-xl" role="tablist" aria-label="Action">
-      <button id="actIn" class="active" role="tab" aria-selected="true" type="button" aria-label="Set action to IN">IN</button>
-      <button id="actOut" role="tab" aria-selected="false" type="button" aria-label="Set action to OUT">OUT</button>
+      <button id="actIn" class="active" role="tab" aria-selected="true" type="button">IN</button>
+      <button id="actOut" role="tab" aria-selected="false" type="button">OUT</button>
     </div>
 
     <div class="grid">
       <div class="card">
         <h2>Cougar Card</h2>
-        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code" placeholder="Tap or swipe card…" aria-label="Cougar card" />
+        <input id="pin" type="password" maxlength="32" inputmode="numeric" autocomplete="one-time-code" placeholder="Tap or swipe card…" />
       </div>
 
       <div class="card">
         <h2>Lookup by Name</h2>
-        <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="Search faculty or students" aria-label="Search name" />
+        <input id="q" type="search" inputmode="search" enterkeyhint="search" autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="Search faculty or students" />
         <div id="results" class="list" role="list" aria-live="polite"></div>
       </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <!-- Bootstrap overlay -->
     <div id="bootOverlay" class="boot-overlay" aria-live="polite" aria-busy="true">
       <div class="boot-overlay-inner">
         <div class="boot-spinner" aria-hidden="true"></div>
@@ -400,11 +403,22 @@
 
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
+  
+  // Config
   const COOLDOWN_MS = 250;
   const DEDUPE_WINDOW_MS = 5000;
   const WEDGE_QUIET_MS = 100;
+  const BATCH_SIZE = 10;
+  const BATCH_DELAY_MS = 2000;
+  const MAX_RETRY_ATTEMPTS = 5;
+  const RETRY_BACKOFF_BASE = 1000;
+  const ROSTER_CACHE_TTL = 3600000; // 1 hour
 
   const $ = s => document.querySelector(s);
+  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
+  const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
+
+  // Elements
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
   const btnIn = $('#actIn'), btnOut = $('#actOut');
   const netBadge = $('#netBadge'), themeBtn = $('#themeBtn');
@@ -412,14 +426,155 @@
   const queueStatusEl = $('#queueStatus');
   const bootOverlay = $('#bootOverlay');
 
-  const digitsOnly = s => String(s||'').replace(/\D+/g,'');
-  const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
+  /* ================= State Management ================= */
+  const State = {
+    action: 'in',
+    roster: {
+      students: new Map(),
+      faculty: new Map(),
+      studentList: [],
+      facultyList: [],
+      timestamp: null,
+      checksum: null
+    },
+    queue: {
+      pending: [],
+      errors: [],
+      syncing: false
+    },
+    lastSync: {
+      success: null,
+      failure: null
+    },
+    lastSubmit: 0,
+    lastSeen: new Map(),
 
-  const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
-  const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
+    load() {
+      try {
+        const saved = localStorage.getItem('kiosk_state');
+        if (saved) {
+          const data = JSON.parse(saved);
+          if (data.action) this.action = data.action;
+          if (data.lastSync) this.lastSync = data.lastSync;
+          if (data.roster && data.roster.timestamp) {
+            // Check if roster cache is still valid
+            const age = Date.now() - data.roster.timestamp;
+            if (age < ROSTER_CACHE_TTL) {
+              this.roster.students = new Map(data.roster.students || []);
+              this.roster.faculty = new Map(data.roster.faculty || []);
+              this.roster.studentList = data.roster.studentList || [];
+              this.roster.facultyList = data.roster.facultyList || [];
+              this.roster.timestamp = data.roster.timestamp;
+              this.roster.checksum = data.roster.checksum;
+            }
+          }
+        }
+        
+        // Load queues
+        this.queue.pending = JSON.parse(localStorage.getItem('pending_scans') || '[]');
+        this.queue.errors = JSON.parse(localStorage.getItem('client_error_queue') || '[]');
+      } catch(e) {
+        console.error('Failed to load state:', e);
+      }
+    },
 
-  let lastBootSuccess = null;
-  let lastBootFail    = null;
+    save() {
+      try {
+        const toSave = {
+          action: this.action,
+          lastSync: this.lastSync,
+          roster: {
+            students: Array.from(this.roster.students.entries()),
+            faculty: Array.from(this.roster.faculty.entries()),
+            studentList: this.roster.studentList,
+            facultyList: this.roster.facultyList,
+            timestamp: this.roster.timestamp,
+            checksum: this.roster.checksum
+          }
+        };
+        localStorage.setItem('kiosk_state', JSON.stringify(toSave));
+        localStorage.setItem('pending_scans', JSON.stringify(this.queue.pending));
+        localStorage.setItem('client_error_queue', JSON.stringify(this.queue.errors));
+      } catch(e) {
+        console.error('Failed to save state:', e);
+      }
+    },
+
+    setAction(val) {
+      this.action = val;
+      this.save();
+    },
+
+    updateRoster(data) {
+      this.roster.students.clear();
+      this.roster.faculty.clear();
+      
+      Object.entries(data.studentByLegacy || {}).forEach(([k, v]) => {
+        this.roster.students.set(k, v);
+      });
+      
+      Object.entries(data.facultyPins || {}).forEach(([k, v]) => {
+        this.roster.faculty.set(k, v);
+      });
+      
+      this.roster.studentList = data.studentList || [];
+      this.roster.facultyList = data.facultyList || [];
+      this.roster.timestamp = Date.now();
+      this.roster.checksum = data.checksum;
+      
+      this.lastSync.success = {
+        serverTs: data.ts || Date.now(),
+        clientTs: Date.now()
+      };
+      
+      this.save();
+    },
+
+    recordSyncFailure(message) {
+      this.lastSync.failure = {
+        clientTs: Date.now(),
+        message: String(message || 'failed')
+      };
+      this.save();
+    },
+
+    queueScan(payload) {
+      payload.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      payload.attempts = 0;
+      payload.priority = Date.now();
+      this.queue.pending.push(payload);
+      this.save();
+    },
+
+    queueError(payload) {
+      payload.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      payload.attempts = 0;
+      this.queue.errors.push(payload);
+      this.save();
+    },
+
+    removeScan(id) {
+      this.queue.pending = this.queue.pending.filter(s => s.id !== id);
+      this.save();
+    },
+
+    removeError(id) {
+      this.queue.errors = this.queue.errors.filter(e => e.id !== id);
+      this.save();
+    },
+
+    canSendNow(key) {
+      const now = Date.now();
+      const last = this.lastSeen.get(key) || 0;
+      if (now - last < DEDUPE_WINDOW_MS) return false;
+      this.lastSeen.set(key, now);
+      return true;
+    },
+
+    makeKey({ pin, personId }) {
+      return pin ? `pin:${pin}` : `pid:${personId}`;
+    }
+  };
 
   /* ================= Toast ================= */
   const Toast = (() => {
@@ -440,7 +595,8 @@
     let audioCtx=null, master=null, comp=null, dist=null, ready=false;
     function init(){
       if (ready) return;
-      const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
       comp = audioCtx.createDynamicsCompressor();
       comp.threshold.setValueAtTime(-12, audioCtx.currentTime);
       comp.knee.setValueAtTime(24, audioCtx.currentTime);
@@ -448,8 +604,17 @@
       comp.attack.setValueAtTime(0.002, audioCtx.currentTime);
       comp.release.setValueAtTime(0.08, audioCtx.currentTime);
       dist = audioCtx.createWaveShaper();
-      dist.curve = (function makeCurve(amount=60){ const n=44100,c=new Float32Array(n),deg=Math.PI/180; for(let i=0;i<n;i++){ const x=(i*2)/n-1; c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x)); } return c; })();
-      dist.oversample='4x'; master = audioCtx.createGain(); master.gain.setValueAtTime(0.95, audioCtx.currentTime);
+      dist.curve = (function(amount=60){
+        const n=44100,c=new Float32Array(n),deg=Math.PI/180;
+        for(let i=0;i<n;i++){
+          const x=(i*2)/n-1;
+          c[i]=(3+amount)*x*20*deg/(Math.PI+amount*Math.abs(x));
+        }
+        return c;
+      })();
+      dist.oversample='4x';
+      master = audioCtx.createGain();
+      master.gain.setValueAtTime(0.95, audioCtx.currentTime);
       master.connect(comp).connect(audioCtx.destination);
       const kick = ()=> audioCtx.resume?.().catch(()=>{});
       window.addEventListener('pointerdown', kick, { once:true, passive:true });
@@ -458,13 +623,29 @@
     }
     function tone({ f=880, dur=0.18, t=audioCtx.currentTime, type='sine', g=0.7, distOn=false, detune=0 }){
       const o=audioCtx.createOscillator(), gn=audioCtx.createGain();
-      o.type=type; o.frequency.setValueAtTime(f,t); if (detune) o.detune.setValueAtTime(detune,t);
-      gn.gain.setValueAtTime(0,t); gn.gain.linearRampToValueAtTime(g,t+0.012); gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.type=type; o.frequency.setValueAtTime(f,t);
+      if (detune) o.detune.setValueAtTime(detune,t);
+      gn.gain.setValueAtTime(0,t);
+      gn.gain.linearRampToValueAtTime(g,t+0.012);
+      gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
       (distOn ? o.connect(gn).connect(dist).connect(master) : o.connect(gn).connect(master));
       o.start(t); o.stop(t+dur+0.02);
     }
-    function ok(){ init(); const t0=audioCtx.currentTime+0.01; tone({f:659.25, dur:0.14, t:t0, g:1.0}); tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0}); tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0}); tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0}); }
-    function fail(){ init(); const t0=audioCtx.currentTime+0.01; tone({f:440.00, dur:0.16, t:t0, type:'square', g:1.0, distOn:true}); tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true}); tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9, distOn:true}); }
+    function ok(){
+      init();
+      const t0=audioCtx.currentTime+0.01;
+      tone({f:659.25, dur:0.14, t:t0, g:1.0});
+      tone({f:830.61, dur:0.14, t:t0+0.12, g:1.0});
+      tone({f:987.77, dur:0.16, t:t0+0.24, g:1.0});
+      tone({f:1318.5, dur:0.22, t:t0+0.36, g:1.0});
+    }
+    function fail(){
+      init();
+      const t0=audioCtx.currentTime+0.01;
+      tone({f:440.00, dur:0.16, t:t0, type:'square', g:1.0, distOn:true});
+      tone({f:369.99, dur:0.16, t:t0+0.12, type:'square', g:0.95, distOn:true});
+      tone({f:293.66, dur:0.20, t:t0+0.24, type:'square', g:0.9, distOn:true});
+    }
     return { ok, fail };
   })();
 
@@ -498,7 +679,10 @@
     netBadge.classList.toggle('online', on);
     netBadge.classList.toggle('offline', !on);
   }
-  window.addEventListener('online', updateNet, { passive:true });
+  window.addEventListener('online', () => {
+    updateNet();
+    setTimeout(processQueues, 500);
+  }, { passive:true });
   window.addEventListener('offline', updateNet, { passive:true });
 
   /* ================= Focus helpers ================= */
@@ -512,12 +696,18 @@
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
     btnOut.classList.toggle('active', !inActive);
+    btnIn.setAttribute('aria-selected', inActive);
+    btnOut.setAttribute('aria-selected', !inActive);
+    State.setAction(a);
     setTimeout(focusPinSafely, 0);
   }
 
   btnIn.addEventListener('click', () => setAction('in'));
   btnOut.addEventListener('click', () => setAction('out'));
-  window.addEventListener('keydown', (e)=>{ if(e.key==='ArrowLeft') setAction('in'); if(e.key==='ArrowRight') setAction('out'); });
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='ArrowLeft') setAction('in');
+    if(e.key==='ArrowRight') setAction('out');
+  });
 
   function applyHashAction(){
     const h = (location.hash || '').toLowerCase();
@@ -526,152 +716,13 @@
   }
   window.addEventListener('hashchange', applyHashAction);
 
-  /* ================= De-dupe ================= */
-  const lastSeenMap = new Map();
-  function makeKey({ pin, personId }) { return pin ? `pin:${pin}` : `pid:${personId}`; }
-  function canSendNow(key){
-    const now=Date.now(), last=lastSeenMap.get(key)||0;
-    if (now-last < DEDUPE_WINDOW_MS) return false;
-    lastSeenMap.set(key, now);
-    return true;
-  }
-
-  /* ================= Queue status (visual badge) ================= */
-  function getQueueCounts(){
-    let pending = 0, errors = 0;
-    try{
-      const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
-      pending = Array.isArray(q) ? q.length : 0;
-    }catch(_){}
-    try{
-      const e = JSON.parse(localStorage.getItem('client_error_queue') || '[]');
-      errors = Array.isArray(e) ? e.length : 0;
-    }catch(_){}
-    return { pending, errors };
-  }
-
-  function updateQueueStatusLabel(){
-    if (!queueStatusEl) return;
-    const { pending, errors } = getQueueCounts();
-
-    let label = 'Queue ✅0';
-    let title = 'No pending scans or errors.';
-
-    if (pending > 0 || errors > 0) {
-      label = `Queue 🕒${pending} ⚠️${errors}`;
-      title = 'Pending scans and errors are stored locally and will retry automatically when online.';
-    }
-
-    queueStatusEl.textContent = label;
-    queueStatusEl.title = title;
-  }
-
-  /* ================= Client error queue ================= */
-  function queueClientError(msg, extra){
-    const payload = {
-      action:'client_error',
-      note:String(msg||'network error'),
-      ...extra
-    };
-    try{
-      const q = JSON.parse(localStorage.getItem('client_error_queue')||'[]');
-      q.push(payload);
-      localStorage.setItem('client_error_queue', JSON.stringify(q));
-    }catch(_){ }
-    updateQueueStatusLabel();
-  }
-
-  async function flushClientErrors(){
-    let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
-    if (!q.length) { updateQueueStatusLabel(); return; }
-    const left=[];
-    for (const p of q){
-      try{
-        await fetch(ENDPOINT, {
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(p).toString()
-        });
-      }catch(_){ left.push(p); }
-    }
-    try{ localStorage.setItem('client_error_queue', JSON.stringify(left)); }catch(_){}
-    updateQueueStatusLabel();
-  }
-
-  /* ================= Pending scan queue (queue-first) ================= */
-  function queuePendingScan(payload){
-    try{
-      const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
-      q.push(payload);
-      localStorage.setItem('pending_scans', JSON.stringify(q));
-    }catch(_){}
-    updateQueueStatusLabel();
-  }
-
-  async function flushPendingScans(){
-    let q = [];
-    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
-    if (!q.length) { updateQueueStatusLabel(); return; }
-
-    const remaining = [];
-    for (const p of q){
-      try{
-        const body = new URLSearchParams(p).toString();
-        const res = await fetch(ENDPOINT, {
-          method:'POST',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body
-        });
-        if (!res.ok) throw new Error('HTTP '+res.status);
-      }catch(_){
-        remaining.push(p);
-      }
-    }
-    try { localStorage.setItem('pending_scans', JSON.stringify(remaining)); } catch(_){}
-    updateQueueStatusLabel();
-  }
-
-  window.addEventListener('online', () => {
-    if (window.requestIdleCallback) {
-      requestIdleCallback(flushClientErrors);
-      requestIdleCallback(flushPendingScans);
-    } else {
-      setTimeout(flushClientErrors, 500);
-      setTimeout(flushPendingScans, 800);
-    }
-  });
-
-  /* ================= Bootstrap meta (last success/fail) ================= */
+  /* ================= UI Updates ================= */
   function fmtShortTs(ts){
     if (!ts) return '';
     const d = new Date(ts);
     return d.toLocaleString('en-US', {
-      month:'short',
-      day:'numeric',
-      hour:'numeric',
-      minute:'2-digit'
+      month:'short', day:'numeric', hour:'numeric', minute:'2-digit'
     });
-  }
-
-  function loadBootstrapMetaFromStorage(){
-    try{
-      const s = localStorage.getItem(LS_BOOT_SUCCESS);
-      if (s) lastBootSuccess = JSON.parse(s);
-    }catch(_){}
-    try{
-      const f = localStorage.getItem(LS_BOOT_FAIL);
-      if (f) lastBootFail = JSON.parse(f);
-    }catch(_){}
-  }
-
-  function saveBootstrapSuccess(serverTs){
-    lastBootSuccess = { serverTs: serverTs || Date.now(), clientTs: Date.now() };
-    try{ localStorage.setItem(LS_BOOT_SUCCESS, JSON.stringify(lastBootSuccess)); }catch(_){}
-  }
-
-  function saveBootstrapFail(message){
-    lastBootFail = { clientTs: Date.now(), message: String(message||'failed') };
-    try{ localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(lastBootFail)); }catch(_){}
   }
 
   function updateRosterStatusLabel(){
@@ -680,638 +731,38 @@
     let label = 'Roster: ⏳ loading…';
     let title = '';
 
-    if (lastBootSuccess){
-      const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
+    const success = State.lastSync.success;
+    const failure = State.lastSync.failure;
 
-      if (bootstrapReady){
-        label = `⚡ Roster OK · ${when}`;
-      } else {
-        label = `⚠️ Roster fallback · ${when}`;
-      }
-
-      title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
+    if (success){
+      const when = fmtShortTs(success.serverTs || success.clientTs);
+      const hasRoster = State.roster.students.size > 0 || State.roster.faculty.size > 0;
+      
+      label = hasRoster ? `⚡ Roster OK · ${when}` : `⚠️ Roster fallback · ${when}`;
+      title += `Last success: ${fmtShortTs(success.clientTs || success.serverTs)}`;
     } else {
-      if (lastBootFail){
+      if (failure){
         label = `❌ Roster failed`;
-        title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
+        title += `Last failure: ${fmtShortTs(failure.clientTs)} (${failure.message||'failed'})`;
       } else {
         label = `Roster: ⏳ loading…`;
         title = `No successful roster downloads yet`;
       }
     }
 
-    if (lastBootFail && lastBootSuccess){
-      const whenF = fmtShortTs(lastBootFail.clientTs);
-      title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
+    if (failure && success){
+      const whenF = fmtShortTs(failure.clientTs);
+      title += `\nLast failure: ${whenF} (${failure.message||'failed'})`;
     }
 
     rosterStatusEl.textContent = label;
     rosterStatusEl.title = title || 'Roster bootstrap status';
   }
 
-  /* ================= Bootstrap cache (students + faculty) ================= */
-  let studentByLegacy = new Map();
-  let facultyByPin    = new Map();
-  let facultyList     = [];
-  let studentList     = [];
-  let bootstrapReady  = false;
-
-  async function loadBootstrap(){
-    const res  = await fetch(ENDPOINT + '?action=bootstrap');
-    if (!res.ok) {
-      throw new Error('Bootstrap HTTP ' + res.status);
-    }
-    const data = await res.json();
-
-    studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
-    facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
-    facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
-    studentList     = Array.isArray(data.studentList) ? data.studentList : [];
-    bootstrapReady  = true;
-
-    saveBootstrapSuccess(data.ts || Date.now());
-    updateRosterStatusLabel();
-  }
-
-  /* ================= Bootstrap overlay helpers ================= */
-  function showBootOverlay(text){
-    if (!bootOverlay) return;
-    const t = bootOverlay.querySelector('.boot-text');
-    if (t && text) t.textContent = text;
-    bootOverlay.style.display = 'flex';
-  }
-  function hideBootOverlay(){
-    if (!bootOverlay) return;
-    bootOverlay.style.display = 'none';
-  }
-
-  /* ================= API submit (slow/fallback paths) ================= */
-  let lastSubmitAt = 0;
-  async function submitPinOrId({ pin, personId, src='', firstName='', lastName='', grade='' }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) { Toast.show('Duplicate scan ignored (5s)', false); return; }
-
-    const eventTs = Date.now();
-
-    const bodyObj = {
-      action: act,
-      src: src || (pin ? 'tap_unknown' : 'search_unknown'),
-      clientTs: String(eventTs)
-    };
-    if (pin) bodyObj.pin = pin;
-    if (personId) bodyObj.personId = personId;
-    if (firstName) bodyObj.firstName = firstName;
-    if (lastName) bodyObj.lastName = lastName;
-    if (grade) bodyObj.grade = grade;
-
-    const body = new URLSearchParams(bodyObj).toString();
-
-    try{
-      const res = await fetch(ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body
-      });
-      const text = await res.text(); let data=null; try{ data = JSON.parse(text); }catch{}
-
-      if (!res.ok || (data && data.error)) {
-        const msg = (data && data.error) || ('Error ' + res.status);
-        Toast.show(msg, false); Chime.fail();
-        queueClientError(msg, {
-          a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
-          firstName, lastName, grade
-        });
-        queuePendingScan({
-          action: act,
-          src: bodyObj.src,
-          pin: pin || '',
-          personId: personId || '',
-          firstName, lastName, grade,
-          clientTs: String(eventTs)
-        });
-        return;
-      }
-
-      if (data.status === 'student_in' && data.legacyId) {
-        const kioskURL = VC_BASE + encodeURIComponent(data.legacyId);
-        window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-        Toast.show(`${data.student||'Student'} — sent to Veracross`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
-        return;
-      }
-      if (data.status === 'student_out_recorded') {
-        Toast.show(`${data.student||'Student'} — signed OUT at ${data.time||''}`, true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
-        return;
-      }
-
-      const { status, firstName:fn, lastName:ln, time } = data || {};
-      const verb = (status === 'in') ? 'IN' : (status === 'out') ? 'OUT' : (status||'').toUpperCase();
-      const line = `${fn||''} ${ln||''} signed ${verb} — ${time||''}`.trim();
-      Toast.show(line || 'Done.', true); Chime.ok(); try{ navigator.vibrate?.(30); }catch{}
-    }catch(err){
-      Toast.show('Network error', false); Chime.fail();
-      queueClientError('fetch_failed', {
-        a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
-        firstName, lastName, grade
-      });
-      queuePendingScan({
-        action: act,
-        src: bodyObj.src,
-        pin: pin || '',
-        personId: personId || '',
-        firstName, lastName, grade,
-        clientTs: String(eventTs)
-      });
-    }finally{
-      lastSubmitAt = Date.now(); focusPinSafely();
-    }
-  }
-
-  /* ================= FAST student IN (queue-first) ================= */
-  function quickStudentIn({ legacyId, firstName, lastName, grade, src }) {
-    const act = 'in';
-    const key = makeKey({ pin: legacyId, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const eventTs = Date.now();
-    const label = `${firstName||''} ${lastName||''}`.trim() || 'Student';
-
-    const kioskURL = VC_BASE + encodeURIComponent(legacyId);
-    window.open(kioskURL, '_blank', 'width=480,height=820,noopener,noreferrer');
-    Toast.show(`${label} — sent to Veracross`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
-
-    const payload = {
-      action: act,
-      src: src || 'tap_student',
-      pin: String(legacyId),
-      personId: '',
-      firstName: firstName||'',
-      lastName: lastName||'',
-      grade: grade||'',
-      clientTs: String(eventTs)
-    };
-
-    queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
-  }
-
-  /* ================= FAST student OUT (queue-first) ================= */
-  function quickStudentOut({ legacyId, firstName, lastName, grade, src }) {
-    const act = 'out';
-    const key = makeKey({ pin: legacyId, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const eventTs = Date.now();
-    const now = new Date(eventTs);
-    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    const who = `${firstName||''} ${lastName||''}`.trim() || 'Student';
-
-    Toast.show(`${who} — signed OUT — ${timeStr}`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch (_) {}
-
-    const payload = {
-      action: act,
-      src: src || 'tap_student',
-      pin: String(legacyId),
-      personId: '',
-      firstName: firstName||'',
-      lastName: lastName||'',
-      grade: grade||'',
-      clientTs: String(eventTs)
-    };
-
-    queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
-  }
-
-  /* ================= FAST faculty IN/OUT (queue-first) ================= */
-  function quickFacultyAction({ personId, pin, firstName, lastName, src }) {
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const eventTs = Date.now();
-    const now = new Date(eventTs);
-    const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    const who  = `${firstName||''} ${lastName||''}`.trim() || 'Faculty';
-    const verb = act === 'in' ? 'IN' : 'OUT';
-
-    Toast.show(`${who} signed ${verb} — ${timeStr}`, true);
-    try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
-
-    const finalSrc = src || (pin ? 'tap_faculty' : 'search_faculty');
-
-    const payload = {
-      action: act,
-      src: finalSrc,
-      pin: pin || '',
-      personId: personId || '',
-      firstName: firstName || '',
-      lastName: lastName || '',
-      grade: '',
-      clientTs: String(eventTs)
-    };
-
-    queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
-  }
-
-  /* ================= FAST unknown-card error (queue-first, logs in raw + error count) ================= */
-  function quickUnknownCardFail(pin){
-    const act = btnIn.classList.contains('active') ? 'in' : 'out';
-    const key = makeKey({ pin, personId: '' });
-    if (!canSendNow(key)) {
-      Toast.show('Duplicate scan ignored (5s)', false);
-      return;
-    }
-
-    const eventTs = Date.now();
-
-    // Instant UI feedback
-    Toast.show('Cougar Card not found', false);
-    Chime.fail();
-    try { navigator.vibrate?.(40); } catch(_){}
-
-    // Count as an "error" for the queue badge
-    queueClientError('card_not_found', {
-      a: act,
-      pin: String(pin),
-      src: 'tap_unknown'
-    });
-
-    // Queue a NORMAL attendance scan so backend logs in Raw + Errors
-    const payload = {
-      action: act,
-      src: 'tap_unknown',
-      pin: String(pin),
-      personId: '',
-      firstName: '',
-      lastName: '',
-      grade: '',
-      clientTs: String(eventTs)
-    };
-
-    queuePendingScan(payload);
-
-    if (navigator.onLine) {
-      if (window.requestIdleCallback) {
-        requestIdleCallback(flushPendingScans);
-      } else {
-        setTimeout(flushPendingScans, 150);
-      }
-    }
-  }
-
-  /* ================= Card input auto-submit ================= */
-  let wedgeTimer = null;
-  pinEl.addEventListener('input', ()=>{
-    clearTimeout(wedgeTimer);
-    wedgeTimer = setTimeout(()=>{
-      const d = digitsOnly(pinEl.value);
-      if (d.length < 10) return;
-
-      const ten = d.slice(-10);
-      if (Date.now() - lastSubmitAt < COOLDOWN_MS) return;
-
-      const isIn = btnIn.classList.contains('active');
-
-      if (bootstrapReady) {
-        if (studentByLegacy.has(ten)) {
-          const rec = studentByLegacy.get(ten);
-          const firstName = rec.firstName || '';
-          const lastName  = rec.lastName || '';
-          const grade     = rec.grade || '';
-          if (isIn) {
-            quickStudentIn({ legacyId: ten, firstName, lastName, grade, src: 'tap_student' });
-          } else {
-            quickStudentOut({ legacyId: ten, firstName, lastName, grade, src: 'tap_student' });
-          }
-        } else if (facultyByPin.has(ten)) {
-          const rec = facultyByPin.get(ten);
-          quickFacultyAction({
-            pin: ten,
-            personId: rec.personId || '',
-            firstName: rec.firstName || '',
-            lastName: rec.lastName || '',
-            src: 'tap_faculty'
-          });
-        } else {
-          quickUnknownCardFail(ten);
-        }
-      } else {
-        submitPinOrId({ pin: ten, src: 'tap_unknown' });
-      }
-
-      pinEl.value = '';
-      focusPinSafely();
-      lastSubmitAt = Date.now();
-    }, WEDGE_QUIET_MS);
-  }, { passive:true });
-
-  /* ================= Search (local when bootstrapped) ================= */
-  let searchTimer = null, searchAbort = null, searchToken = 0;
-  const cacheSearch = new Map();
-
-  qEl.addEventListener('input', ()=>{
-    clearTimeout(searchTimer);
-    const q = qEl.value.trim(); const box = $('#results');
-    if (!q) {
-      try { searchAbort?.abort(); } catch(_){}; searchAbort = null;
-      searchToken++; box.innerHTML = '';
-      return;
-    }
-    searchTimer = setTimeout(()=>doSearch(q), 150);
-  });
-  qEl.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter') {
-      clearTimeout(searchTimer);
-      const q = qEl.value.trim();
-      if (!q) {
-        try { searchAbort?.abort(); } catch(_){ };
-        searchAbort=null; searchToken++; $('#results').innerHTML='';
-        e.preventDefault(); return;
-      }
-      doSearch(q); e.preventDefault();
-    }
-  });
-
-  function clearSearchUI(){
-    qEl.value = '';
-    const box = $('#results');
-    box.innerHTML = '';
-    focusPinSafely();
-  }
-
-  function sectionHeader(text){
-    const div = document.createElement('div');
-    div.className='sectionHdr';
-    div.textContent = text;
-    return div;
-  }
-  function resultRow(label, btnText, onClick){
-    const row = document.createElement('div'); row.className='row';
-    const name = document.createElement('div'); name.className='name'; name.textContent = label;
-    const btn  = document.createElement('button'); btn.className='actionBtn'; btn.textContent = btnText;
-    btn.addEventListener('click', ()=>{
-      onClick();
-      clearSearchUI();
-    });
-    row.appendChild(name); row.appendChild(btn);
-    return row;
-  }
-  function norm(s){ return String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,''); }
-  function scoreName(q, first, last, fullLF){
-    const nq = norm(q); const nf = norm(first), nl = norm(last);
-    const nfl = nf + ' ' + nl; const nlf = fullLF ? norm(fullLF) : (nl + ', ' + nf);
-    if (nfl === nq || nlf === nq) return 1000; if (nf === nq || nl === nq) return 900;
-    let s = 0;
-    if (nf.startsWith(nq)) s += 120; if (nl.startsWith(nq)) s += 110;
-    if (nfl.startsWith(nq)) s += 100; if (nlf.startsWith(nq)) s += 95;
-    if (nf.includes(nq)) s += 30; if (nl.includes(nq)) s += 28;
-    if (nfl.includes(nq)) s += 26; if (nlf.includes(nq)) s += 24;
-    return s;
-  }
-  function flipLF(full){
-    const m = String(full||'').match(/^\s*([^,]+)\s*,\s*(.+)\s*$/);
-    return m ? {first:m[2].trim(), last:m[1].trim()} : {first:String(full||'').trim(), last:''};
-  }
-
-  async function doSearch(q){
-    const box = $('#results');
-
-    if (bootstrapReady && (facultyList.length || studentList.length)) {
-      box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
-      localSearch(q);
-      return;
-    }
-
-    try { searchAbort?.abort(); } catch(_) {}
-    searchAbort = new AbortController(); const myToken = ++searchToken; const sig = searchAbort.signal;
-    box.innerHTML = '<div class="muted" style="text-align:center;">Searching…</div>';
-
-    const cacheKey = q.toLowerCase();
-    const cached = cacheSearch.get(cacheKey);
-    if (cached && (Date.now() - cached.t < 10000)) {
-      renderSearch(q, cached.data, myToken);
-      return;
-    }
-
-    try{
-      const facP = fetch(`${ENDPOINT}?action=search&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
-      const stuP = fetch(`${ENDPOINT}?action=studentSearch&q=${encodeURIComponent(q)}`, {signal:sig}).then(r=>r.json());
-      const [facRes, stuRes] = await Promise.all([facP, stuP]);
-      const data = {
-        fac: Array.isArray(facRes)?facRes:[],
-        stu: Array.isArray(stuRes)?stuRes:[]
-      };
-      cacheSearch.set(cacheKey, { t: Date.now(), data });
-      renderSearch(q, data, myToken);
-    } catch (e){
-      if (e && e.name === 'AbortError') return;
-      if (myToken === searchToken) box.innerHTML = '<div class="muted" style="text-align:center;">Search failed.</div>';
-    }
-  }
-
-  function localSearch(q){
-    const myToken = ++searchToken;
-    const nq = q.trim();
-    if (!nq){
-      $('#results').innerHTML = '';
-      return;
-    }
-
-    const fac = [];
-    for (const r of facultyList){
-      const { firstName, lastName, personId } = r;
-      const score = scoreName(nq, firstName||'', lastName||'');
-      if (score <= 0) continue;
-      fac.push({ firstName, lastName, personId, _score:score });
-    }
-
-    const stu = [];
-    for (const r of studentList){
-      const fullName = r.fullName || `${r.lastName||''}, ${r.firstName||''}`;
-      const flip = flipLF(fullName);
-      const score = scoreName(nq, flip.first||'', flip.last||'', fullName);
-      if (score <= 0) continue;
-      stu.push({
-        fullName,
-        legacyId: r.legacyId,
-        grade: r.grade,
-        _flip: flip,
-        _score: score
-      });
-    }
-
-    const facSorted = fac.sort((a,b)=>b._score - a._score).slice(0,30);
-    const stuSorted = stu.sort((a,b)=>b._score - a._score).slice(0,30);
-
-    renderSearch(nq, { fac: facSorted, stu: stuSorted }, myToken);
-  }
-
-  function renderSearch(q, data, token){
-    if (token !== searchToken || !qEl.value.trim()) return;
-    const { fac, stu } = data;
-
-    const facMap = new Map();
-    (fac || []).forEach(r=>{
-      const pid = String(r.personId||'');
-      const s = r._score != null ? r._score : scoreName(q, r.firstName||'', r.lastName||'');
-      const cur = facMap.get(pid);
-      if (!cur || s > cur._score) facMap.set(pid, {...r, _score:s});
-    });
-    const facSorted = Array.from(facMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
-
-    const stuMap = new Map();
-    (stu || []).forEach(r=>{
-      const lf = String(r.fullName||'');
-      const flip = r._flip || flipLF(lf);
-      const legacy = String(r.legacyId||'');
-      const s = r._score != null ? r._score : scoreName(q, flip.first||'', flip.last||'', lf);
-      const cur = stuMap.get(legacy);
-      if (!cur || s > cur._score) stuMap.set(legacy, {...r, _flip:flip, _score:s});
-    });
-    const stuSorted = Array.from(stuMap.values()).sort((a,b)=>b._score - a._score).slice(0,30);
-
-    const frag = document.createDocumentFragment();
-
-    if (facSorted.length) {
-      frag.appendChild(sectionHeader('FACULTY'));
-      facSorted.forEach(({ firstName, lastName, personId })=>{
-        const label = `${firstName} ${lastName}`.trim() || 'Faculty';
-        frag.appendChild(resultRow(
-          label,
-          'Submit',
-          ()=> quickFacultyAction({
-            personId,
-            pin: '',
-            firstName,
-            lastName,
-            src: 'search_faculty'
-          })
-        ));
-      });
-    }
-
-    if (stuSorted.length) {
-      frag.appendChild(sectionHeader('STUDENTS'));
-      stuSorted.forEach(({ fullName, legacyId, _flip, grade })=>{
-        const firstName = _flip.first || '';
-        const lastName  = _flip.last  || '';
-        const label = (firstName ? `${firstName} ${lastName}` : fullName).trim() || 'Student';
-        frag.appendChild(resultRow(
-          label,
-          'Submit',
-          ()=> {
-            const isOut = btnOut.classList.contains('active');
-            if (isOut) {
-              quickStudentOut({
-                legacyId: String(legacyId),
-                firstName,
-                lastName,
-                grade,
-                src: 'search_student'
-              });
-            } else {
-              quickStudentIn({
-                legacyId: String(legacyId),
-                firstName,
-                lastName,
-                grade,
-                src: 'search_student'
-              });
-            }
-          }
-        ));
-      });
-    }
-
-    const box = $('#results');
-    box.replaceChildren();
-    if (!facSorted.length && !stuSorted.length) {
-      box.innerHTML = '<div class="muted" style="text-align:center;">No matches found.</div>';
-    } else {
-      box.appendChild(frag);
-    }
-  }
-
-  /* ================= Init ================= */
-  document.addEventListener('DOMContentLoaded', async ()=>{
-    initTheme();
-    updateNet();
-
-    loadBootstrapMetaFromStorage();
-    updateRosterStatusLabel();
-    updateQueueStatusLabel();
-
-    pinEl.disabled = true;
-    qEl.disabled   = true;
-    showBootOverlay('Loading rosters…');
-
-    try{
-      await loadBootstrap();
-      hideBootOverlay();
-      Toast.show('Kiosk ready (fast mode)', true, 1400);
-    }catch(e){
-      bootstrapReady = false;
-      saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
-      updateRosterStatusLabel();
-      hideBootOverlay();
-      Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
-      queueClientError('bootstrap_failed', {
-        src:'bootstrap',
-        msg: String(e && e.message || e || '')
-      });
-    }
-
-    pinEl.disabled = false;
-    qEl.disabled   = false;
-
-    setAction('in');
-    applyHashAction();
-
-    setTimeout(()=>{ pinEl.focus(); }, 0);
-
-    if (window.requestIdleCallback) {
-      requestIdleCallback(flushClientErrors);
-      requestIdleCallback(flushPendingScans);
-    } else {
-      setTimeout(flushClientErrors, 500);
-      setTimeout(flushPendingScans, 800);
-    }
-  });
-})();
-</script>
-</body>
-</html>
+  function updateQueueStatusLabel(){
+    if (!queueStatusEl) return;
+    
+    const pending = State.queue.pending.length;
+    const errors = State.queue.errors.length;
+
+    let label = '
