@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -411,6 +411,7 @@
 (() => {
   'use strict';
 
+  // TODO: replace with your own deployed Web App URL if different
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 250;
@@ -529,16 +530,13 @@
 
   // Click anywhere (except search box) refocuses pin input
   document.addEventListener('click', (e) => {
-    // Don't refocus if clicking on search input or its results
     if (e.target === qEl || qEl.contains(e.target)) return;
     if (e.target.closest('#results')) return;
     if (e.target.closest('.list')) return;
-    
-    // Allow clicks on buttons/badges to work normally
     setTimeout(focusPinSafely, 0);
   }, true);
 
-  /* ================= Action toggle ================= */
+  /* ================= Action toggle + hash ================= */
   function setAction(a){
     const inActive = a === 'in';
     btnIn.classList.toggle('active', inActive);
@@ -613,7 +611,7 @@
       return;
     }
     Toast.show('Syncing queue...', true, 1500);
-    scheduleBatchFlush(0); // Immediate
+    scheduleBatchFlush(0);
   });
 
   /* ================= Client error queue ================= */
@@ -635,7 +633,6 @@
     let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
     if (!q.length) { updateQueueStatusLabel(); return; }
     
-    // Process one at a time
     while (q.length > 0) {
       const item = q[0];
       try {
@@ -650,12 +647,9 @@
         });
         
         clearTimeout(timeoutId);
-        
-        // Success - remove from queue
         q.shift();
         localStorage.setItem('client_error_queue', JSON.stringify(q));
       } catch(_) {
-        // Failed - stop and keep remaining
         break;
       }
     }
@@ -695,7 +689,6 @@
       return; 
     }
 
-    // Try batch processing first
     if (q.length >= BATCH_SIZE) {
       const batch = q.slice(0, BATCH_SIZE);
       
@@ -714,8 +707,6 @@
         
         if (res.ok) {
           const result = await res.json();
-          
-          // Remove successfully processed items
           if (result.results && Array.isArray(result.results)) {
             const successCount = result.results.filter(r => r.success).length;
             q = q.slice(successCount);
@@ -723,11 +714,10 @@
           }
         }
       } catch (batchErr) {
-        // Batch failed, fall through to single processing
+        // batch failed, fall back to singles
       }
     }
 
-    // Process remaining items one at a time
     try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
     
     while (q.length > 0) {
@@ -748,21 +738,18 @@
         clearTimeout(timeoutId);
         
         if (res.ok) {
-          // Success - remove from queue
           q.shift();
           localStorage.setItem('pending_scans', JSON.stringify(q));
         } else {
-          // Failed - stop and keep remaining
           break;
         }
       } catch(_) {
-        // Network error - stop and keep remaining
         break;
       }
     }
 
-    isFlushingQueue = false;
-    updateQueueStatusLabel();
+  isFlushingQueue = false;
+  updateQueueStatusLabel();
   }
 
   window.addEventListener('online', () => {
@@ -849,22 +836,79 @@
   let studentList     = [];
   let bootstrapReady  = false;
 
+  // Deep-logging bootstrap
   async function loadBootstrap(isManualRefresh = false){
+    const mode = isManualRefresh ? 'manual' : 'auto';
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    
-    const res = await fetch(ENDPOINT + '?action=bootstrap', {
-      signal: controller.signal
-    });
-    
+
+    let res;
+    try {
+      res = await fetch(ENDPOINT + '?action=bootstrap', {
+        signal: controller.signal
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const note = (err && err.name === 'AbortError')
+        ? 'bootstrap_timeout'
+        : 'bootstrap_network_error';
+
+      queueClientError(note, {
+        src: 'bootstrap',
+        msg: String(err && err.message || err || ''),
+        phase: 'fetch',
+        mode
+      });
+
+      throw err;
+    }
+
     clearTimeout(timeoutId);
-    
+
     if (!res.ok) {
+      let bodySnippet = '';
+      try {
+        bodySnippet = (await res.text()).slice(0, 200);
+      } catch (_) {}
+
+      queueClientError('bootstrap_http_error', {
+        src: 'bootstrap',
+        status: String(res.status),
+        statusText: res.statusText || '',
+        bodySnippet,
+        phase: 'http',
+        mode
+      });
+
       throw new Error('Bootstrap HTTP ' + res.status);
     }
-    const data = await res.json();
 
-    if (data.error) {
+    let text = '';
+    let data = null;
+
+    try {
+      text = await res.text();
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      queueClientError('bootstrap_json_error', {
+        src: 'bootstrap',
+        msg: String(parseErr && parseErr.message || parseErr || ''),
+        status: String(res.status),
+        statusText: res.statusText || '',
+        bodySnippet: text.slice(0, 200),
+        phase: 'parse',
+        mode
+      });
+      throw parseErr;
+    }
+
+    if (data && data.error) {
+      queueClientError('bootstrap_api_error', {
+        src: 'bootstrap',
+        msg: String(data.error),
+        phase: 'api',
+        mode
+      });
       throw new Error(data.error);
     }
 
@@ -876,7 +920,7 @@
 
     saveBootstrapSuccess(data.ts || Date.now());
     updateRosterStatusLabel();
-    
+
     if (isManualRefresh) {
       Toast.show('Roster refreshed successfully', true, 1800);
     }
@@ -921,9 +965,8 @@
           console.error('Daily roster sync failed:', e);
         }
       }
-      // Schedule next sync
       scheduleDailySync();
-    }, 24 * 60 * 60 * 1000); // 24 hours
+    }, 24 * 60 * 60 * 1000);
   }
 
   /* ================= Bootstrap overlay ================= */
@@ -1034,7 +1077,7 @@
     }
   }
 
-  /* ================= FAST student IN (immediate write + queue for retry) ================= */
+  /* ================= FAST student IN ================= */
   function quickStudentIn({ legacyId, firstName, lastName, grade, src }) {
     const act = 'in';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -1062,11 +1105,10 @@
       clientTs: String(eventTs)
     };
 
-    // Send immediately in background (fire-and-forget for UX)
     sendImmediately(payload);
   }
 
-  /* ================= FAST student OUT (immediate write + queue for retry) ================= */
+  /* ================= FAST student OUT ================= */
   function quickStudentOut({ legacyId, firstName, lastName, grade, src }) {
     const act = 'out';
     const key = makeKey({ pin: legacyId, personId: '' });
@@ -1094,11 +1136,10 @@
       clientTs: String(eventTs)
     };
 
-    // Send immediately in background (fire-and-forget for UX)
     sendImmediately(payload);
   }
 
-  /* ================= FAST faculty IN/OUT (immediate write + queue for retry) ================= */
+  /* ================= FAST faculty ================= */
   function quickFacultyAction({ personId, pin, firstName, lastName, src }) {
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId });
@@ -1118,10 +1159,8 @@
 
     const finalSrc = src || (pin ? 'tap_faculty' : 'search_faculty');
     
-    // If searched by name, look up their Quick PIN from the roster
     let quickPin = pin || '';
     if (!quickPin && personId && facultyByPin) {
-      // Search through facultyByPin to find matching personId
       for (const [pinKey, fac] of facultyByPin.entries()) {
         if (fac.personId === personId) {
           quickPin = pinKey;
@@ -1141,11 +1180,10 @@
       clientTs: String(eventTs)
     };
 
-    // Send immediately in background (fire-and-forget for UX)
     sendImmediately(payload);
   }
 
-  /* ================= FAST unknown-card error (immediate write + queue for retry) ================= */
+  /* ================= FAST unknown-card error ================= */
   function quickUnknownCardFail(pin){
     const act = btnIn.classList.contains('active') ? 'in' : 'out';
     const key = makeKey({ pin, personId: '' });
@@ -1160,9 +1198,6 @@
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    // Don't queue as client error - backend will log to Error sheet
-    // Just send the scan attempt
-
     const payload = {
       action: act,
       src: 'tap_unknown',
@@ -1174,11 +1209,10 @@
       clientTs: String(eventTs)
     };
 
-    // Send immediately in background (fire-and-forget for UX)
     sendImmediately(payload);
   }
 
-  /* ================= Immediate send (with background retry on failure) ================= */
+  /* ================= Immediate send ================= */
   async function sendImmediately(payload) {
     try {
       const controller = new AbortController();
@@ -1197,11 +1231,7 @@
       if (!res.ok) {
         throw new Error('HTTP ' + res.status);
       }
-      
-      // Success - no further action needed
-      
     } catch (err) {
-      // Failed - queue for retry in background
       queuePendingScan(payload);
     }
   }
@@ -1252,7 +1282,7 @@
     }, WEDGE_QUIET_MS);
   }, { passive:true });
 
-  /* ================= Search (local when bootstrapped, with memoization) ================= */
+  /* ================= Search (local when bootstrapped) ================= */
   let searchTimer = null, searchAbort = null, searchToken = 0;
   const cacheSearch = new Map();
   const SEARCH_CACHE_SIZE = 50;
@@ -1273,8 +1303,7 @@
       clearTimeout(searchTimer);
       const q = qEl.value.trim();
       if (!q) {
-        try { searchAbort?.abort(); } catch(_){ };
-        searchAbort=null; searchToken++; $('#results').innerHTML='';
+        try { searchAbort?.abort(); } catch(_){}; searchAbort=null; searchToken++; $('#results').innerHTML='';
         e.preventDefault(); return;
       }
       doSearch(q); e.preventDefault();
@@ -1356,7 +1385,6 @@
         stu: Array.isArray(stuRes)?stuRes:[]
       };
       
-      // Cache with LRU eviction
       cacheSearch.set(cacheKey, { t: Date.now(), data });
       if (cacheSearch.size > SEARCH_CACHE_SIZE) {
         const firstKey = cacheSearch.keys().next().value;
@@ -1378,7 +1406,6 @@
       return;
     }
 
-    // Check cache first
     const cacheKey = nq.toLowerCase();
     const cached = cacheSearch.get(cacheKey);
     if (cached && Date.now() - cached.time < 30000) {
@@ -1414,7 +1441,6 @@
 
     const data = { fac: facSorted, stu: stuSorted };
     
-    // Cache with LRU eviction
     cacheSearch.set(cacheKey, { data, time: Date.now() });
     if (cacheSearch.size > SEARCH_CACHE_SIZE) {
       const firstKey = cacheSearch.keys().next().value;
@@ -1524,11 +1550,9 @@
     showBootOverlay('Loading rosters…');
 
     try{
-      await loadBootstrap();
+      await loadBootstrap(false);
       hideBootOverlay();
       Toast.show('Kiosk ready (fast mode)', true, 1400);
-      
-      // Start daily auto-sync timer
       scheduleDailySync();
     }catch(e){
       bootstrapReady = false;
@@ -1536,7 +1560,8 @@
       updateRosterStatusLabel();
       hideBootOverlay();
       Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
-      queueClientError('bootstrap_failed', {
+      // high-level generic marker
+      queueClientError('bootstrap_failed_outer', {
         src:'bootstrap',
         msg: String(e && e.message || e || '')
       });
@@ -1550,7 +1575,6 @@
 
     setTimeout(()=>{ pinEl.focus(); }, 0);
 
-    // Initial queue flush
     scheduleBatchFlush(1000);
     
     if (window.requestIdleCallback) {
