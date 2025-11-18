@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html> 
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -412,6 +412,7 @@
   'use strict';
 
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  const API_KEY  = 'a9c4e2b9-74fd-41df-b6f8-6f5f8f3b2c41';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 250;
   const DEDUPE_WINDOW_MS = 5000;
@@ -621,10 +622,11 @@
     const payload = {
       action:'client_error',
       note:String(msg||'network error'),
+      apiKey: API_KEY,
       ...extra
     };
     try{
-      const q = JSON.parse(localStorage.getItem('client_error_queue')||'[]');
+      const q = JSON.parse(localStorage.getItem('client_error_queue')||'[]') || [];
       q.push(payload);
       localStorage.setItem('client_error_queue', JSON.stringify(q));
     }catch(_){ }
@@ -632,20 +634,33 @@
   }
 
   async function flushClientErrors(){
-    let q=[]; try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]'); }catch(_){}
-    if (!q.length) { updateQueueStatusLabel(); return; }
+    if (!navigator.onLine) {
+      updateQueueStatusLabel();
+      return;
+    }
+
+    let q=[]; 
+    try{ q = JSON.parse(localStorage.getItem('client_error_queue')||'[]') || []; }catch(_){}
+    if (!q.length) { 
+      updateQueueStatusLabel(); 
+      return; 
+    }
     
-    // Process one at a time
     while (q.length > 0) {
       const item = q[0];
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         
+        const body = new URLSearchParams({
+          ...item,
+          apiKey: API_KEY
+        }).toString();
+
         await fetch(ENDPOINT, {
           method:'POST',
           headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(item).toString(),
+          body,
           signal: controller.signal
         });
         
@@ -655,7 +670,7 @@
         q.shift();
         localStorage.setItem('client_error_queue', JSON.stringify(q));
       } catch(_) {
-        // Failed - stop and keep remaining
+        // Failed - stop and keep remaining for later
         break;
       }
     }
@@ -664,18 +679,44 @@
   }
 
   /* ================= Pending scan queue (batch processing) ================= */
+
+  // Helper to compare two payloads for dedupe in the queue
+  function sameScanPayload(a, b) {
+    if (!a || !b) return false;
+    return (
+      a.action   === b.action &&
+      a.src      === b.src &&
+      String(a.pin || '')      === String(b.pin || '') &&
+      String(a.personId || '') === String(b.personId || '') &&
+      String(a.clientTs || '') === String(b.clientTs || '')
+    );
+  }
+
   function queuePendingScan(payload){
     try{
-      const q = JSON.parse(localStorage.getItem('pending_scans') || '[]');
-      q.push(payload);
-      localStorage.setItem('pending_scans', JSON.stringify(q));
+      const q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || [];
+
+      // Avoid duplicates in the queue itself
+      const already = q.some(item => sameScanPayload(item, payload));
+      if (!already) {
+        q.push({
+          ...payload,
+          apiKey: API_KEY
+        });
+        localStorage.setItem('pending_scans', JSON.stringify(q));
+      }
     }catch(_){}
+
     updateQueueStatusLabel();
     scheduleBatchFlush();
   }
 
   function scheduleBatchFlush(delay = BATCH_DELAY_MS) {
     clearTimeout(batchFlushTimer);
+
+    // Don’t even schedule if offline – we’ll get an "online" event later
+    if (!navigator.onLine) return;
+
     batchFlushTimer = setTimeout(() => {
       if (navigator.onLine && !isFlushingQueue) {
         flushPendingScans();
@@ -685,17 +726,22 @@
 
   async function flushPendingScans() {
     if (isFlushingQueue) return;
+    if (!navigator.onLine) {
+      updateQueueStatusLabel();
+      return;
+    }
+
     isFlushingQueue = true;
 
     let q = [];
-    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
+    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
     if (!q.length) { 
       isFlushingQueue = false;
       updateQueueStatusLabel(); 
       return; 
     }
 
-    // Try batch processing first
+    // ---- 1) Try batch processing first ----
     if (q.length >= BATCH_SIZE) {
       const batch = q.slice(0, BATCH_SIZE);
       
@@ -703,41 +749,61 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         
-        const res = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ batch: true, scans: batch }),
-          signal: controller.signal
-        });
+        const res = await fetch(
+          ENDPOINT + '?apiKey=' + encodeURIComponent(API_KEY),
+          {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ batch: true, scans: batch }),
+            signal: controller.signal
+          }
+        );
         
         clearTimeout(timeoutId);
         
         if (res.ok) {
-          const result = await res.json();
-          
-          // Remove successfully processed items
-          if (result.results && Array.isArray(result.results)) {
-            const successCount = result.results.filter(r => r.success).length;
-            q = q.slice(successCount);
-            localStorage.setItem('pending_scans', JSON.stringify(q));
+          let result = null;
+          try { result = await res.json(); } catch(_) {}
+
+          // If backend returns structured results, respect success flags
+          if (result && Array.isArray(result.results)) {
+            const remaining = [];
+            result.results.forEach((r, idx) => {
+              if (!r || !r.success) {
+                remaining.push(batch[idx]); // keep failures to retry later
+              }
+            });
+            // Remaining (failed) from batch + everything after the batch window
+            q = remaining.concat(q.slice(BATCH_SIZE));
+          } else {
+            // Unknown response but HTTP 200: assume entire batch succeeded
+            q = q.slice(BATCH_SIZE);
           }
+
+          localStorage.setItem('pending_scans', JSON.stringify(q));
         }
+        // If !res.ok, fall through to single-item processing below
+
       } catch (batchErr) {
-        // Batch failed, fall through to single processing
+        // Network / timeout, we’ll fall through to single-item logic
       }
     }
 
-    // Process remaining items one at a time
-    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]'); } catch(_){}
+    // ---- 2) Process remaining items one at a time ----
+    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
     
-    while (q.length > 0) {
+    while (q.length > 0 && navigator.onLine) {
       const item = q[0];
       
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         
-        const body = new URLSearchParams(item).toString();
+        const body = new URLSearchParams({
+          ...item,
+          apiKey: API_KEY
+        }).toString();
+
         const res = await fetch(ENDPOINT, {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -751,12 +817,20 @@
           // Success - remove from queue
           q.shift();
           localStorage.setItem('pending_scans', JSON.stringify(q));
-        } else {
-          // Failed - stop and keep remaining
+        } else if (res.status >= 500) {
+          // 5xx: keep it for retry later, stop loop
           break;
+        } else {
+          // 4xx client error is permanent – drop and log
+          q.shift();
+          localStorage.setItem('pending_scans', JSON.stringify(q));
+          queueClientError('server_4xx_drop', {
+            status: res.status,
+            payload: item
+          });
         }
-      } catch(_) {
-        // Network error - stop and keep remaining
+      } catch(err) {
+        // Network error / timeout – keep remaining, stop loop
         break;
       }
     }
@@ -766,6 +840,8 @@
   }
 
   window.addEventListener('online', () => {
+    updateNet();
+    // Give the network a tiny moment to settle, then flush
     scheduleBatchFlush(500);
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
@@ -900,6 +976,16 @@
       Toast.show('Refresh failed: ' + (e.message || 'unknown error'), false, 2500);
       saveBootstrapFail(e && e.message ? e.message : 'refresh failed');
       updateRosterStatusLabel();
+      // extra logging for failed manual refresh
+      queueClientError('bootstrap_failed', {
+        src: 'bootstrap_manual_refresh',
+        msg: String(e && e.message || e || ''),
+        online: navigator.onLine,
+        href: location.href,
+        hash: location.hash,
+        ua: navigator.userAgent,
+        ts: Date.now()
+      });
     } finally {
       isRefreshingRoster = false;
       if (rosterStatusEl.textContent === '🔄 Refreshing...') {
@@ -919,6 +1005,15 @@
           console.log('Daily roster sync completed');
         } catch (e) {
           console.error('Daily roster sync failed:', e);
+          queueClientError('bootstrap_autosync_failed', {
+            src: 'bootstrap_auto',
+            msg: String(e && e.message || e || ''),
+            online: navigator.onLine,
+            href: location.href,
+            hash: location.hash,
+            ua: navigator.userAgent,
+            ts: Date.now()
+          });
         }
       }
       // Schedule next sync
@@ -950,7 +1045,8 @@
     const bodyObj = {
       action: act,
       src: src || (pin ? 'tap_unknown' : 'search_unknown'),
-      clientTs: String(eventTs)
+      clientTs: String(eventTs),
+      apiKey: API_KEY
     };
     if (pin) bodyObj.pin = pin;
     if (personId) bodyObj.personId = personId;
@@ -1160,9 +1256,6 @@
     Chime.fail();
     try { navigator.vibrate?.(40); } catch(_){}
 
-    // Don't queue as client error - backend will log to Error sheet
-    // Just send the scan attempt
-
     const payload = {
       action: act,
       src: 'tap_unknown',
@@ -1180,11 +1273,21 @@
 
   /* ================= Immediate send (with background retry on failure) ================= */
   async function sendImmediately(payload) {
+    // If we’re offline, just queue and bail
+    if (!navigator.onLine) {
+      queuePendingScan(payload);
+      return;
+    }
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       
-      const body = new URLSearchParams(payload).toString();
+      const body = new URLSearchParams({
+        ...payload,
+        apiKey: API_KEY
+      }).toString();
+
       const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -1194,14 +1297,24 @@
       
       clearTimeout(timeoutId);
       
-      if (!res.ok) {
-        throw new Error('HTTP ' + res.status);
+      if (res.ok) {
+        // Success – nothing else to do
+        return;
+      }
+
+      // Only re-queue if server says "try again later"
+      if (res.status >= 500) {
+        queuePendingScan(payload);
+      } else {
+        // 4xx is permanent – log an error so you can see it in the Errors sheet
+        queueClientError('server_4xx', {
+          status: res.status,
+          payload
+        });
       }
       
-      // Success - no further action needed
-      
     } catch (err) {
-      // Failed - queue for retry in background
+      // Network / timeout – queue for retry
       queuePendingScan(payload);
     }
   }
@@ -1536,9 +1649,16 @@
       updateRosterStatusLabel();
       hideBootOverlay();
       Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
+
+      // richer logging for bootstrap failure
       queueClientError('bootstrap_failed', {
         src:'bootstrap',
-        msg: String(e && e.message || e || '')
+        msg: String(e && e.message || e || ''),
+        online: navigator.onLine,
+        href: location.href,
+        hash: location.hash,
+        ua: navigator.userAgent,
+        ts: Date.now()
       });
     }
 
