@@ -412,6 +412,7 @@
   'use strict';
 
   const ENDPOINT = 'https://script.google.com/macros/s/AKfycbzF4Hy0W2ZBbB6dOPRcT3PIKsEZekW2HtHuPAAp99jwUpasH7Iq1mMYCtQ35WEPfkiQQw/exec';
+  const API_KEY  = 'a9c4e2b9-74fd-41df-b6f8-6f5f8f3b2c41';
   const VC_BASE  = 'https://checkin.veracross.com/frisch/kiosk/entrance?legacy=';
   const COOLDOWN_MS = 250;
   const DEDUPE_WINDOW_MS = 5000;
@@ -621,6 +622,7 @@
     const payload = {
       action:'client_error',
       note:String(msg||'network error'),
+      apiKey: API_KEY,
       ...extra
     };
     try{
@@ -650,10 +652,15 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         
+        const body = new URLSearchParams({
+          ...item,
+          apiKey: API_KEY
+        }).toString();
+
         await fetch(ENDPOINT, {
           method:'POST',
           headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams(item).toString(),
+          body,
           signal: controller.signal
         });
         
@@ -692,7 +699,10 @@
       // Avoid duplicates in the queue itself
       const already = q.some(item => sameScanPayload(item, payload));
       if (!already) {
-        q.push(payload);
+        q.push({
+          ...payload,
+          apiKey: API_KEY
+        });
         localStorage.setItem('pending_scans', JSON.stringify(q));
       }
     }catch(_){}
@@ -739,12 +749,15 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         
-        const res = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ batch: true, scans: batch }),
-          signal: controller.signal
-        });
+        const res = await fetch(
+          ENDPOINT + '?apiKey=' + encodeURIComponent(API_KEY),
+          {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ batch: true, scans: batch }),
+            signal: controller.signal
+          }
+        );
         
         clearTimeout(timeoutId);
         
@@ -786,7 +799,11 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         
-        const body = new URLSearchParams(item).toString();
+        const body = new URLSearchParams({
+          ...item,
+          apiKey: API_KEY
+        }).toString();
+
         const res = await fetch(ENDPOINT, {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -1028,7 +1045,8 @@
     const bodyObj = {
       action: act,
       src: src || (pin ? 'tap_unknown' : 'search_unknown'),
-      clientTs: String(eventTs)
+      clientTs: String(eventTs),
+      apiKey: API_KEY
     };
     if (pin) bodyObj.pin = pin;
     if (personId) bodyObj.personId = personId;
@@ -1265,7 +1283,11 @@
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       
-      const body = new URLSearchParams(payload).toString();
+      const body = new URLSearchParams({
+        ...payload,
+        apiKey: API_KEY
+      }).toString();
+
       const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
