@@ -418,8 +418,14 @@
   const DEDUPE_WINDOW_MS = 5000;
   const WEDGE_QUIET_MS = 100;
   const BATCH_SIZE = 10;
-  const BATCH_DELAY_MS = 2000;
+  const BATCH_DELAY_MS = 500;
   const REQUEST_TIMEOUT_MS = 15000;
+  
+  const RETRY_CONFIG = {
+    maxAttempts: 8,
+    delays: [500, 1000, 2000, 3000, 5000, 8000, 12000, 15000],
+    concurrentRetries: 3
+  };
 
   const $ = s => document.querySelector(s);
   const pinEl = $('#pin'), qEl = $('#q'), toastEl = $('#toast');
@@ -538,7 +544,6 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
-  // Click anywhere (except search box) refocuses pin input
   document.addEventListener('click', (e) => {
     if (e.target === qEl || qEl.contains(e.target)) return;
     if (e.target.closest('#results')) return;
@@ -598,11 +603,23 @@
 
     if (pending === 0 && errors === 0) {
       parts.push('✅');
-      title = 'No pending scans or errors. Click to force sync.';
+      title = 'All scans synced. Click to force sync.';
     } else {
-      if (pending > 0) parts.push(`🕒${pending}`);
-      if (errors > 0)  parts.push(`⚠️${errors}`);
-      title = `Pending: ${pending}, Errors: ${errors}. Click to force sync now.`;
+      if (pending > 0) {
+        parts.push(`🔄${pending}`);
+        
+        try {
+          const q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || [];
+          if (q.length > 0) {
+            const maxRetries = Math.max(...q.map(i => i._retryCount || 0));
+            if (maxRetries > 0) {
+              parts.push(`(retry ${maxRetries})`);
+            }
+          }
+        } catch(_) {}
+      }
+      if (errors > 0) parts.push(`⚠️${errors}`);
+      title = `Pending: ${pending}, Errors: ${errors}. Retrying automatically. Click to force sync.`;
     }
 
     queueStatusEl.textContent = parts.join(' ');
@@ -682,7 +699,7 @@
     updateQueueStatusLabel();
   }
 
-  /* ================= Pending scan queue (batch processing) ================= */
+  /* ================= Pending scan queue (improved retry) ================= */
 
   function sameScanPayload(a, b) {
     if (!a || !b) return false;
@@ -704,7 +721,10 @@
       if (!already) {
         q.push({
           ...payload,
-          apiKey: API_KEY
+          apiKey: API_KEY,
+          _retryCount: 0,
+          _queuedAt: Date.now(),
+          _lastAttempt: null
         });
         localStorage.setItem('pending_scans', JSON.stringify(q));
       }
@@ -725,6 +745,91 @@
     }, delay);
   }
 
+  async function removeFromQueue(item) {
+    try {
+      let q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || [];
+      q = q.filter(i => !sameScanPayload(i, item));
+      localStorage.setItem('pending_scans', JSON.stringify(q));
+    } catch(_) {}
+  }
+
+  async function updateQueueItemRetry(item) {
+    try {
+      let q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || [];
+      const index = q.findIndex(i => sameScanPayload(i, item));
+      
+      if (index !== -1) {
+        q[index]._retryCount = (q[index]._retryCount || 0) + 1;
+        q[index]._lastAttempt = Date.now();
+        localStorage.setItem('pending_scans', JSON.stringify(q));
+      }
+    } catch(_) {}
+  }
+
+  async function processQueueItem(item, index) {
+    const retryCount = item._retryCount || 0;
+    
+    if (retryCount >= RETRY_CONFIG.maxAttempts) {
+      console.error('❌ Scan exceeded max retries, removing:', item.scanId);
+      await removeFromQueue(item);
+      queueClientError('max_retries_exceeded', {
+        scanId: item.scanId,
+        attempts: retryCount,
+        payload: item
+      });
+      return;
+    }
+
+    const baseDelay = RETRY_CONFIG.delays[retryCount] || RETRY_CONFIG.delays[RETRY_CONFIG.delays.length - 1];
+    const jitter = Math.random() * 200 * index;
+    
+    if (baseDelay > 0) {
+      await new Promise(resolve => setTimeout(resolve, jitter));
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      
+      const body = new URLSearchParams({
+        ...item,
+        apiKey: API_KEY
+      }).toString();
+
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        
+        if (!data.error || data.status === 'duplicate') {
+          console.log('✅ Queue item processed:', item.scanId);
+          await removeFromQueue(item);
+          return;
+        }
+        
+        if (data.error === 'Cougar Card not found' || data.error === 'Invalid action') {
+          console.log('⚠️ Non-retryable error, removing:', item.scanId);
+          await removeFromQueue(item);
+          return;
+        }
+      }
+
+      console.log(`⚠️ Retry ${retryCount + 1}/${RETRY_CONFIG.maxAttempts} failed for:`, item.scanId);
+      await updateQueueItemRetry(item);
+
+    } catch (error) {
+      console.log(`⚠️ Network error on retry ${retryCount + 1}/${RETRY_CONFIG.maxAttempts}:`, item.scanId);
+      await updateQueueItemRetry(item);
+    }
+  }
+
   async function flushPendingScans() {
     if (isFlushingQueue) return;
     if (!navigator.onLine) {
@@ -734,107 +839,45 @@
 
     isFlushingQueue = true;
 
-    let q = [];
-    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
-    if (!q.length) { 
+    try {
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
+      
+      if (!q.length) {
+        updateQueueStatusLabel();
+        return;
+      }
+
+      q.sort((a, b) => {
+        const aRetry = a._retryCount || 0;
+        const bRetry = b._retryCount || 0;
+        if (aRetry !== bRetry) return aRetry - bRetry;
+        return (a._queuedAt || 0) - (b._queuedAt || 0);
+      });
+
+      const toProcess = q.slice(0, RETRY_CONFIG.concurrentRetries);
+      const promises = toProcess.map((item, idx) => processQueueItem(item, idx));
+      
+      await Promise.allSettled(promises);
+
+      try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
+      
+      if (q.length > 0 && navigator.onLine) {
+        const oldestRetry = Math.min(...q.map(i => i._retryCount || 0));
+        const delay = RETRY_CONFIG.delays[oldestRetry] || RETRY_CONFIG.delays[RETRY_CONFIG.delays.length - 1];
+        scheduleBatchFlush(delay);
+      }
+
+    } finally {
       isFlushingQueue = false;
-      updateQueueStatusLabel(); 
-      return; 
+      updateQueueStatusLabel();
     }
-
-    // 1) Batch
-    if (q.length >= BATCH_SIZE) {
-      const batch = q.slice(0, BATCH_SIZE);
-      
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        
-        const res = await fetch(
-          ENDPOINT + '?apiKey=' + encodeURIComponent(API_KEY),
-          {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ batch: true, scans: batch }),
-            signal: controller.signal
-          }
-        );
-        
-        clearTimeout(timeoutId);
-        
-        if (res.ok) {
-          let result = null;
-          try { result = await res.json(); } catch(_) {}
-
-          if (result && Array.isArray(result.results)) {
-            const remaining = [];
-            result.results.forEach((r, idx) => {
-              if (!r || !r.success) {
-                remaining.push(batch[idx]);
-              }
-            });
-            q = remaining.concat(q.slice(BATCH_SIZE));
-          } else {
-            q = q.slice(BATCH_SIZE);
-          }
-
-          localStorage.setItem('pending_scans', JSON.stringify(q));
-        }
-
-      } catch (_) {
-        // fall through
-      }
-    }
-
-    // 2) Single
-    try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
-    
-    while (q.length > 0 && navigator.onLine) {
-      const item = q[0];
-      
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        
-        const body = new URLSearchParams({
-          ...item,
-          apiKey: API_KEY
-        }).toString();
-
-        const res = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body,
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (res.ok) {
-          q.shift();
-          localStorage.setItem('pending_scans', JSON.stringify(q));
-        } else if (res.status >= 500) {
-          break;
-        } else {
-          q.shift();
-          localStorage.setItem('pending_scans', JSON.stringify(q));
-          queueClientError('server_4xx_drop', {
-            status: res.status,
-            payload: item
-          });
-        }
-      } catch(_) {
-        break;
-      }
-    }
-
-    isFlushingQueue = false;
-    updateQueueStatusLabel();
   }
 
   window.addEventListener('online', () => {
     updateNet();
-    scheduleBatchFlush(500);
+    console.log('📶 Network restored - immediate retry');
+    scheduleBatchFlush(100);
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
     } else {
@@ -1654,7 +1697,7 @@
 
     setTimeout(()=>{ pinEl.focus(); }, 0);
 
-    scheduleBatchFlush(1000);
+    scheduleBatchFlush(500);
     
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
