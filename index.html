@@ -438,8 +438,11 @@
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
 
-  const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
-  const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
+  const LS_BOOT_SUCCESS  = 'kiosk_bootstrap_last_success';
+  const LS_BOOT_FAIL     = 'kiosk_bootstrap_last_fail';
+  const LS_ROSTER_CACHE  = 'kiosk_roster_cache';       // persisted roster data
+  const LS_ROSTER_TS     = 'kiosk_roster_cache_ts';    // timestamp when saved
+  const ROSTER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;  // stale after 7 days
 
   let lastBootSuccess = null;
   let lastBootFail    = null;
@@ -942,35 +945,38 @@
     if (!rosterStatusEl) return;
 
     let label = 'Roster: ⏳ loading…';
-    let title = '';
+    let title = 'Click to refresh roster';
 
-    if (lastBootSuccess){
+    // Check localStorage cache timestamp directly
+    const cachedTs = Number(localStorage.getItem(LS_ROSTER_TS) || '0');
+    const hasCachedData = cachedTs > 0;
+
+    if (lastBootSuccess) {
+      // Network fetch succeeded this session
       const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
-
-      if (bootstrapReady){
-        label = `⚡ Roster OK · ${when}`;
-      } else {
-        label = `⚠️ Roster fallback · ${when}`;
-      }
-
-      title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
-    } else {
-      if (lastBootFail){
+      label = `⚡ Roster live · ${when}`;
+      title = `Live roster fetched: ${fmtShortTs(lastBootSuccess.clientTs)}. Click to refresh.`;
+    } else if (bootstrapReady && hasCachedData) {
+      // Running from localStorage cache, no network success yet this session
+      const when = fmtShortTs(cachedTs);
+      label = `📦 Roster cached · ${when}`;
+      title = `Using cached roster from ${fmtShortTs(cachedTs)}. Click to refresh from server.`;
+    } else if (!bootstrapReady) {
+      if (lastBootFail) {
         label = `❌ Roster failed`;
-        title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
+        title = `Failed: ${lastBootFail.message||'error'}. Click to retry.`;
       } else {
         label = `Roster: ⏳ loading…`;
-        title = `No successful roster downloads yet`;
+        title = `Loading…`;
       }
     }
 
-    if (lastBootFail && lastBootSuccess){
-      const whenF = fmtShortTs(lastBootFail.clientTs);
-      title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
+    if (lastBootFail && (lastBootSuccess || hasCachedData)) {
+      title += `\nLast network failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
     }
 
     rosterStatusEl.textContent = label;
-    rosterStatusEl.title = title || 'Roster bootstrap status';
+    rosterStatusEl.title = title;
   }
 
   /* ================= Bootstrap cache ================= */
@@ -979,6 +985,56 @@
   let facultyList     = [];
   let studentList     = [];
   let bootstrapReady  = false;
+
+  // Persist the full roster to localStorage so it survives page reloads and offline starts.
+  function saveRosterToStorage(data) {
+    try {
+      const payload = {
+        studentByLegacy: data.studentByLegacy || {},
+        facultyPins:     data.facultyPins     || {},
+        facultyList:     data.facultyList     || [],
+        studentList:     data.studentList     || [],
+        ts:              data.ts              || Date.now()
+      };
+      localStorage.setItem(LS_ROSTER_CACHE, JSON.stringify(payload));
+      localStorage.setItem(LS_ROSTER_TS,    String(Date.now()));
+    } catch(e) {
+      console.warn('Could not save roster to localStorage:', e);
+    }
+  }
+
+  // Load roster from localStorage into the live Maps. Returns true if usable data found.
+  function loadRosterFromStorage() {
+    try {
+      const raw = localStorage.getItem(LS_ROSTER_CACHE);
+      const ts  = Number(localStorage.getItem(LS_ROSTER_TS) || '0');
+      if (!raw) return false;
+
+      const age = Date.now() - ts;
+      if (age > ROSTER_MAX_AGE_MS) {
+        console.log('Cached roster is stale (' + Math.round(age/86400000) + ' days old), will refresh.');
+        // Still load it — stale is better than nothing for offline use.
+        // We just won't set bootstrapReady=true as "authoritative" until server confirms.
+      }
+
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object') return false;
+
+      const legacyEntries  = Object.entries(data.studentByLegacy || {});
+      const facultyEntries = Object.entries(data.facultyPins     || {});
+      if (legacyEntries.length === 0 && facultyEntries.length === 0) return false;
+
+      studentByLegacy = new Map(legacyEntries);
+      facultyByPin    = new Map(facultyEntries);
+      facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
+      studentList     = Array.isArray(data.studentList) ? data.studentList : [];
+
+      return true;
+    } catch(e) {
+      console.warn('Could not load roster from localStorage:', e);
+      return false;
+    }
+  }
 
   async function loadBootstrap(isManualRefresh = false){
     const controller = new AbortController();
@@ -1000,10 +1056,13 @@
     }
 
     studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
-    facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
+    facultyByPin    = new Map(Object.entries(data.facultyPins     || {}));
     facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
     studentList     = Array.isArray(data.studentList) ? data.studentList : [];
     bootstrapReady  = true;
+
+    // Persist to localStorage for next load (offline resilience)
+    saveRosterToStorage(data);
 
     saveBootstrapSuccess(data.ts || Date.now());
     updateRosterStatusLabel();
@@ -1698,30 +1757,63 @@
     qEl.disabled   = true;
     showBootOverlay('Loading rosters…');
 
-    try{
-      await loadBootstrap();
+    // Step 1: Try localStorage cache first — instant, works offline.
+    const hadCachedRoster = loadRosterFromStorage();
+    if (hadCachedRoster) {
+      bootstrapReady = true;
       hideBootOverlay();
-      Toast.show('Kiosk ready (fast mode)', true, 1400);
-      scheduleDailySync();
-    }catch(e){
-      bootstrapReady = false;
-      saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
+      pinEl.disabled = false;
+      qEl.disabled   = false;
+      Toast.show('Kiosk ready (cached)', true, 1200);
       updateRosterStatusLabel();
-      hideBootOverlay();
-      Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
-      queueClientError('bootstrap_failed', {
-        src:'bootstrap',
-        msg: String(e && e.message || e || ''),
-        online: navigator.onLine,
-        href: location.href,
-        hash: location.hash,
-        ua: navigator.userAgent,
-        ts: Date.now()
-      });
-    }
 
-    pinEl.disabled = false;
-    qEl.disabled   = false;
+      // Step 2: Refresh from server in the background without blocking the UI.
+      loadBootstrap(false).then(() => {
+        Toast.show('Roster updated from server', true, 1200);
+        scheduleDailySync();
+      }).catch(e => {
+        // Silent background failure — cache is still live, kiosk keeps working.
+        console.warn('Background roster refresh failed:', e);
+        saveBootstrapFail(e && e.message ? e.message : 'background refresh failed');
+        updateRosterStatusLabel();
+        queueClientError('bootstrap_bg_failed', {
+          src: 'bootstrap_background',
+          msg: String(e && e.message || e || ''),
+          online: navigator.onLine,
+          href: location.href,
+          hash: location.hash,
+          ua: navigator.userAgent,
+          ts: Date.now()
+        });
+      });
+    } else {
+      // No cache — must load from server before we can do anything.
+      try {
+        await loadBootstrap();
+        hideBootOverlay();
+        pinEl.disabled = false;
+        qEl.disabled   = false;
+        Toast.show('Kiosk ready', true, 1400);
+        scheduleDailySync();
+      } catch(e) {
+        bootstrapReady = false;
+        saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
+        updateRosterStatusLabel();
+        hideBootOverlay();
+        pinEl.disabled = false;
+        qEl.disabled   = false;
+        Toast.show('No roster cache — card tap still queues, name search unavailable offline.', false, 3500);
+        queueClientError('bootstrap_failed', {
+          src: 'bootstrap',
+          msg: String(e && e.message || e || ''),
+          online: navigator.onLine,
+          href: location.href,
+          hash: location.hash,
+          ua: navigator.userAgent,
+          ts: Date.now()
+        });
+      }
+    }
 
     setAction('in');
     applyHashAction();
