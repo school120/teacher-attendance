@@ -1136,11 +1136,47 @@
     if (!bootOverlay) return;
     const t = bootOverlay.querySelector('.boot-text');
     if (t && text) t.textContent = text;
+    // Reset to spinner state
+    const spinner = bootOverlay.querySelector('.boot-spinner');
+    if (spinner) spinner.style.display = '';
+    const retryBtn = bootOverlay.querySelector('.boot-retry');
+    if (retryBtn) retryBtn.style.display = 'none';
     bootOverlay.style.display = 'flex';
   }
   function hideBootOverlay(){
     if (!bootOverlay) return;
     bootOverlay.style.display = 'none';
+  }
+  function showBootError(msg) {
+    if (!bootOverlay) return;
+    const t = bootOverlay.querySelector('.boot-text');
+    if (t) t.innerHTML = (msg || 'Failed to load roster').replace(/\n/g, '<br>');
+    const spinner = bootOverlay.querySelector('.boot-spinner');
+    if (spinner) spinner.style.display = 'none';
+    const inner = bootOverlay.querySelector('.boot-overlay-inner');
+
+    let retryBtn = bootOverlay.querySelector('.boot-retry');
+    if (!retryBtn) {
+      retryBtn = document.createElement('button');
+      retryBtn.className = 'boot-retry';
+      retryBtn.textContent = '↺ Retry';
+      retryBtn.style.cssText = 'margin-top:10px;padding:10px 28px;font-size:16px;font-weight:800;border-radius:10px;border:none;background:#2563eb;color:#fff;cursor:pointer;';
+      retryBtn.addEventListener('click', () => location.reload());
+      inner.appendChild(retryBtn);
+    }
+    retryBtn.style.display = '';
+
+    let dismissBtn = bootOverlay.querySelector('.boot-dismiss');
+    if (!dismissBtn) {
+      dismissBtn = document.createElement('button');
+      dismissBtn.className = 'boot-dismiss';
+      dismissBtn.textContent = 'Continue without roster →';
+      dismissBtn.style.cssText = 'margin-top:6px;padding:8px 16px;font-size:13px;font-weight:700;border-radius:8px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;cursor:pointer;';
+      dismissBtn.addEventListener('click', () => hideBootOverlay());
+      inner.appendChild(dismissBtn);
+    }
+    dismissBtn.style.display = '';
+    bootOverlay.style.display = 'flex';
   }
 
   /* ================= API submit (with timeout) ================= */
@@ -1480,7 +1516,30 @@
           quickUnknownCardFail(ten);
         }
       } else {
-        submitPinOrId({ pin: ten, src: 'tap_unknown' });
+        // No roster loaded yet — queue the scan immediately so it's never lost.
+        // The server will resolve the PIN when it processes the queue.
+        const act = isIn ? 'in' : 'out';
+        const key = makeKey({ pin: ten, personId: '' });
+        if (!canSendNow(key)) {
+          Toast.show('Duplicate scan ignored (5s)', false);
+        } else {
+          const eventTs = Date.now();
+          const scanId  = generateScanId();
+          const timeStr = new Date(eventTs).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+          Toast.show(`Card queued (${act.toUpperCase()}) — ${timeStr}`, true);
+          try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
+          sendImmediately({
+            action:   act,
+            src:      'tap_unknown',
+            pin:      ten,
+            personId: '',
+            firstName:'',
+            lastName: '',
+            grade:    '',
+            clientTs: String(eventTs),
+            scanId
+          });
+        }
       }
 
       pinEl.value = '';
@@ -1799,10 +1858,11 @@
         bootstrapReady = false;
         saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
         updateRosterStatusLabel();
-        hideBootOverlay();
+        // Show error in overlay with retry button — don't just silently hide it
+        showBootError('Roster load failed.\nCard taps still work & queue.');
         pinEl.disabled = false;
         qEl.disabled   = false;
-        Toast.show('No roster cache — card tap still queues, name search unavailable offline.', false, 3500);
+        Toast.show('⚠️ Roster unavailable — card taps still queue automatically', false, 5000);
         queueClientError('bootstrap_failed', {
           src: 'bootstrap',
           msg: String(e && e.message || e || ''),
