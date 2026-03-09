@@ -541,7 +541,15 @@
   /* ================= Focus helpers ================= */
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
+  document.addEventListener('visibilitychange', () => { 
+    if (!document.hidden) {
+      focusPinSafely();
+      // Flush queue when tab becomes visible (catches cases where user switches back after being offline)
+      if (navigator.onLine && !isFlushingQueue) {
+        scheduleBatchFlush(200);
+      }
+    }
+  });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
   document.addEventListener('click', (e) => {
@@ -808,17 +816,25 @@
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         
+        // Success OR duplicate (already processed) = remove from queue
         if (!data.error || data.status === 'duplicate') {
           console.log('✅ Queue item processed:', item.scanId);
           await removeFromQueue(item);
           return;
         }
         
-        if (data.error === 'Cougar Card not found' || data.error === 'Invalid action') {
-          console.log('⚠️ Non-retryable error, removing:', item.scanId);
+        // Non-retryable errors
+        const NON_RETRYABLE = ['Cougar Card not found', 'Unauthorized', 'Invalid action', 'Invalid PIN'];
+        if (NON_RETRYABLE.some(e => (data.error || '').includes(e))) {
+          console.log('⚠️ Non-retryable error, removing:', item.scanId, data.error);
           await removeFromQueue(item);
           return;
         }
+        
+        // Retryable server error in response body
+        console.log(`⚠️ Server error retry ${retryCount + 1}/${RETRY_CONFIG.maxAttempts}:`, item.scanId, data.error);
+        await updateQueueItemRetry(item);
+        return;
       }
 
       console.log(`⚠️ Retry ${retryCount + 1}/${RETRY_CONFIG.maxAttempts} failed for:`, item.scanId);
@@ -848,6 +864,7 @@
         return;
       }
 
+      // Sort: fewest retries first, then oldest first
       q.sort((a, b) => {
         const aRetry = a._retryCount || 0;
         const bRetry = b._retryCount || 0;
@@ -855,16 +872,19 @@
         return (a._queuedAt || 0) - (b._queuedAt || 0);
       });
 
+      // Process items SEQUENTIALLY to avoid race conditions on localStorage
+      // (concurrent writes to the same queue create duplicates/data loss)
       const toProcess = q.slice(0, RETRY_CONFIG.concurrentRetries);
-      const promises = toProcess.map((item, idx) => processQueueItem(item, idx));
-      
-      await Promise.allSettled(promises);
+      for (let idx = 0; idx < toProcess.length; idx++) {
+        await processQueueItem(toProcess[idx], idx);
+      }
 
+      // Re-read queue after processing to get latest state
       try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
       
       if (q.length > 0 && navigator.onLine) {
         const oldestRetry = Math.min(...q.map(i => i._retryCount || 0));
-        const delay = RETRY_CONFIG.delays[oldestRetry] || RETRY_CONFIG.delays[RETRY_CONFIG.delays.length - 1];
+        const delay = RETRY_CONFIG.delays[Math.min(oldestRetry, RETRY_CONFIG.delays.length - 1)];
         scheduleBatchFlush(delay);
       }
 
@@ -1109,20 +1129,27 @@
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
         Toast.show(msg, false); Chime.fail();
-        queueClientError(msg, {
-          a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
-          firstName, lastName, grade,
-          scanId
-        });
-        queuePendingScan({
-          action: act,
-          src: bodyObj.src,
-          pin: pin || '',
-          personId: personId || '',
-          firstName, lastName, grade,
-          clientTs: String(eventTs),
-          scanId
-        });
+        
+        // Only re-queue retryable errors (not "card not found" or auth errors)
+        const NON_RETRYABLE = ['Cougar Card not found', 'Unauthorized', 'Invalid action'];
+        const isRetryable = !NON_RETRYABLE.some(e => msg.includes(e)) && res.status !== 401 && res.status !== 400;
+        
+        if (isRetryable) {
+          queuePendingScan({
+            action: act,
+            src: bodyObj.src,
+            pin: pin || '',
+            personId: personId || '',
+            firstName, lastName, grade,
+            clientTs: String(eventTs),
+            scanId
+          });
+        } else {
+          queueClientError(msg, {
+            a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
+            firstName, lastName, grade, scanId
+          });
+        }
         return;
       }
 
@@ -1336,17 +1363,21 @@
       clearTimeout(timeoutId);
       
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Non-retryable server errors (card not found etc) — don't queue
+        if (data.error) {
+          const NON_RETRYABLE = ['Cougar Card not found', 'Unauthorized', 'Invalid action'];
+          if (!NON_RETRYABLE.some(e => data.error.includes(e))) {
+            queuePendingScan(payload);
+          }
+        }
         return;
       }
 
       if (res.status >= 500) {
         queuePendingScan(payload);
-      } else {
-        queueClientError('server_4xx', {
-          status: res.status,
-          payload
-        });
       }
+      // 4xx = non-retryable, just drop (card not found already toasted above)
       
     } catch (_) {
       queuePendingScan(payload);
@@ -1698,6 +1729,14 @@
     setTimeout(()=>{ pinEl.focus(); }, 0);
 
     scheduleBatchFlush(500);
+    
+    // Also flush every 30s as a safety net for stuck queues
+    setInterval(() => {
+      const { pending } = getQueueCounts();
+      if (pending > 0 && navigator.onLine && !isFlushingQueue) {
+        scheduleBatchFlush(0);
+      }
+    }, 30000);
     
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
