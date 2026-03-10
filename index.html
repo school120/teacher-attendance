@@ -438,11 +438,8 @@
   const digitsOnly = s => String(s||'').replace(/\D+/g,'');
   const clamp = (n,min,max) => Math.min(max,Math.max(min,n));
 
-  const LS_BOOT_SUCCESS  = 'kiosk_bootstrap_last_success';
-  const LS_BOOT_FAIL     = 'kiosk_bootstrap_last_fail';
-  const LS_ROSTER_CACHE  = 'kiosk_roster_cache';       // persisted roster data
-  const LS_ROSTER_TS     = 'kiosk_roster_cache_ts';    // timestamp when saved
-  const ROSTER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;  // stale after 7 days
+  const LS_BOOT_SUCCESS = 'kiosk_bootstrap_last_success';
+  const LS_BOOT_FAIL    = 'kiosk_bootstrap_last_fail';
 
   let lastBootSuccess = null;
   let lastBootFail    = null;
@@ -544,15 +541,7 @@
   /* ================= Focus helpers ================= */
   function focusPin(){ try { pinEl.focus(); pinEl.select?.(); } catch(_) {} }
   function focusPinSafely(){ if (document.activeElement !== qEl) focusPin(); }
-  document.addEventListener('visibilitychange', () => { 
-    if (!document.hidden) {
-      focusPinSafely();
-      // Flush queue when tab becomes visible (catches cases where user switches back after being offline)
-      if (navigator.onLine && !isFlushingQueue) {
-        scheduleBatchFlush(200);
-      }
-    }
-  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) focusPinSafely(); });
   window.addEventListener('pageshow', (e) => { if (e.persisted) focusPinSafely(); });
 
   document.addEventListener('click', (e) => {
@@ -819,25 +808,17 @@
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         
-        // Success OR duplicate (already processed) = remove from queue
         if (!data.error || data.status === 'duplicate') {
           console.log('✅ Queue item processed:', item.scanId);
           await removeFromQueue(item);
           return;
         }
         
-        // Non-retryable errors
-        const NON_RETRYABLE = ['Cougar Card not found', 'Unauthorized', 'Invalid action', 'Invalid PIN'];
-        if (NON_RETRYABLE.some(e => (data.error || '').includes(e))) {
-          console.log('⚠️ Non-retryable error, removing:', item.scanId, data.error);
+        if (data.error === 'Cougar Card not found' || data.error === 'Invalid action') {
+          console.log('⚠️ Non-retryable error, removing:', item.scanId);
           await removeFromQueue(item);
           return;
         }
-        
-        // Retryable server error in response body
-        console.log(`⚠️ Server error retry ${retryCount + 1}/${RETRY_CONFIG.maxAttempts}:`, item.scanId, data.error);
-        await updateQueueItemRetry(item);
-        return;
       }
 
       console.log(`⚠️ Retry ${retryCount + 1}/${RETRY_CONFIG.maxAttempts} failed for:`, item.scanId);
@@ -867,7 +848,6 @@
         return;
       }
 
-      // Sort: fewest retries first, then oldest first
       q.sort((a, b) => {
         const aRetry = a._retryCount || 0;
         const bRetry = b._retryCount || 0;
@@ -875,19 +855,16 @@
         return (a._queuedAt || 0) - (b._queuedAt || 0);
       });
 
-      // Process items SEQUENTIALLY to avoid race conditions on localStorage
-      // (concurrent writes to the same queue create duplicates/data loss)
       const toProcess = q.slice(0, RETRY_CONFIG.concurrentRetries);
-      for (let idx = 0; idx < toProcess.length; idx++) {
-        await processQueueItem(toProcess[idx], idx);
-      }
+      const promises = toProcess.map((item, idx) => processQueueItem(item, idx));
+      
+      await Promise.allSettled(promises);
 
-      // Re-read queue after processing to get latest state
       try { q = JSON.parse(localStorage.getItem('pending_scans') || '[]') || []; } catch(_){}
       
       if (q.length > 0 && navigator.onLine) {
         const oldestRetry = Math.min(...q.map(i => i._retryCount || 0));
-        const delay = RETRY_CONFIG.delays[Math.min(oldestRetry, RETRY_CONFIG.delays.length - 1)];
+        const delay = RETRY_CONFIG.delays[oldestRetry] || RETRY_CONFIG.delays[RETRY_CONFIG.delays.length - 1];
         scheduleBatchFlush(delay);
       }
 
@@ -933,59 +910,47 @@
 
   function saveBootstrapSuccess(serverTs){
     lastBootSuccess = { serverTs: serverTs || Date.now(), clientTs: Date.now() };
-    // A successful load clears any previous failure state
-    lastBootFail = null;
     try{ localStorage.setItem(LS_BOOT_SUCCESS, JSON.stringify(lastBootSuccess)); }catch(_){}
-    try{ localStorage.removeItem(LS_BOOT_FAIL); }catch(_){}
   }
 
-  // persist=true only for hard failures (no cache, no network).
-  // Background refresh failures are transient — don't poison localStorage.
-  function saveBootstrapFail(message, persist = false){
+  function saveBootstrapFail(message){
     lastBootFail = { clientTs: Date.now(), message: String(message||'failed') };
-    if (persist) {
-      try{ localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(lastBootFail)); }catch(_){}
-    }
+    try{ localStorage.setItem(LS_BOOT_FAIL, JSON.stringify(lastBootFail)); }catch(_){}
   }
 
   function updateRosterStatusLabel(){
     if (!rosterStatusEl) return;
 
-    const cachedTs    = Number(localStorage.getItem(LS_ROSTER_TS) || '0');
-    const hasCachedData = cachedTs > 0;
+    let label = 'Roster: ⏳ loading…';
+    let title = '';
 
-    let label, title;
-
-    if (lastBootSuccess) {
-      // Live network fetch succeeded this session — best state
+    if (lastBootSuccess){
       const when = fmtShortTs(lastBootSuccess.serverTs || lastBootSuccess.clientTs);
-      label = `⚡ Roster live · ${when}`;
-      title = `Live roster fetched at ${fmtShortTs(lastBootSuccess.clientTs)}. Click to refresh.`;
-    } else if (bootstrapReady && hasCachedData) {
-      // Running from cache — fully functional, background refresh may have failed
-      const when = fmtShortTs(cachedTs);
-      if (lastBootFail) {
-        label = `📦 Roster cached · ${when}`;
-        title = `Using cached roster (last synced ${when}). Background refresh failed: ${lastBootFail.message||'error'}. Click to retry.`;
+
+      if (bootstrapReady){
+        label = `⚡ Roster OK · ${when}`;
       } else {
-        label = `📦 Roster cached · ${when}`;
-        title = `Using cached roster from ${when}. Click to refresh from server.`;
+        label = `⚠️ Roster fallback · ${when}`;
       }
-    } else if (!bootstrapReady) {
-      if (lastBootFail) {
+
+      title += `Last success: ${fmtShortTs(lastBootSuccess.clientTs || lastBootSuccess.serverTs)}`;
+    } else {
+      if (lastBootFail){
         label = `❌ Roster failed`;
-        title = `Failed: ${lastBootFail.message||'error'}. Click to retry.`;
+        title += `Last failure: ${fmtShortTs(lastBootFail.clientTs)} (${lastBootFail.message||'failed'})`;
       } else {
         label = `Roster: ⏳ loading…`;
-        title = `Loading…`;
+        title = `No successful roster downloads yet`;
       }
-    } else {
-      label = `Roster: ⏳ loading…`;
-      title = `Loading…`;
+    }
+
+    if (lastBootFail && lastBootSuccess){
+      const whenF = fmtShortTs(lastBootFail.clientTs);
+      title += `\nLast failure: ${whenF} (${lastBootFail.message||'failed'})`;
     }
 
     rosterStatusEl.textContent = label;
-    rosterStatusEl.title = title;
+    rosterStatusEl.title = title || 'Roster bootstrap status';
   }
 
   /* ================= Bootstrap cache ================= */
@@ -994,56 +959,6 @@
   let facultyList     = [];
   let studentList     = [];
   let bootstrapReady  = false;
-
-  // Persist the full roster to localStorage so it survives page reloads and offline starts.
-  function saveRosterToStorage(data) {
-    try {
-      const payload = {
-        studentByLegacy: data.studentByLegacy || {},
-        facultyPins:     data.facultyPins     || {},
-        facultyList:     data.facultyList     || [],
-        studentList:     data.studentList     || [],
-        ts:              data.ts              || Date.now()
-      };
-      localStorage.setItem(LS_ROSTER_CACHE, JSON.stringify(payload));
-      localStorage.setItem(LS_ROSTER_TS,    String(Date.now()));
-    } catch(e) {
-      console.warn('Could not save roster to localStorage:', e);
-    }
-  }
-
-  // Load roster from localStorage into the live Maps. Returns true if usable data found.
-  function loadRosterFromStorage() {
-    try {
-      const raw = localStorage.getItem(LS_ROSTER_CACHE);
-      const ts  = Number(localStorage.getItem(LS_ROSTER_TS) || '0');
-      if (!raw) return false;
-
-      const age = Date.now() - ts;
-      if (age > ROSTER_MAX_AGE_MS) {
-        console.log('Cached roster is stale (' + Math.round(age/86400000) + ' days old), will refresh.');
-        // Still load it — stale is better than nothing for offline use.
-        // We just won't set bootstrapReady=true as "authoritative" until server confirms.
-      }
-
-      const data = JSON.parse(raw);
-      if (!data || typeof data !== 'object') return false;
-
-      const legacyEntries  = Object.entries(data.studentByLegacy || {});
-      const facultyEntries = Object.entries(data.facultyPins     || {});
-      if (legacyEntries.length === 0 && facultyEntries.length === 0) return false;
-
-      studentByLegacy = new Map(legacyEntries);
-      facultyByPin    = new Map(facultyEntries);
-      facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
-      studentList     = Array.isArray(data.studentList) ? data.studentList : [];
-
-      return true;
-    } catch(e) {
-      console.warn('Could not load roster from localStorage:', e);
-      return false;
-    }
-  }
 
   async function loadBootstrap(isManualRefresh = false){
     const controller = new AbortController();
@@ -1065,13 +980,10 @@
     }
 
     studentByLegacy = new Map(Object.entries(data.studentByLegacy || {}));
-    facultyByPin    = new Map(Object.entries(data.facultyPins     || {}));
+    facultyByPin    = new Map(Object.entries(data.facultyPins || {}));
     facultyList     = Array.isArray(data.facultyList) ? data.facultyList : [];
     studentList     = Array.isArray(data.studentList) ? data.studentList : [];
     bootstrapReady  = true;
-
-    // Persist to localStorage for next load (offline resilience)
-    saveRosterToStorage(data);
 
     saveBootstrapSuccess(data.ts || Date.now());
     updateRosterStatusLabel();
@@ -1096,9 +1008,17 @@
       await loadBootstrap(true);
     } catch (e) {
       Toast.show('Refresh failed: ' + (e.message || 'unknown error'), false, 2500);
-      // Don't persist this — we still have a working cache, badge should stay 📦 not ❌
-      saveBootstrapFail(e && e.message ? e.message : 'refresh failed', false);
+      saveBootstrapFail(e && e.message ? e.message : 'refresh failed');
       updateRosterStatusLabel();
+      queueClientError('bootstrap_failed', {
+        src: 'bootstrap_manual_refresh',
+        msg: String(e && e.message || e || ''),
+        online: navigator.onLine,
+        href: location.href,
+        hash: location.hash,
+        ua: navigator.userAgent,
+        ts: Date.now()
+      });
     } finally {
       isRefreshingRoster = false;
       if (rosterStatusEl.textContent === '🔄 Refreshing...') {
@@ -1137,47 +1057,11 @@
     if (!bootOverlay) return;
     const t = bootOverlay.querySelector('.boot-text');
     if (t && text) t.textContent = text;
-    // Reset to spinner state
-    const spinner = bootOverlay.querySelector('.boot-spinner');
-    if (spinner) spinner.style.display = '';
-    const retryBtn = bootOverlay.querySelector('.boot-retry');
-    if (retryBtn) retryBtn.style.display = 'none';
     bootOverlay.style.display = 'flex';
   }
   function hideBootOverlay(){
     if (!bootOverlay) return;
     bootOverlay.style.display = 'none';
-  }
-  function showBootError(msg) {
-    if (!bootOverlay) return;
-    const t = bootOverlay.querySelector('.boot-text');
-    if (t) t.innerHTML = (msg || 'Failed to load roster').replace(/\n/g, '<br>');
-    const spinner = bootOverlay.querySelector('.boot-spinner');
-    if (spinner) spinner.style.display = 'none';
-    const inner = bootOverlay.querySelector('.boot-overlay-inner');
-
-    let retryBtn = bootOverlay.querySelector('.boot-retry');
-    if (!retryBtn) {
-      retryBtn = document.createElement('button');
-      retryBtn.className = 'boot-retry';
-      retryBtn.textContent = '↺ Retry';
-      retryBtn.style.cssText = 'margin-top:10px;padding:10px 28px;font-size:16px;font-weight:800;border-radius:10px;border:none;background:#2563eb;color:#fff;cursor:pointer;';
-      retryBtn.addEventListener('click', () => location.reload());
-      inner.appendChild(retryBtn);
-    }
-    retryBtn.style.display = '';
-
-    let dismissBtn = bootOverlay.querySelector('.boot-dismiss');
-    if (!dismissBtn) {
-      dismissBtn = document.createElement('button');
-      dismissBtn.className = 'boot-dismiss';
-      dismissBtn.textContent = 'Continue without roster →';
-      dismissBtn.style.cssText = 'margin-top:6px;padding:8px 16px;font-size:13px;font-weight:700;border-radius:8px;border:1px solid #94a3b8;background:transparent;color:#94a3b8;cursor:pointer;';
-      dismissBtn.addEventListener('click', () => hideBootOverlay());
-      inner.appendChild(dismissBtn);
-    }
-    dismissBtn.style.display = '';
-    bootOverlay.style.display = 'flex';
   }
 
   /* ================= API submit (with timeout) ================= */
@@ -1225,27 +1109,20 @@
       if (!res.ok || (data && data.error)) {
         const msg = (data && data.error) || ('Error ' + res.status);
         Toast.show(msg, false); Chime.fail();
-        
-        // Only re-queue retryable errors (not "card not found" or auth errors)
-        const NON_RETRYABLE = ['Cougar Card not found', 'Unauthorized', 'Invalid action'];
-        const isRetryable = !NON_RETRYABLE.some(e => msg.includes(e)) && res.status !== 401 && res.status !== 400;
-        
-        if (isRetryable) {
-          queuePendingScan({
-            action: act,
-            src: bodyObj.src,
-            pin: pin || '',
-            personId: personId || '',
-            firstName, lastName, grade,
-            clientTs: String(eventTs),
-            scanId
-          });
-        } else {
-          queueClientError(msg, {
-            a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
-            firstName, lastName, grade, scanId
-          });
-        }
+        queueClientError(msg, {
+          a:act, pin:pin||'', personId:personId||'', src: bodyObj.src,
+          firstName, lastName, grade,
+          scanId
+        });
+        queuePendingScan({
+          action: act,
+          src: bodyObj.src,
+          pin: pin || '',
+          personId: personId || '',
+          firstName, lastName, grade,
+          clientTs: String(eventTs),
+          scanId
+        });
         return;
       }
 
@@ -1459,21 +1336,17 @@
       clearTimeout(timeoutId);
       
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        // Non-retryable server errors (card not found etc) — don't queue
-        if (data.error) {
-          const NON_RETRYABLE = ['Cougar Card not found', 'Unauthorized', 'Invalid action'];
-          if (!NON_RETRYABLE.some(e => data.error.includes(e))) {
-            queuePendingScan(payload);
-          }
-        }
         return;
       }
 
       if (res.status >= 500) {
         queuePendingScan(payload);
+      } else {
+        queueClientError('server_4xx', {
+          status: res.status,
+          payload
+        });
       }
-      // 4xx = non-retryable, just drop (card not found already toasted above)
       
     } catch (_) {
       queuePendingScan(payload);
@@ -1517,30 +1390,7 @@
           quickUnknownCardFail(ten);
         }
       } else {
-        // No roster loaded yet — queue the scan immediately so it's never lost.
-        // The server will resolve the PIN when it processes the queue.
-        const act = isIn ? 'in' : 'out';
-        const key = makeKey({ pin: ten, personId: '' });
-        if (!canSendNow(key)) {
-          Toast.show('Duplicate scan ignored (5s)', false);
-        } else {
-          const eventTs = Date.now();
-          const scanId  = generateScanId();
-          const timeStr = new Date(eventTs).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-          Toast.show(`Card queued (${act.toUpperCase()}) — ${timeStr}`, true);
-          try { Chime.ok(); navigator.vibrate?.(30); } catch(_) {}
-          sendImmediately({
-            action:   act,
-            src:      'tap_unknown',
-            pin:      ten,
-            personId: '',
-            firstName:'',
-            lastName: '',
-            grade:    '',
-            clientTs: String(eventTs),
-            scanId
-          });
-        }
+        submitPinOrId({ pin: ten, src: 'tap_unknown' });
       }
 
       pinEl.value = '';
@@ -1817,59 +1667,30 @@
     qEl.disabled   = true;
     showBootOverlay('Loading rosters…');
 
-    // Step 1: Try localStorage cache first — instant, works offline.
-    const hadCachedRoster = loadRosterFromStorage();
-    if (hadCachedRoster) {
-      bootstrapReady = true;
-      // We have a working roster — clear any stale failure state from previous sessions
-      lastBootFail = null;
-      try { localStorage.removeItem(LS_BOOT_FAIL); } catch(_) {}
+    try{
+      await loadBootstrap();
       hideBootOverlay();
-      pinEl.disabled = false;
-      qEl.disabled   = false;
-      Toast.show('Kiosk ready (cached)', true, 1200);
+      Toast.show('Kiosk ready (fast mode)', true, 1400);
+      scheduleDailySync();
+    }catch(e){
+      bootstrapReady = false;
+      saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed');
       updateRosterStatusLabel();
-
-      // Step 2: Refresh from server in the background without blocking the UI.
-      loadBootstrap(false).then(() => {
-        Toast.show('Roster updated from server', true, 1200);
-        scheduleDailySync();
-      }).catch(e => {
-        // Silent background failure — cache is still live, kiosk fully operational.
-        // Do NOT persist this as a hard failure or show a disruptive toast.
-        console.warn('Background roster refresh failed:', e);
-        saveBootstrapFail(e && e.message ? e.message : 'background refresh failed', false /* don't persist */);
-        updateRosterStatusLabel(); // updates badge subtitle only, label stays 📦
+      hideBootOverlay();
+      Toast.show('Online without cache — still works, just a bit slower.', false, 2600);
+      queueClientError('bootstrap_failed', {
+        src:'bootstrap',
+        msg: String(e && e.message || e || ''),
+        online: navigator.onLine,
+        href: location.href,
+        hash: location.hash,
+        ua: navigator.userAgent,
+        ts: Date.now()
       });
-    } else {
-      // No cache — must load from server before we can do anything.
-      try {
-        await loadBootstrap();
-        hideBootOverlay();
-        pinEl.disabled = false;
-        qEl.disabled   = false;
-        Toast.show('Kiosk ready', true, 1400);
-        scheduleDailySync();
-      } catch(e) {
-        bootstrapReady = false;
-        saveBootstrapFail(e && e.message ? e.message : 'bootstrap failed', true /* persist - truly no roster */);
-        updateRosterStatusLabel();
-        // Show error in overlay with retry button — don't just silently hide it
-        showBootError('Roster load failed.\nCard taps still work & queue.');
-        pinEl.disabled = false;
-        qEl.disabled   = false;
-        Toast.show('⚠️ Roster unavailable — card taps still queue automatically', false, 5000);
-        queueClientError('bootstrap_failed', {
-          src: 'bootstrap',
-          msg: String(e && e.message || e || ''),
-          online: navigator.onLine,
-          href: location.href,
-          hash: location.hash,
-          ua: navigator.userAgent,
-          ts: Date.now()
-        });
-      }
     }
+
+    pinEl.disabled = false;
+    qEl.disabled   = false;
 
     setAction('in');
     applyHashAction();
@@ -1877,14 +1698,6 @@
     setTimeout(()=>{ pinEl.focus(); }, 0);
 
     scheduleBatchFlush(500);
-    
-    // Also flush every 30s as a safety net for stuck queues
-    setInterval(() => {
-      const { pending } = getQueueCounts();
-      if (pending > 0 && navigator.onLine && !isFlushingQueue) {
-        scheduleBatchFlush(0);
-      }
-    }, 30000);
     
     if (window.requestIdleCallback) {
       requestIdleCallback(flushClientErrors);
